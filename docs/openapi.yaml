@@ -1,0 +1,1635 @@
+openapi: 3.1.0
+
+info:
+  title: Mercado Agrícola — API de Simulación
+  version: 1.0.0
+  summary: API REST del servidor autoritativo de un mercado agrícola simulado.
+  description: |
+    Servidor autoritativo de estado para una simulación de mercado de productos
+    agrícolas con ~100 agentes concurrentes (productores primarios,
+    transformadores, consumidores y traders). Esta API es consumida indistintamente
+    por agentes automatizados (reglas o ML) y por clientes humanos: ambos usan
+    el mismo contrato.
+
+    ## Modelo de transporte
+
+    - **REST sobre HTTPS** para todas las operaciones síncronas: registro,
+      autenticación, consultas de estado, colocación/cancelación de órdenes
+      e inicio/cancelación de procesos de transformación.
+    - **WebSocket** (`/v1/ws`) para notificaciones push del servidor al agente
+      (`order_executed`, `order_expired`, `transformation_completed`,
+      `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`). El canal WS no
+      acepta comandos: es unidireccional servidor→cliente más heartbeats.
+      Su esquema se documenta como complemento al final (sección
+      `x-websocket-channel`); está fuera del modelo formal de OpenAPI 3.1.
+
+    ## Unidades y precisión
+
+    Todas las cantidades del dominio se transmiten como **enteros**:
+
+    - **Cantidades de producto**: enteros en *centésimas* de la unidad declarada
+      en el producto (ej. `1500` representa `15.00 kg`).
+    - **Capital, precios y fees**: enteros en *centavos* (ej. `25000` = `250.00`
+      unidades monetarias).
+
+    Esta convención es idéntica a la del esquema relacional (`BIGINT`) y elimina
+    los errores de punto flotante en validaciones de invariantes.
+
+    ## Tiempo
+
+    Los timestamps son ISO-8601 con zona horaria (`TIMESTAMPTZ`). Las duraciones
+    se expresan en segundos enteros. El factor de simulación (default 5×) se aplica
+    en la capa de aplicación al calcular `expires_at` y `expected_end_at`; los
+    valores devueltos siempre son timestamps reales.
+
+    ## Autenticación
+
+    Esquema usuario/contraseña + JWT:
+
+    - `POST /v1/auth/register` crea un agente y devuelve un par de tokens.
+    - `POST /v1/auth/login` autentica y devuelve un par de tokens.
+    - El **access token** (Bearer JWT, stateless, vida corta) se envía en
+      `Authorization: Bearer <token>` en todas las llamadas autenticadas.
+    - El **refresh token** (persistido en `agent_refresh_token`) se intercambia
+      vía `POST /v1/auth/refresh`. Se revoca al quebrar, cambiar contraseña o
+      hacer logout.
+
+    Los endpoints públicos son: registro, login, refresh y catálogo.
+
+  contact:
+    name: Equipo de simulación
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://{host}/v1
+    description: Servidor de simulación
+    variables:
+      host:
+        default: localhost:8000
+        description: Host del core de simulación. Cada instancia es una corrida única.
+
+tags:
+  - name: auth
+    description: Registro, login, refresh y logout. Emiten/revocan JWTs.
+  - name: catalog
+    description: Lectura del catálogo canónico (productos y recetas). Público.
+  - name: agent
+    description: Estado y datos del agente autenticado.
+  - name: orders
+    description: Colocación, cancelación y consulta de órdenes.
+  - name: market
+    description: Visibilidad del mercado (top-of-book, trades recientes).
+  - name: transformation
+    description: "Procesos de transformación: inicio, cancelación, consulta."
+  - name: history
+    description: Historial propio del agente (trades, órdenes, procesos).
+  - name: websocket
+    description: Canal de notificaciones push (documentado, fuera del modelo REST).
+
+# ============================================================================
+# RUTAS
+# ============================================================================
+
+paths:
+
+  # --------------------------------------------------------------------------
+  # AUTH
+  # --------------------------------------------------------------------------
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Registrar un nuevo agente
+      description: |
+        Crea un agente nuevo en la simulación con un rol y capacidades solicitadas.
+        El servidor asigna **capital semilla = promedio del capital total de
+        agentes activos** al momento del registro (registros dinámicos). La
+        identidad asignada es fresca y nunca se recicla. Emite el evento
+        `agent_registered` y un broadcast `agent_joined`.
+
+        Endpoint público (no requiere autenticación).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterAgentRequest'
+      responses:
+        '201':
+          description: Agente creado. Devuelve identidad, estado inicial y par de tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterAgentResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Username ya en uso.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Autenticar un agente existente
+      description: |
+        Valida credenciales y devuelve un par de tokens (access + refresh).
+        Endpoint público.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: Credenciales inválidas.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: Agente en quiebra; no puede iniciar sesión.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Intercambiar un refresh token por un nuevo par de tokens
+      description: |
+        Valida el refresh token contra `agent_refresh_token` (no revocado, no
+        expirado). Emite un nuevo par y revoca el refresh anterior (rotación).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Nuevo par de tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: Refresh token inválido, expirado o revocado.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revocar el refresh token actual
+      description: |
+        Marca el refresh token recibido como revocado (`revoked_at = now()`).
+        El access token sigue válido hasta su expiración natural (stateless).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Token revocado.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # --------------------------------------------------------------------------
+  # CATALOG (público)
+  # --------------------------------------------------------------------------
+
+  /catalog/products:
+    get:
+      tags: [catalog]
+      summary: Listar productos del catálogo
+      description: |
+        Devuelve todos los productos del catálogo. El catálogo es estático durante
+        la corrida.
+      security: []
+      responses:
+        '200':
+          description: Lista de productos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+
+  /catalog/products/{product_id}:
+    get:
+      tags: [catalog]
+      summary: Detalle de un producto
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductIdPath'
+      responses:
+        '200':
+          description: Producto.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /catalog/recipes:
+    get:
+      tags: [catalog]
+      summary: Listar recetas del catálogo
+      description: |
+        Devuelve todas las recetas con sus insumos. Las recetas con lista de
+        insumos vacía modelan producción primaria desde cero.
+      security: []
+      parameters:
+        - in: query
+          name: output_product_id
+          description: Filtrar recetas que producen un producto específico.
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Lista de recetas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Recipe' }
+
+  /catalog/recipes/{recipe_id}:
+    get:
+      tags: [catalog]
+      summary: Detalle de una receta
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RecipeIdPath'
+      responses:
+        '200':
+          description: Receta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------------------
+  # AGENT (estado propio)
+  # --------------------------------------------------------------------------
+
+  /agents/me:
+    get:
+      tags: [agent]
+      summary: Snapshot completo del estado del agente autenticado
+      description: |
+        Devuelve **todo** lo que el agente necesita para reanudar operación tras
+        una reconexión: capital (disponible y reservado), inventario por
+        producto (disponible y reservado), órdenes activas, procesos en curso,
+        capacidades instaladas y un resumen acotado de eventos recientes.
+
+        Antes de responder, el servidor **materializa lazy** cualquier proceso
+        de transformación del agente cuyo `expected_end_at <= now()`.
+
+        Equivalente a `get_self_state` en el diseño conceptual.
+      parameters:
+        - in: query
+          name: events_limit
+          description: Tamaño máximo del resumen de eventos recientes incluido en la respuesta.
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Estado del agente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Agente en quiebra; operación rechazada.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /agents/me/capacities:
+    get:
+      tags: [agent]
+      summary: Capacidades productivas instaladas
+      description: |
+        Devuelve las recetas para las que el agente tiene instalaciones, junto
+        con el número de procesos paralelos permitido y el conteo actual de
+        procesos en curso por receta (para saber capacidad libre).
+      responses:
+        '200':
+          description: Lista de capacidades.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CapacityStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /agents/me/inventory:
+    get:
+      tags: [agent]
+      summary: Inventario del agente
+      description: |
+        Devuelve las posiciones de inventario del agente agregadas por producto
+        (suma de `qty_available` y `qty_reserved` sobre todos los lotes).
+        Para el detalle por lote, ver `/agents/me/inventory/lots`.
+      parameters:
+        - in: query
+          name: product_id
+          description: Filtrar por producto.
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Posiciones de inventario.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InventoryPosition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /agents/me/inventory/lots:
+    get:
+      tags: [agent]
+      summary: Detalle por lote del inventario (FIFO)
+      description: |
+        Devuelve los lotes del agente, ordenados FIFO (`acquired_at` ascendente).
+        Cada lote incluye su `unit_cost_cents` (útil para análisis de COGS por
+        parte del propio agente).
+      parameters:
+        - in: query
+          name: product_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: only_with_stock
+          description: Si es `true`, omite lotes con `qty_available + qty_reserved = 0`.
+          required: false
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Lista de lotes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InventoryLot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /agents/{agent_id}:
+    get:
+      tags: [agent]
+      summary: Información pública de un agente
+      description: |
+        Devuelve la información públicamente visible de cualquier agente
+        (propio o ajeno): identidad, rol, estado vivo/quebrado, timestamps.
+        **No** revela capital, inventario, órdenes ni capacidades.
+      parameters:
+        - $ref: '#/components/parameters/AgentIdPath'
+      responses:
+        '200':
+          description: Información pública.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentPublic' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # --------------------------------------------------------------------------
+  # MARKET (visibilidad pública, nivel 1)
+  # --------------------------------------------------------------------------
+
+  /market/{product_id}/top:
+    get:
+      tags: [market]
+      summary: Top of book de un producto
+      description: |
+        Devuelve la mejor orden de compra y la mejor orden de venta vigentes
+        para el producto, con la identidad del agente que las colocó (visibilidad
+        nivel 1). Cada lado es la primera orden en cola precio-tiempo. Si no
+        hay órdenes en algún lado, ese campo es `null`.
+      parameters:
+        - $ref: '#/components/parameters/ProductIdPath'
+      responses:
+        '200':
+          description: Top of book.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopOfBook' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /market/{product_id}/trades:
+    get:
+      tags: [market]
+      summary: Transacciones recientes de un producto
+      description: |
+        Devuelve los trades recientes del producto, con identidades de ambas
+        contrapartes, cantidad, precio y timestamp. Las transacciones son
+        públicas en el historial.
+      parameters:
+        - $ref: '#/components/parameters/ProductIdPath'
+        - in: query
+          name: since
+          description: |
+            Devolver únicamente trades con `executed_at >= since`. Si se omite,
+            se aplica una ventana por defecto (último día simulado).
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        '200':
+          description: Trades recientes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Trade' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # --------------------------------------------------------------------------
+  # ORDERS
+  # --------------------------------------------------------------------------
+
+  /orders:
+    post:
+      tags: [orders]
+      summary: Colocar una orden de compra o venta
+      description: |
+        Crea una orden y la inserta en el libro tras validación atómica:
+
+        - Agente activo, producto y TTL válidos.
+        - Si es compra: capital disponible ≥ `qty × limit_price_cents`; se reserva.
+        - Si es venta: inventario disponible ≥ `qty`; se reserva (a nivel de
+          lote, en orden FIFO).
+
+        La orden puede casarse inmediatamente (total o parcialmente) contra
+        órdenes pasivas del libro; el precio efectivo es el de la orden pasiva.
+        Las ejecuciones generan trades, descuentan reservas y emiten
+        notificaciones `order_executed` vía WebSocket.
+
+        TTL mínimo: 1 minuto simulado. TTL máximo: 1 semana simulada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: |
+            Orden aceptada. Incluye su estado tras el primer ciclo de matching
+            (puede ser `active`, `partial` o `completed`) y los trades generados
+            en ese ciclo, si los hay.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceOrderResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Agente en quiebra.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: Validación de dominio falló (capital o inventario insuficiente, TTL fuera de rango, producto desconocido, etc.). El campo `errors[*].code` indica la causa.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+    get:
+      tags: [orders]
+      summary: Listar órdenes propias
+      description: |
+        Devuelve las órdenes del agente autenticado. Por defecto solo las activas/parciales.
+      parameters:
+        - in: query
+          name: status
+          description: Filtrar por estados (repetir el parámetro para múltiples).
+          required: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/OrderStatus' }
+        - in: query
+          name: product_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: side
+          required: false
+          schema: { $ref: '#/components/schemas/OrderSide' }
+        - in: query
+          name: since
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: cursor
+          description: Cursor opaco para paginación (UUIDv7 del último resultado).
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Órdenes del agente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /orders/{order_id}:
+    get:
+      tags: [orders]
+      summary: Detalle de una orden propia
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+      responses:
+        '200':
+          description: Detalle de la orden.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: La orden no pertenece al agente autenticado.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [orders]
+      summary: Cancelar una orden propia
+      description: |
+        Cancela una orden activa o parcialmente ejecutada del agente. Libera las
+        reservas residuales (capital o inventario por lote) y transiciona la
+        orden a estado `cancelled`. Emite notificación `order_cancelled` al
+        agente. La cancelación es gratuita.
+
+        Operación idempotente: cancelar una orden ya terminal devuelve `200`
+        con el estado final actual sin modificarla.
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+      responses:
+        '200':
+          description: Orden ya en estado terminal; se devuelve sin cambios.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '204':
+          description: Cancelación efectuada.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: La orden no pertenece al agente, o el agente está en quiebra.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders/{order_id}/trades:
+    get:
+      tags: [orders]
+      summary: Trades generados por una orden propia
+      description: Devuelve los trades en los que participó la orden indicada.
+      parameters:
+        - $ref: '#/components/parameters/OrderIdPath'
+      responses:
+        '200':
+          description: Lista de trades de la orden.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Trade' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------------------
+  # TRANSFORMATION
+  # --------------------------------------------------------------------------
+
+  /transformations:
+    post:
+      tags: [transformation]
+      summary: Iniciar un proceso de transformación
+      description: |
+        Crea un proceso de transformación que ejecuta una receta `N` veces
+        secuencialmente. Validaciones atómicas:
+
+        - Agente activo.
+        - Receta existe; el agente tiene capacidad instalada para ella y no está
+          saturado de procesos paralelos para esa receta.
+        - Inventario disponible cubre `qty_required × executions_planned` para
+          cada insumo de la receta.
+        - Capital disponible cubre el salario completo upfront.
+
+        Si pasa: descuenta insumos (FIFO por lote, con trazabilidad), paga
+        salario upfront (irreembolsable), crea el proceso en estado `running` y
+        calcula `expected_end_at = now() + duration × executions`.
+
+        El resultado del proceso (un nuevo `inventory_lot` con
+        `origin='production'`) se materializa lazy al consultar el estado del
+        agente, o por el sweeper de fondo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartTransformationRequest' }
+      responses:
+        '201':
+          description: Proceso iniciado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransformationProcess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Agente en quiebra.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            Validación de dominio falló. Causas posibles vía `errors[*].code`:
+            `insufficient_capacity`, `insufficient_inventory`,
+            `insufficient_capital`, `unknown_recipe`, `agent_bankrupt`.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+    get:
+      tags: [transformation]
+      summary: Listar procesos de transformación propios
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ProcessStatus' }
+        - in: query
+          name: recipe_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: since
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Procesos del agente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransformationPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /transformations/{process_id}:
+    get:
+      tags: [transformation]
+      summary: Detalle de un proceso propio
+      description: |
+        Devuelve el proceso. Antes de responder, materializa lazy si el proceso
+        está `running` con `expected_end_at <= now()`. Incluye los lotes de
+        insumos consumidos (trazabilidad) y, si ya completó, el lote producido.
+      parameters:
+        - $ref: '#/components/parameters/ProcessIdPath'
+      responses:
+        '200':
+          description: Proceso.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransformationProcessDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [transformation]
+      summary: Cancelar un proceso en curso
+      description: |
+        Marca el proceso como `cancelled`. **No se devuelven los insumos ni el
+        salario**. Operación rara pero disponible. Sólo aplica si el proceso
+        sigue en estado `running`.
+      parameters:
+        - $ref: '#/components/parameters/ProcessIdPath'
+      responses:
+        '204':
+          description: Proceso cancelado.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: El proceso ya está en estado terminal (`completed` o `cancelled`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # --------------------------------------------------------------------------
+  # HISTORY (consulta propia, sin límite por defecto distinto al cursor)
+  # --------------------------------------------------------------------------
+
+  /history/trades:
+    get:
+      tags: [history]
+      summary: Historial de trades del agente
+      description: |
+        Devuelve los trades en los que el agente participó como comprador o
+        vendedor.
+      parameters:
+        - in: query
+          name: side
+          description: Filtrar como `buyer` o `seller`.
+          required: false
+          schema:
+            type: string
+            enum: [buyer, seller]
+        - in: query
+          name: product_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: since
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: until
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de trades.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TradePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /history/events:
+    get:
+      tags: [history]
+      summary: Historial de eventos del agente
+      description: |
+        Devuelve los eventos del `event_log` cuyo `agent_id` coincide con el
+        agente autenticado. Útil para reconstruir su línea de tiempo completa.
+      parameters:
+        - in: query
+          name: event_type
+          required: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/EventType' }
+        - in: query
+          name: since
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: until
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página de eventos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+# ============================================================================
+# COMPONENTES
+# ============================================================================
+
+components:
+
+  # --------------------------------------------------------------------------
+  # SEGURIDAD
+  # --------------------------------------------------------------------------
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT obtenido vía `/auth/login`, `/auth/register` o
+        `/auth/refresh`. Stateless, vida corta (sugerido 15 min). Enviar como
+        `Authorization: Bearer <token>`.
+
+  # --------------------------------------------------------------------------
+  # PARÁMETROS REUTILIZABLES
+  # --------------------------------------------------------------------------
+
+  parameters:
+
+    ProductIdPath:
+      in: path
+      name: product_id
+      required: true
+      schema: { type: string, format: uuid }
+
+    RecipeIdPath:
+      in: path
+      name: recipe_id
+      required: true
+      schema: { type: string, format: uuid }
+
+    AgentIdPath:
+      in: path
+      name: agent_id
+      required: true
+      schema: { type: string, format: uuid }
+
+    OrderIdPath:
+      in: path
+      name: order_id
+      required: true
+      schema: { type: string, format: uuid }
+
+    ProcessIdPath:
+      in: path
+      name: process_id
+      required: true
+      schema: { type: string, format: uuid }
+
+  # --------------------------------------------------------------------------
+  # RESPUESTAS REUTILIZABLES (RFC 7807 problem+json)
+  # --------------------------------------------------------------------------
+
+  responses:
+
+    BadRequest:
+      description: Petición mal formada.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    Unauthorized:
+      description: Falta token o el token es inválido/expirado.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    Forbidden:
+      description: Autenticado pero sin permisos sobre el recurso.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    NotFound:
+      description: Recurso no encontrado.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    Unprocessable:
+      description: Petición sintácticamente válida pero rechazada por reglas de dominio.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  # --------------------------------------------------------------------------
+  # SCHEMAS
+  # --------------------------------------------------------------------------
+
+  schemas:
+
+    # ---- Errores ---------------------------------------------------------
+
+    Problem:
+      type: object
+      description: |
+        Formato RFC 7807 con extensión `errors` para listar causas múltiples
+        cuando aplique (típicamente en validación de dominio).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identificadora del tipo de problema.
+          example: "https://errors.mercado-agricola/insufficient-capital"
+        title:
+          type: string
+          example: "Capital insuficiente"
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        errors:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                example: "insufficient_capital"
+              field:
+                type: string
+                nullable: true
+              message:
+                type: string
+
+    # ---- Auth ------------------------------------------------------------
+
+    RegisterAgentRequest:
+      type: object
+      required: [username, password, role]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[a-zA-Z0-9_.-]+$'
+        password:
+          type: string
+          minLength: 12
+          maxLength: 256
+          writeOnly: true
+        role:
+          $ref: '#/components/schemas/AgentRole'
+        requested_capacities:
+          type: array
+          description: |
+            Capacidades solicitadas. El servidor las acepta o ajusta según los
+            parámetros configurados para el rol (`agent_capacity.installations`
+            por receta).
+          items:
+            type: object
+            required: [recipe_id, installations]
+            properties:
+              recipe_id: { type: string, format: uuid }
+              installations: { type: integer, minimum: 1 }
+
+    RegisterAgentResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          required: [agent]
+          properties:
+            agent: { $ref: '#/components/schemas/AgentSnapshot' }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, writeOnly: true }
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          writeOnly: true
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, access_expires_at, refresh_expires_at]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type:
+          type: string
+          enum: [Bearer]
+        access_expires_at: { type: string, format: date-time }
+        refresh_expires_at: { type: string, format: date-time }
+
+    # ---- Catálogo --------------------------------------------------------
+
+    ProductCategory:
+      type: string
+      enum: [raw_primary, intermediate, final_consumption]
+      description: |
+        Categoría informativa del producto. **No restrictiva**: cualquier
+        agente puede operar cualquier producto.
+
+    Product:
+      type: object
+      required: [product_id, name, unit, category, created_at]
+      properties:
+        product_id: { type: string, format: uuid }
+        name: { type: string }
+        unit:
+          type: string
+          description: Unidad de medida del producto (ej. `kg`, `L`, `cabezas`).
+        category: { $ref: '#/components/schemas/ProductCategory' }
+        created_at: { type: string, format: date-time }
+
+    RecipeInput:
+      type: object
+      required: [product_id, qty_required_cent]
+      properties:
+        product_id: { type: string, format: uuid }
+        qty_required_cent:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Cantidad requerida por ejecución, en centésimas de la unidad del producto.
+
+    Recipe:
+      type: object
+      required:
+        - recipe_id
+        - name
+        - output_product_id
+        - output_qty_cent
+        - duration_seconds
+        - wage_rate_cents_per_sec
+        - inputs
+        - created_at
+      properties:
+        recipe_id: { type: string, format: uuid }
+        name: { type: string }
+        output_product_id: { type: string, format: uuid }
+        output_qty_cent:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Cantidad producida por ejecución, en centésimas de la unidad del producto resultante.
+        duration_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Duración de **una** ejecución en segundos reales (no simulados).
+        wage_rate_cents_per_sec:
+          type: integer
+          format: int64
+          minimum: 0
+        inputs:
+          type: array
+          description: Lista de insumos. Vacía para recetas de producción primaria desde cero.
+          items: { $ref: '#/components/schemas/RecipeInput' }
+        created_at: { type: string, format: date-time }
+
+    # ---- Agentes ---------------------------------------------------------
+
+    AgentRole:
+      type: string
+      enum: [primary_producer, transformer, consumer, trader]
+
+    AgentStatus:
+      type: string
+      enum: [active, bankrupt]
+
+    AgentPublic:
+      type: object
+      required: [agent_id, username, role, status, registered_at]
+      properties:
+        agent_id: { type: string, format: uuid }
+        username: { type: string }
+        role: { $ref: '#/components/schemas/AgentRole' }
+        status: { $ref: '#/components/schemas/AgentStatus' }
+        registered_at: { type: string, format: date-time }
+        bankrupt_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AgentSnapshot:
+      type: object
+      description: |
+        Estado completo y autoritativo del agente autenticado. Diseñado como
+        respuesta a reconexión: con esta carga el agente puede reanudar
+        operación sin más consultas. Equivalente a `get_self_state` del
+        diseño.
+      required:
+        - agent
+        - capital_available_cents
+        - capital_reserved_cents
+        - inventory
+        - active_orders
+        - running_processes
+        - capacities
+      properties:
+        agent: { $ref: '#/components/schemas/AgentPublic' }
+        capital_available_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        capital_reserved_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        inventory:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryPosition' }
+        active_orders:
+          type: array
+          description: Órdenes en estado `active` o `partial`.
+          items: { $ref: '#/components/schemas/Order' }
+        running_processes:
+          type: array
+          description: Procesos `running` tras materialización lazy.
+          items: { $ref: '#/components/schemas/TransformationProcess' }
+        capacities:
+          type: array
+          items: { $ref: '#/components/schemas/CapacityStatus' }
+        recent_events:
+          type: array
+          description: |
+            Resumen acotado de eventos relevantes desde la última consulta o el
+            registro, según `events_limit`. Útil al reconectar para enterarse
+            de lo que ocurrió mientras se estaba desconectado (trades
+            ejecutados, procesos completados, órdenes expiradas, agentes nuevos,
+            agentes quebrados).
+          items: { $ref: '#/components/schemas/Event' }
+
+    CapacityStatus:
+      type: object
+      required: [recipe_id, installations, running]
+      properties:
+        recipe_id: { type: string, format: uuid }
+        installations:
+          type: integer
+          minimum: 1
+          description: Procesos paralelos máximos para esta receta.
+        running:
+          type: integer
+          minimum: 0
+          description: Procesos `running` actualmente para esta receta.
+        available_slots:
+          type: integer
+          minimum: 0
+          description: '`installations - running`. Calculado por el servidor.'
+
+    InventoryPosition:
+      type: object
+      description: |
+        Posición agregada por producto (suma sobre lotes del agente).
+      required: [product_id, qty_available_cent, qty_reserved_cent]
+      properties:
+        product_id: { type: string, format: uuid }
+        qty_available_cent:
+          type: integer
+          format: int64
+          minimum: 0
+        qty_reserved_cent:
+          type: integer
+          format: int64
+          minimum: 0
+
+    InventoryLotOrigin:
+      type: string
+      enum: [initial, production, purchase]
+
+    InventoryLot:
+      type: object
+      required:
+        - lot_id
+        - product_id
+        - origin
+        - qty_original_cent
+        - qty_available_cent
+        - qty_reserved_cent
+        - unit_cost_cents
+        - acquired_at
+      properties:
+        lot_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        origin: { $ref: '#/components/schemas/InventoryLotOrigin' }
+        qty_original_cent:
+          type: integer
+          format: int64
+          minimum: 1
+        qty_available_cent:
+          type: integer
+          format: int64
+          minimum: 0
+        qty_reserved_cent:
+          type: integer
+          format: int64
+          minimum: 0
+        unit_cost_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        acquired_at: { type: string, format: date-time }
+        source_trade_id:
+          type: string
+          format: uuid
+          nullable: true
+        source_process_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    # ---- Órdenes ---------------------------------------------------------
+
+    OrderSide:
+      type: string
+      enum: [buy, sell]
+
+    OrderStatus:
+      type: string
+      enum: [active, partial, completed, cancelled, expired]
+
+    PlaceOrderRequest:
+      type: object
+      required: [product_id, side, qty_cent, limit_price_cents, ttl_seconds]
+      properties:
+        product_id: { type: string, format: uuid }
+        side: { $ref: '#/components/schemas/OrderSide' }
+        qty_cent:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Cantidad solicitada en centésimas.
+        limit_price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Precio límite por unidad, en centavos.
+        ttl_seconds:
+          type: integer
+          format: int64
+          minimum: 60
+          description: |
+            TTL absoluto desde la creación, en **segundos simulados**.
+            Mínimo 60 (1 minuto simulado), máximo 604800 (1 semana simulada).
+            El servidor calcula `expires_at` aplicando el factor de simulación.
+          maximum: 604800
+        client_order_id:
+          type: string
+          maxLength: 64
+          description: |
+            Identificador opaco del cliente para idempotencia. Si se reenvía
+            con el mismo `client_order_id` dentro de una ventana corta, se
+            devuelve la orden previamente creada en lugar de crear una nueva.
+
+    PlaceOrderResponse:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            trades_generated:
+              type: array
+              description: Trades producidos durante el primer ciclo de matching tras la inserción.
+              items: { $ref: '#/components/schemas/Trade' }
+
+    Order:
+      type: object
+      required:
+        - order_id
+        - agent_id
+        - product_id
+        - side
+        - qty_original_cent
+        - qty_pending_cent
+        - limit_price_cents
+        - status
+        - created_at
+        - updated_at
+        - expires_at
+      properties:
+        order_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        side: { $ref: '#/components/schemas/OrderSide' }
+        qty_original_cent:
+          type: integer
+          format: int64
+          minimum: 1
+        qty_pending_cent:
+          type: integer
+          format: int64
+          minimum: 0
+        limit_price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+
+    OrderPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Order' }
+        next_cursor:
+          type: string
+          nullable: true
+
+    # ---- Trades ----------------------------------------------------------
+
+    Trade:
+      type: object
+      required:
+        - trade_id
+        - buy_order_id
+        - sell_order_id
+        - buyer_agent_id
+        - seller_agent_id
+        - product_id
+        - qty_executed_cent
+        - price_cents
+        - fee_buyer_cents
+        - fee_seller_cents
+        - executed_at
+      properties:
+        trade_id: { type: string, format: uuid }
+        buy_order_id: { type: string, format: uuid }
+        sell_order_id: { type: string, format: uuid }
+        buyer_agent_id: { type: string, format: uuid }
+        seller_agent_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        qty_executed_cent:
+          type: integer
+          format: int64
+          minimum: 1
+        price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+        fee_buyer_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        fee_seller_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        executed_at: { type: string, format: date-time }
+
+    TradePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Trade' }
+        next_cursor:
+          type: string
+          nullable: true
+
+    TopOfBook:
+      type: object
+      required: [product_id, observed_at]
+      properties:
+        product_id: { type: string, format: uuid }
+        observed_at: { type: string, format: date-time }
+        best_bid:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TopOfBookSide'
+        best_ask:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TopOfBookSide'
+
+    TopOfBookSide:
+      type: object
+      required: [order_id, agent_id, price_cents, qty_pending_cent]
+      properties:
+        order_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+        qty_pending_cent:
+          type: integer
+          format: int64
+          minimum: 1
+
+    # ---- Transformación --------------------------------------------------
+
+    ProcessStatus:
+      type: string
+      enum: [running, completed, cancelled]
+
+    StartTransformationRequest:
+      type: object
+      required: [recipe_id, executions_planned]
+      properties:
+        recipe_id: { type: string, format: uuid }
+        executions_planned:
+          type: integer
+          minimum: 1
+          description: |
+            Número de ejecuciones secuenciales. Duración total esperada
+            = `recipe.duration_seconds × executions_planned`.
+
+    TransformationProcess:
+      type: object
+      required:
+        - process_id
+        - agent_id
+        - recipe_id
+        - executions_planned
+        - current_execution
+        - status
+        - wage_paid_cents
+        - started_at
+        - expected_end_at
+      properties:
+        process_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        recipe_id: { type: string, format: uuid }
+        executions_planned:
+          type: integer
+          minimum: 1
+        current_execution:
+          type: integer
+          minimum: 1
+        status: { $ref: '#/components/schemas/ProcessStatus' }
+        wage_paid_cents:
+          type: integer
+          format: int64
+          minimum: 0
+        started_at: { type: string, format: date-time }
+        expected_end_at: { type: string, format: date-time }
+        actual_end_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TransformationProcessDetail:
+      allOf:
+        - $ref: '#/components/schemas/TransformationProcess'
+        - type: object
+          properties:
+            inputs_consumed:
+              type: array
+              description: |
+                Lotes de insumos consumidos al iniciar (FIFO, con snapshot del
+                `unit_cost_cents` al momento del consumo).
+              items: { $ref: '#/components/schemas/LotConsumption' }
+            produced_lot:
+              nullable: true
+              description: Lote producido al materializar; `null` mientras está `running`.
+              allOf:
+                - $ref: '#/components/schemas/InventoryLot'
+
+    LotConsumption:
+      type: object
+      required: [lot_id, product_id, qty_consumed_cent, unit_cost_cents]
+      properties:
+        lot_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        qty_consumed_cent:
+          type: integer
+          format: int64
+          minimum: 1
+        unit_cost_cents:
+          type: integer
+          format: int64
+          minimum: 0
+
+    TransformationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TransformationProcess' }
+        next_cursor:
+          type: string
+          nullable: true
+
+    # ---- Eventos / Historial --------------------------------------------
+
+    EventType:
+      type: string
+      enum:
+        - agent_registered
+        - agent_bankrupt
+        - order_placed
+        - order_cancelled
+        - order_expired
+        - trade_executed
+        - process_started
+        - process_completed
+        - process_cancelled
+        - snapshot_taken
+
+    Event:
+      type: object
+      required: [event_id, event_type, occurred_at, payload]
+      properties:
+        event_id: { type: string, format: uuid }
+        event_type: { $ref: '#/components/schemas/EventType' }
+        agent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Agente protagonista. `null` para eventos sistémicos.
+        occurred_at: { type: string, format: date-time }
+        payload:
+          type: object
+          description: |
+            Payload libre por `event_type`. El esquema concreto se documenta
+            en la capa de aplicación (no enforced por OpenAPI).
+          additionalProperties: true
+
+    EventPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        next_cursor:
+          type: string
+          nullable: true
+
+# ============================================================================
+# SEGURIDAD GLOBAL
+# ============================================================================
+
+security:
+  - bearerAuth: []
+
+# ============================================================================
+# CANAL WEBSOCKET (extensión informativa, fuera del modelo REST de OpenAPI)
+# ============================================================================
+
+x-websocket-channel:
+  url: wss://{host}/v1/ws
+  description: |
+    Canal unidireccional servidor→cliente para notificaciones push. El cliente
+    se conecta con su access token JWT (header `Authorization` o, donde el
+    cliente WS no permita headers, query `?access_token=...`). El servidor
+    valida el token al handshake y suscribe al canal personal del agente
+    (`agent:{agent_id}`) y al canal global de broadcasts. Internamente el
+    transporte usa Redis pub/sub.
+
+    El servidor envía heartbeats periódicos (`ping`/`pong`) para detectar
+    desconexiones. La desconexión arbitraria del cliente no afecta órdenes
+    activas ni procesos en curso: todo el estado vive en el servidor.
+  auth: Bearer JWT en handshake.
+  message_envelope:
+    type: object
+    required: [type, occurred_at, payload]
+    properties:
+      type:
+        type: string
+        enum:
+          - order_executed       # personal
+          - order_expired        # personal
+          - order_cancelled      # personal
+          - transformation_completed  # personal
+          - bankruptcy_notice    # personal
+          - agent_joined         # broadcast
+          - agent_bankrupt       # broadcast
+      occurred_at: { type: string, format: date-time }
+      payload:
+        type: object
+        description: Payload tipado por `type`. Los esquemas concretos se documentan en la capa de aplicación.
+        additionalProperties: true
+  notes: |
+    El canal WS **no acepta comandos** del cliente; cualquier acción se hace vía REST.
+    El cliente debería siempre poder reconstruir todo el estado vía
+    `GET /agents/me` tras una reconexión, sin depender de haber recibido las
+    notificaciones.

@@ -1,0 +1,470 @@
+# Diseño conceptual: Simulación de mercado agrícola
+
+## Propósito del documento
+
+Este documento sintetiza las decisiones de diseño tomadas en la fase conceptual del sistema. Está dirigido a quien continúe la planeación técnica (arquitectura, selección de tecnologías, esquemas de datos, contratos de API). Las decisiones aquí registradas son resultado de una iteración de modelado del dominio y deben tomarse como **fijas** salvo que el contexto técnico revele una incompatibilidad. Donde existen extensiones futuras planeadas (v2), están marcadas explícitamente.
+
+---
+
+## 1. Visión general del sistema
+
+Se construye un servidor autoritativo de estado que simula un mercado de productos agrícolas con aproximadamente 100 agentes participando simultáneamente (sin límite máximo). Los agentes son clientes externos que se conectan al sistema; el servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación e historial.
+
+**Roles de agentes:**
+- **Productores primarios:** generan materias primas desde cero (siembra, cosecha, ganadería).
+- **Transformadores:** compran materias primas, las procesan en productos de mayor valor, y los venden.
+- **Consumidores finales:** compran productos para consumir, retirándolos del sistema.
+- **Traders / intermediarios:** compran y revenden buscando ganancia por arbitraje, sin transformar.
+
+Algunos agentes operan por reglas simples, otros por modelos de ML. El sistema no distingue entre ellos: todos consumen la misma API.
+
+**Principio rector:** los agentes son clientes sin estado autoritativo. Toda información que un agente maneja localmente es caché de lo que vive en el servidor. Esto resuelve consistencia bajo concurrencia y reconexión sin pérdida.
+
+---
+
+## 2. Modelo de dominio
+
+### 2.1 Catálogo
+
+**Producto**
+- Identificador único
+- Nombre
+- Unidad de medida (kg, L, cabezas, etc.)
+- Categoría (materia prima primaria / intermedia / consumo final) — informativa, no restrictiva
+- Todos los productos son **homogéneos**: no hay variantes de calidad en v1
+
+**Receta**
+- Identificador único
+- Producto resultante (uno solo en v1; subproductos quedan para futuro)
+- Cantidad producida por ejecución
+- Lista de insumos: tuplas (producto, cantidad requerida)
+- Duración del proceso en tiempo simulado
+- Costo de salario asociado (ver sección de fees)
+
+Las recetas son entidades canónicas del catálogo. Múltiples agentes pueden ejecutar la misma receta. El sistema valida toda transformación contra la receta de referencia, no contra una copia del agente.
+
+**Caso especial — producción primaria:** las recetas de productores primarios se modelan como recetas **sin insumos** (lista vacía) cuyo resultado es la materia prima. La duración representa el ciclo productivo (cultivo, crianza). Esto unifica el concepto de transformación en todo el sistema.
+
+> Pendiente para iteración futura: explorar producción primaria con insumos básicos del entorno (agua, energía) modelados como fees al sistema. En v1, producción desde cero pura.
+
+### 2.2 Participantes y posesiones
+
+**Agente**
+- Identificador único (siempre fresco; no se reciclan identidades)
+- Rol
+- Capital disponible
+- Capital reservado (en órdenes de compra activas)
+- Estado: activo / en quiebra
+- Timestamp de registro
+- Capacidades productivas (ver más abajo)
+
+**Capacidad productiva**
+- Relación (agente, receta, número de instalaciones paralelas)
+- Determina cuántos procesos simultáneos de esa receta puede ejecutar el agente
+- **Estática en v1.** En v2 se permitirá expansión mediante inversión de capital.
+- Conceptualmente modela: campos para productores primarios, líneas de producción para transformadores.
+
+**Posición de inventario**
+- Relación (agente, producto)
+- Cantidad disponible
+- Cantidad reservada (en órdenes de venta activas)
+
+La separación disponible/reservado tanto en capital como en inventario es fundamental para la consistencia bajo concurrencia. Las validaciones de invariantes son locales y baratas: nunca requieren escanear órdenes activas.
+
+### 2.3 Actividad
+
+**Orden**
+- Identificador único
+- Agente emisor
+- Producto
+- Lado: compra / venta
+- Cantidad original
+- Cantidad pendiente
+- Precio límite
+- TTL (obligatorio, máximo 1 semana de tiempo simulado, mínimo 1 minuto simulado)
+- Estado: activa / parcialmente ejecutada / completada / cancelada / expirada
+- Timestamps: creación, última actualización, expiración
+
+**Transacción**
+- Identificador único
+- Orden compradora (con ID y agente)
+- Orden vendedora (con ID y agente)
+- Producto
+- Cantidad ejecutada
+- Precio efectivo
+- Fee cobrado al comprador
+- Fee cobrado al vendedor
+- Timestamp
+
+Una vez creada, la transacción es inmutable.
+
+**Proceso de transformación**
+- Identificador único
+- Agente
+- Receta
+- Número de ejecuciones planificadas
+- Ejecución actual en curso (1 a N)
+- Estado: en curso / completado / cancelado
+- Timestamp de inicio
+- Timestamp esperado de finalización
+- Snapshot de insumos consumidos al iniciar
+- Salario pagado upfront
+
+> Nota sobre ejecuciones: las recetas se ejecutan secuencialmente. La capacidad instalada del agente determina cuántos procesos **distintos** puede correr en paralelo, no cuántas ejecuciones de la misma receta dentro de un proceso.
+
+### 2.4 Diagrama relacional
+
+```
+Producto ──< Receta (resultado)
+Producto ──< Insumo de receta
+Receta ──< Capacidad productiva >── Agente
+Producto ──< Posición inventario >── Agente
+Agente ──< Orden >── Producto
+Orden ──< Transacción >── Orden
+Agente ──< Proceso transformación >── Receta
+```
+
+---
+
+## 3. Operaciones expuestas a los agentes
+
+### 3.1 Lectura
+
+- `get_self_state`: snapshot completo del agente (capital, inventario, órdenes activas, procesos en curso, capacidades). Usado en reconexión.
+- `get_catalog`: lista de productos y recetas disponibles.
+- `get_top_of_book(producto)`: mejor orden de compra y mejor orden de venta para un producto, con identidad del agente que la colocó. Si hay varias órdenes al mismo precio, se muestra solo la primera en cola precio-tiempo.
+- `get_recent_transactions(producto, ventana)`: transacciones recientes de un producto.
+- `get_my_history(filtros)`: historial propio del agente (sus órdenes, transacciones, procesos).
+
+### 3.2 Acción
+
+- `register_agent(rol, capacidades_solicitadas)`: registro dinámico, disponible siempre durante la simulación. Devuelve identidad y estado inicial.
+- `place_order(producto, lado, cantidad, precio_limite, ttl)`: coloca una orden.
+- `cancel_order(orden_id)`: cancela una orden propia activa.
+- `start_transformation(receta_id, ejecuciones)`: inicia un proceso de transformación.
+- `cancel_transformation(proceso_id)`: cancela un proceso en curso (sin reembolso de insumos ni salario).
+
+### 3.3 Notificaciones (push del servidor al agente)
+
+- `order_executed`: ejecución total o parcial de una orden propia.
+- `order_expired`: TTL alcanzado sin ejecución completa.
+- `order_cancelled`: confirmación de cancelación.
+- `transformation_completed`: proceso terminado, inventario actualizado.
+- `agent_joined` (broadcast): nuevo agente registrado.
+- `agent_bankrupt` (broadcast): agente entró en quiebra.
+- `bankruptcy_notice` (personal): notificación al agente de que ha quebrado y debe apagarse.
+
+---
+
+## 4. Ciclo de vida de una orden
+
+```
+[Creación] → [Validación atómica] → [Activa]
+                                       ├── [Parcialmente ejecutada] → ...
+                                       ├── [Completada]
+                                       ├── [Cancelada]
+                                       └── [Expirada]
+```
+
+**Creación y validación atómica:**
+1. Validar existencia de agente, producto y que el agente no esté en quiebra.
+2. Validar TTL dentro de límites (mínimo 1 minuto simulado, máximo 1 semana simulada).
+3. Si es compra: verificar capital disponible ≥ cantidad × precio_límite. Mover esa cantidad de "disponible" a "reservado".
+4. Si es venta: verificar inventario disponible ≥ cantidad. Mover esa cantidad de "disponible" a "reservado".
+5. Si pasa todas las validaciones, registrar orden en estado **activa** e ingresarla al libro de órdenes del producto.
+
+**Casado (matching):**
+- Política: **prioridad precio-tiempo**. Mejor precio primero; en empate, la orden más antigua.
+- Política de pricing: **el precio del que ya estaba en el libro** (la orden agresora toma el precio de la orden pasiva).
+- Política de ejecución: **se permiten ejecuciones parciales**. Una orden puede casarse con múltiples contrapartes.
+- El matching engine procesa por producto de forma serializada para evitar condiciones de carrera.
+
+**Ejecución de una transacción casada:**
+1. Calcular cantidad efectiva (mínimo entre las cantidades pendientes de ambas órdenes).
+2. Calcular precio efectivo (el de la orden pasiva).
+3. Calcular fees del comprador y del vendedor.
+4. Atómicamente:
+   - Descontar capital reservado del comprador por (cantidad × precio).
+   - Descontar capital disponible del comprador por fee.
+   - Incrementar inventario disponible del comprador.
+   - Descontar inventario reservado del vendedor.
+   - Incrementar capital disponible del vendedor por (cantidad × precio).
+   - Descontar capital disponible del vendedor por fee.
+   - Actualizar cantidades pendientes de ambas órdenes.
+   - Registrar la transacción en el historial.
+5. Si alguna orden queda con cantidad pendiente cero, pasa a estado **completada** y libera reservas residuales. Si no, permanece **parcialmente ejecutada** en el libro.
+6. Notificar a ambos agentes.
+
+**Cancelación y expiración:**
+- Liberan reservas restantes (capital o inventario) y mueven la orden a estado terminal.
+- La expiración se evalúa contra el tiempo simulado actual. El TTL es **absoluto desde la creación**; no se reinicia con ejecuciones parciales.
+
+---
+
+## 5. Ciclo de vida de un proceso de transformación
+
+```
+[Solicitud] → [Validación atómica] → [En curso] → [Completado]
+                                          └────→ [Cancelado]
+```
+
+**Solicitud y validación atómica:**
+1. Validar existencia de agente, receta y que el agente no esté en quiebra.
+2. Validar capacidad disponible: el agente tiene capacidad instalada para esta receta y no está ya saturado de procesos paralelos de la misma receta.
+3. Validar insumos: el agente tiene en inventario disponible todos los insumos × ejecuciones planificadas.
+4. Validar capital: el agente tiene capital disponible suficiente para pagar el salario completo upfront.
+5. Si pasa todas las validaciones, atómicamente:
+   - Descontar insumos del inventario disponible (consumo real, no reserva).
+   - Descontar salario del capital disponible.
+   - Crear proceso con estado **en curso**.
+   - Calcular timestamp esperado de finalización: ahora + (duración_receta × ejecuciones).
+
+**Finalización:**
+- Modelo **híbrido lazy + sweeper**:
+  - En toda lectura de estado del agente, materializar procesos vencidos del agente antes de devolver el estado.
+  - Un sweeper de fondo de baja frecuencia recorre periódicamente todos los procesos vencidos y los materializa, para garantizar que las notificaciones se disparen oportunamente aunque el agente no consulte.
+- Materializar significa: incrementar inventario disponible del agente por (cantidad_producida × ejecuciones), marcar proceso como **completado**, notificar al agente, registrar en historial.
+
+**Cancelación:**
+- Marca proceso como **cancelado**. No devuelve insumos ni reembolsa salario. Operación rara pero disponible.
+
+**Capacidad y paralelismo:**
+- Las ejecuciones dentro de un mismo proceso son **secuenciales**. Un proceso con 3 ejecuciones dura 3 × duración de la receta.
+- El paralelismo está limitado por la capacidad instalada del agente para esa receta. Si un agente tiene 2 instalaciones para "molienda de trigo", puede tener 2 procesos de molienda corriendo al mismo tiempo.
+
+---
+
+## 6. Consistencia de estado
+
+### Invariantes
+
+Para todo agente activo:
+- Capital disponible ≥ 0
+- Capital reservado ≥ 0
+- Para cada producto: inventario disponible ≥ 0 e inventario reservado ≥ 0
+- La suma de reservas de capital coincide con la suma de (cantidad pendiente × precio límite) de sus órdenes de compra activas
+- La suma de reservas de inventario por producto coincide con la suma de cantidades pendientes de sus órdenes de venta activas para ese producto
+
+### Reglas de modificación
+
+- Toda operación que modifique estado del agente se ejecuta como **transacción atómica** que valida invariantes antes de aplicar el cambio.
+- El matching engine serializa el procesamiento por producto.
+- Las modificaciones que tocan a dos agentes simultáneamente (una transacción casada) se aplican como una sola unidad atómica.
+
+### Representación numérica
+
+- Cantidades de producto: máximo 2 decimales. **Internamente representadas como enteros en centésimas de la unidad** para evitar errores de punto flotante en validaciones.
+- Capital: representado en la unidad mínima monetaria como entero (centavos).
+- La conversión a/desde decimales ocurre solo en los bordes (API hacia agentes, registros para análisis).
+
+---
+
+## 7. Reconexión
+
+El sistema soporta desconexión arbitraria de agentes sin pérdida de información. Una desconexión es simplemente la ausencia de conexión; no hay notificación al servidor ni efectos sobre órdenes activas o procesos en curso.
+
+**Flujo de reconexión:**
+1. El agente se autentica e identifica.
+2. El servidor materializa lazy cualquier proceso de transformación vencido del agente.
+3. El servidor envía un snapshot completo del estado:
+   - Capital disponible y reservado.
+   - Todas las posiciones de inventario (disponible y reservado por producto).
+   - Todas las órdenes activas con su estado actual (incluyendo cantidades pendientes).
+   - Todos los procesos de transformación en curso con timestamps de finalización.
+   - Resumen de eventos desde la última desconexión (transacciones ejecutadas, procesos completados, órdenes expiradas, agentes nuevos, agentes quebrados) con un límite razonable.
+4. El historial completo está disponible vía consultas separadas si el agente lo necesita.
+5. El agente reanuda operación.
+
+**Órdenes y procesos durante desconexión:**
+- Las órdenes activas del agente siguen vigentes y pueden ejecutarse mientras está desconectado.
+- Los procesos en curso continúan y se completan según su timestamp, generando inventario que el agente encontrará al reconectarse.
+- El TTL de órdenes corre normalmente; órdenes pueden expirar durante la desconexión.
+
+---
+
+## 8. Tiempo
+
+- **Factor de simulación: 5× tiempo real.** Una hora real equivale a 5 horas de tiempo simulado.
+- Todas las duraciones del dominio (recetas, TTLs) se declaran en unidades de tiempo simulado.
+- Una única función de conversión vive en el límite con el reloj de pared.
+- El factor puede modificarse o la simulación puede pausarse sin afectar la lógica de dominio.
+
+---
+
+## 9. Fees y costos
+
+### Fee de transacción
+
+- Modelo **mixto**: componente fijo + componente proporcional al monto transado.
+- Se cobra a **cada lado** de la transacción al momento de ejecutarse.
+- Se descuenta del capital disponible inmediatamente.
+- Parámetros configurables.
+
+### Salario de transformación
+
+- Modelo **proporcional a la duración del proceso**.
+- Se paga **upfront** al iniciar el proceso.
+- No se reembolsa en caso de cancelación.
+- Parámetros configurables.
+
+### Sin otros fees
+
+- Colocar una orden (sin ejecutarla) es gratis.
+- Cancelar una orden es gratis.
+- Registro de agente es gratis.
+
+### Destino de los fees
+
+- Los fees salen del circuito económico de los agentes (van al "sistema").
+- La masa monetaria total entre agentes decrece con el tiempo por efecto de los fees. No se reinyecta capital periódicamente.
+
+---
+
+## 10. Quiebra de agentes
+
+**Detección:**
+El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas que puedan generar ingresos. La evaluación ocurre de forma reactiva cuando se cancela su última orden, vence su última orden, o se completa su último proceso de transformación sin recuperar capital.
+
+**Acciones del sistema al detectar quiebra:**
+1. Cancelar todas las órdenes activas residuales del agente (libera reservas).
+2. Marcar al agente con estado **en quiebra** en su registro.
+3. Enviar `bankruptcy_notice` al agente para que se apague.
+4. Emitir broadcast `agent_bankrupt` a los demás agentes.
+5. Rechazar cualquier operación futura del agente con error "agente en quiebra".
+
+**Inventario residual:**
+- Se **congela**. Permanece registrado en el agente pero es inaccesible. No se subasta ni se libera al sistema.
+
+**Persistencia:**
+- El agente quebrado persiste en el historial y en consultas de registro de agentes.
+- Su identidad no se recicla. Nuevos agentes siempre reciben identidades frescas.
+
+---
+
+## 11. Registro dinámico de agentes
+
+**Modelo:** llegadas libres. El sistema acepta registros de nuevos agentes en cualquier momento durante la simulación, sin límite máximo.
+
+**Inicialización del nuevo agente:**
+- Identidad fresca (nunca reciclada).
+- **Capital semilla = promedio actual del capital total de los agentes activos del mercado** al momento del registro. Esto mantiene a los recién llegados competitivos en un entorno donde la masa monetaria decrece por fees.
+- Capacidades instaladas según el rol y los parámetros configurados.
+- Sin fee de entrada.
+
+**Notificación:**
+- Broadcast `agent_joined` a todos los agentes activos.
+
+**Caso especial — registro inicial:**
+- Los agentes registrados en el setup inicial reciben capital semilla aleatorio dentro de un rango configurable **por rol**:
+  - Productores primarios: rango bajo-medio.
+  - Transformadores: rango medio-alto.
+  - Consumidores: rango medio.
+  - Traders: rango alto.
+- Los rangos específicos son parámetros de configuración.
+- La aleatoriedad es determinística a partir de la semilla maestra (ver sección de reproducibilidad).
+
+---
+
+## 12. Reproducibilidad
+
+- El sistema acepta una **semilla maestra** al iniciar la simulación.
+- La semilla se usa exclusivamente para el **setup inicial**: capital semilla de cada agente inicial, asignaciones aleatorias de capacidades si las hay, cualquier otro parámetro aleatorizado del setup.
+- Cada agente inicial recibe un sub-generador derivado de (semilla maestra + identificador del agente) para que la generación sea **independiente del orden de inicialización**.
+- La simulación en curso **no es reproducible**: orden exacto de matching en empates, eventos asíncronos, llegadas dinámicas, no son deterministas.
+- La semilla maestra y la configuración inicial completa se persisten en el historial para contextualizar análisis posteriores.
+
+---
+
+## 13. Visibilidad del mercado
+
+- **Nivel 1 — Top of book con identidad visible.**
+- Para cada producto, los agentes pueden consultar la mejor orden de compra y la mejor orden de venta actuales.
+- Se muestra una sola orden por lado (la primera en cola precio-tiempo cuando hay varias al mismo precio).
+- Se revela la identidad del agente que colocó la orden visible.
+- El resto del libro es privado: profundidad, número de órdenes, identidades del resto.
+- Las transacciones ejecutadas son públicas en el historial reciente (con identidades de ambas contrapartes, producto, cantidad, precio, timestamp).
+
+---
+
+## 14. Historial
+
+Toda mutación de estado genera un evento persistido en un log **append-only** antes de aplicarse. El estado actual es derivable reproduciendo eventos. El historial sirve a dos audiencias: agentes de ML que entrenan o deciden con datos pasados, y el investigador que analiza la simulación post-mortem.
+
+### Series históricas a mantener
+
+**Historial de transacciones**
+- Cada transacción ejecutada: contrapartes, producto, cantidad, precio, fees cobrados, timestamp.
+- Permite derivar series de precios, volúmenes, redes de comercio entre agentes.
+
+**Historial de órdenes**
+- Cada orden colocada con todos sus cambios de estado: creación, ejecuciones parciales, terminación.
+- Permite reconstruir el libro de órdenes en cualquier punto del tiempo.
+
+**Historial de procesos de transformación**
+- Cada proceso: agente, receta, ejecuciones planificadas, insumos consumidos, salario pagado, producto y cantidad producida, duración real, estado final, timestamps.
+
+**Historial de agentes**
+- Registro de cada agente: rol, capital semilla, capacidades, timestamp de alta, timestamp de quiebra si aplica.
+
+**Snapshots agregados periódicos**
+- Cada cierto intervalo de tiempo simulado: foto del capital total por agente, inventario total por producto en el sistema, mejor bid/ask por producto, número de agentes activos, masa monetaria total.
+- Derivables del event log pero materializados para evitar reconstrucción costosa en análisis.
+
+**Configuración y semilla**
+- Semilla maestra y configuración completa al inicio.
+- Cambios de configuración durante la simulación si los hay.
+
+---
+
+## 15. Notificaciones
+
+El sistema emite notificaciones push a los agentes:
+
+**Personales (al agente afectado):**
+- `order_executed` (incluyendo si es parcial o total)
+- `order_expired`
+- `order_cancelled`
+- `transformation_completed`
+- `bankruptcy_notice`
+
+**Broadcast (a todos los agentes activos):**
+- `agent_joined`
+- `agent_bankrupt`
+
+Las notificaciones son críticas para agentes reactivos. Sin ellas, los agentes tendrían que hacer polling, lo cual es ineficiente y desincroniza la simulación.
+
+---
+
+## 16. Resumen ejecutivo de parámetros configurables
+
+Estos son los valores que deben quedar expuestos como configuración del sistema y que el equipo técnico debe estructurar para fácil ajuste:
+
+- Factor de tiempo simulado (default: 5×)
+- TTL mínimo y máximo de órdenes (1 minuto y 1 semana simulados)
+- Rangos de capital semilla por rol
+- Capacidades instaladas iniciales por rol
+- Catálogo de productos
+- Catálogo de recetas (con duraciones, cantidades, salarios)
+- Fee de transacción: componente fijo y componente proporcional
+- Fórmula de salario por duración de proceso
+- Semilla maestra
+- Frecuencia del sweeper de procesos
+- Tamaño máximo del resumen de eventos en reconexión
+
+---
+
+## 17. Alcance v1 vs futuro
+
+**Dentro de v1 (lo definido en este documento):**
+- Todo lo descrito arriba.
+- **Participación humana:** la API debe ser capaz de aceptar participantes humanos además de agentes automatizados. El sistema no distingue entre clientes humanos y agentes programáticos: ambos consumen el mismo conjunto de operaciones (sección 3) y están sujetos a las mismas reglas de validación, fees, quiebra y notificaciones. Cualquier interfaz humana (UI web, cliente de escritorio, etc.) se construye sobre la misma API que usan los agentes.
+
+**Diferido a v2 o posterior:**
+- Expansión de capacidad instalada por inversión de capital.
+- Producción primaria con insumos del entorno (agua, energía).
+- Subastas de inventario de agentes quebrados.
+- Variantes de calidad de productos.
+- Subproductos en recetas.
+- Heterogeneidad de productores (campos de tamaños distintos).
+- Reinyección de capital al sistema para compensar deflación por fees.
+- Niveles de visibilidad de mercado configurables por agente.
