@@ -320,7 +320,13 @@ async function main(): Promise<void> {
     assertEqual(r.recipe_id, fastRecipe.recipe_id, "recipe_id del detalle");
     assertEqual(r.output_product_id, germProduct.product_id, "output_product_id de la receta rápida");
     assertEqual(r.output_qty_cent, fastSeedRecipe.output_qty_cent, "output_qty_cent");
-    assertEqual(r.duration_seconds, fastSeedRecipe.duration_sim_seconds, "duration_seconds (sim)");
+    // openapi: Recipe.duration_seconds está en segundos REALES (no simulados);
+    // el seed-config declara la duración en segundos simulados.
+    assertEqual(
+      r.duration_seconds,
+      Math.round(simSecondsToRealMs(fastSeedRecipe.duration_sim_seconds) / 1000),
+      "duration_seconds (reales)",
+    );
     assertEqual(r.wage_rate_cents_per_sec, fastSeedRecipe.wage_rate_cents_per_sec, "wage_rate_cents_per_sec");
     assertEqual(r.inputs.length, 0, "receta rápida sin insumos");
 
