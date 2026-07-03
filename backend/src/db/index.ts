@@ -28,10 +28,14 @@ export const db = drizzle(sql, { schema });
 export type Db = typeof db;
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+/** Config opcional de transacción de drizzle (p. ej. `{ isolationLevel: "repeatable read" }`). */
+export type TxConfig = Parameters<typeof db.transaction>[1];
+
 export async function withTransaction<T>(
   fn: (tx: Tx) => Promise<T>,
+  txConfig?: TxConfig,
 ): Promise<T> {
-  return db.transaction(fn);
+  return db.transaction(fn, txConfig);
 }
 
 export async function closeDb(): Promise<void> {

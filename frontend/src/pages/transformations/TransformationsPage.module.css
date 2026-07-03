@@ -1,0 +1,238 @@
+/* ============================================================================
+ * TransformationsPage.module.css — capacidades y procesos [FE7].
+ * Solo consume tokens de src/styles/tokens.css (regla del contrato).
+ * ========================================================================== */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- Cabecera --------------------------------------------------------------- */
+
+.pageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+/* ---- Paneles ------------------------------------------------------------------ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.panelTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.panelHint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ---- Capacidades ----------------------------------------------------------------- */
+
+.capacityGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-4);
+}
+
+.capacityCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+}
+
+.capacityHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.capacityName {
+  font-weight: var(--weight-semibold);
+}
+
+.capacityMeta {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+/* ---- Filtros (chips de estado) ------------------------------------------------------ */
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-full);
+}
+
+.chip:hover {
+  background-color: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.chipActive {
+  color: var(--color-accent-text);
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.chipActive:hover {
+  background-color: var(--color-accent-hover);
+  color: var(--color-accent-text);
+}
+
+/* ---- Celdas -------------------------------------------------------------------------- */
+
+.progressCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 14rem;
+}
+
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2);
+}
+
+/* ---- Botones ------------------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+}
+
+.btnPrimary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.btnSecondary {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border);
+  color: var(--text-primary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background-color: var(--surface-3);
+}
+
+.btnDanger {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--text-inverse);
+}
+
+.btnDanger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* Acción destructiva discreta para filas de tabla */
+.btnDangerGhost {
+  padding: var(--space-1) var(--space-3);
+  border-color: var(--surface-border);
+  color: var(--color-danger);
+  background-color: transparent;
+}
+
+.btnDangerGhost:hover:not(:disabled) {
+  background-color: var(--color-danger-soft);
+  border-color: var(--color-danger);
+}
+
+/* ---- Modales ---------------------------------------------------------------------------------- */
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.warnBox {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-danger-soft);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}

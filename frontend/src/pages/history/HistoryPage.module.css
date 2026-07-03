@@ -1,0 +1,171 @@
+/* ============================================================================
+ * HistoryPage.module.css — historial con tabs Trades / Eventos [FE7].
+ * Solo consume tokens de src/styles/tokens.css (regla del contrato).
+ * ========================================================================== */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- Cabecera --------------------------------------------------------------- */
+
+.pageHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+/* ---- Tabs ------------------------------------------------------------------ */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  background-color: var(--surface-2);
+}
+
+.tabActive {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Panel ------------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.panelTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.panelHint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2);
+}
+
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* ---- Detalle de eventos ---------------------------------------------------------- */
+
+.eventDetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 36rem;
+}
+
+.payloadDetails {
+  font-size: var(--text-xs);
+}
+
+.payloadSummary {
+  cursor: pointer;
+  color: var(--text-link);
+  width: fit-content;
+}
+
+.payloadJson {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---- Botones ------------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+}
+
+.btnPrimary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.btnSecondary {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border);
+  color: var(--text-primary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background-color: var(--surface-3);
+}

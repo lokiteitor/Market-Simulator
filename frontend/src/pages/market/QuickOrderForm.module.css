@@ -1,0 +1,127 @@
+/* ============================================================================
+ * QuickOrderForm.module.css — formulario rápido de órdenes [FE6].
+ * Solo consume tokens de src/styles/tokens.css (regla del contrato).
+ * ========================================================================== */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Side toggle (Compra / Venta) ------------------------------------------ */
+
+.sideToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.sideBtn {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.sideBtn:disabled {
+  opacity: 0.55;
+}
+
+.sideBtnBuyActive {
+  background-color: var(--color-state-active-soft);
+  border-color: var(--color-state-active);
+  color: var(--color-state-active);
+  font-weight: var(--weight-semibold);
+}
+
+.sideBtnSellActive {
+  background-color: var(--color-state-bankrupt-soft);
+  border-color: var(--color-state-bankrupt);
+  color: var(--color-state-bankrupt);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Resumen (total estimado, saldos) --------------------------------------- */
+
+.summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.summary dt {
+  color: var(--text-secondary);
+}
+
+.summary dd {
+  margin: 0;
+  justify-self: end;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Feedback ----------------------------------------------------------------- */
+
+.formError {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-danger);
+}
+
+.bankruptNote {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-danger);
+}
+
+/* ---- Envío ---------------------------------------------------------------------- */
+
+.submit {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: var(--weight-semibold);
+}
+
+.submit:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.submit:disabled {
+  opacity: 0.55;
+}
+
+.submitSell {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--text-inverse);
+}
+
+.submitSell:hover:not(:disabled) {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  filter: brightness(0.92);
+}
+
+.idemHint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.idemHint code {
+  font-family: var(--font-mono);
+}

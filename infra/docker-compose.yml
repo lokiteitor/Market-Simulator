@@ -5,8 +5,9 @@
 #   docker compose up -d --build          # levanta todo el stack
 #   docker compose --profile seed run --rm seed   # siembra el catálogo (one-shot)
 #
-# Red interna: SOLO apisix (9080), prometheus (9090) y grafana (3000)
-# publican puertos al host. core/worker/postgres/redis son internos.
+# Red interna: SOLO apisix (9080), frontend (8080), prometheus (9090) y
+# grafana (3000) publican puertos al host. core/worker/postgres/redis son
+# internos.
 # =============================================================================
 
 name: mercado-agricola
@@ -121,6 +122,16 @@ services:
     depends_on:
       core:
         condition: service_healthy
+    restart: unless-stopped
+    networks: [market]
+
+  frontend:
+    build:
+      context: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - apisix
     restart: unless-stopped
     networks: [market]
 

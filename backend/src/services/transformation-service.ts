@@ -177,15 +177,34 @@ interface MaterializedProcess {
   bankruptcy: BankruptcyNotice | null;
 }
 
+/**
+ * Publica sin propagar errores: las notificaciones son post-commit y
+ * best-effort (espejo de safePublish en order-service). Un fallo del notifier
+ * (p. ej. Redis caído) NUNCA debe convertir en 500 una lectura cuyo commit ya
+ * ocurrió (GET /agents/me, GET /transformations/{id}), ni marcar failed el job
+ * del sweeper, ni abortar el resto de un batch de notificaciones.
+ */
+async function safePublish(what: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    logger.warn({ err, what }, "fallo publicando notificación post-commit");
+  }
+}
+
 async function publishBankruptcy(b: BankruptcyNotice): Promise<void> {
   const occurredAt = new Date().toISOString();
   const payload = { agent_id: b.agentId, username: b.username };
-  await publishToAgent(b.agentId, {
-    type: "bankruptcy_notice",
-    occurred_at: occurredAt,
-    payload,
-  });
-  await publishBroadcast({ type: "agent_bankrupt", occurred_at: occurredAt, payload });
+  await safePublish("bankruptcy_notice", () =>
+    publishToAgent(b.agentId, {
+      type: "bankruptcy_notice",
+      occurred_at: occurredAt,
+      payload,
+    }),
+  );
+  await safePublish("agent_bankrupt", () =>
+    publishBroadcast({ type: "agent_bankrupt", occurred_at: occurredAt, payload }),
+  );
 }
 
 async function publishMaterialized(results: MaterializedProcess[]): Promise<void> {
@@ -195,7 +214,7 @@ async function publishMaterialized(results: MaterializedProcess[]): Promise<void
       occurred_at: r.completedAt.toISOString(),
       payload: r.payload,
     };
-    await publishToAgent(r.agentId, n);
+    await safePublish("transformation_completed", () => publishToAgent(r.agentId, n));
     if (r.bankruptcy !== null) {
       await publishBankruptcy(r.bankruptcy);
     }
@@ -316,6 +335,11 @@ async function startTransformation(
   input: StartTransformationInput,
 ): Promise<TransformationProcessRow> {
   const { recipeId, executionsPlanned } = input;
+  // Materialización lazy ANTES de validar capacidad (diseño §5): procesos ya
+  // vencidos no deben contar como running en countRunning. Abre su propia tx
+  // y commitea antes del lockAgent (mismo patrón que getProcess) — sin riesgo
+  // de deadlock.
+  await materializeExpiredForAgent(agentId);
   return withTransaction(async (tx) => {
     const agentRow = await repo.lockAgent(tx, agentId);
     if (agentRow === undefined) {
@@ -430,6 +454,11 @@ async function startTransformation(
  * BankruptcyService dentro de la tx; notificaciones de quiebra post-commit.
  */
 async function cancelTransformation(agentId: string, processId: string): Promise<void> {
+  // La finalización es por timestamp (diseño §5/§7): un proceso con
+  // expected_end_at vencido YA devengó su producción aunque el sweeper aún no
+  // lo haya tocado. Materializar primero ⇒ el DELETE de un vencido responde
+  // 409 conflict_state (vía la validación de status) en vez de destruir el lote.
+  await materializeExpiredForAgent(agentId);
   const bankruptcy = await withTransaction(async (tx) => {
     const proc = await repo.findProcessByIdForUpdate(tx, processId);
     if (proc === undefined) {
@@ -446,6 +475,15 @@ async function cancelTransformation(agentId: string, processId: string): Promise
       throw domainError(
         "conflict_state",
         `El proceso ya está en estado terminal (${proc.status}).`,
+      );
+    }
+    // Defensa en-tx para la ventana residual de ms entre la materialización
+    // lazy de arriba y el FOR UPDATE: un proceso vencido no es cancelable
+    // (el sweeper o la próxima lectura lo materializará).
+    if (proc.expectedEndAt.getTime() <= Date.now()) {
+      throw domainError(
+        "conflict_state",
+        "El proceso ya alcanzó su expected_end_at y su producción está devengada; no puede cancelarse.",
       );
     }
 
@@ -498,11 +536,16 @@ async function getProcess(
   });
 }
 
-/** Listado propio con filtros y cursor (openapi GET /transformations, §17). */
+/**
+ * Listado propio con filtros y cursor (openapi GET /transformations, §17).
+ * Materializa lazy los vencidos del agente ANTES de leer (diseño §5: "en TODA
+ * lectura de estado del agente"), como getProcess y GET /agents/me.
+ */
 async function listProcesses(
   agentId: string,
   input: ListProcessesInput,
 ): Promise<{ items: TransformationProcessRow[]; nextCursor: string | null }> {
+  await materializeExpiredForAgent(agentId);
   const cursor = input.cursor !== undefined ? decodeCursor(input.cursor) : undefined;
   return withTransaction(async (tx) => {
     const filter: Parameters<typeof repo.listByAgent>[2] = { limit: input.limit };

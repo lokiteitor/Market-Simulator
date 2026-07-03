@@ -1,0 +1,174 @@
+/* ============================================================================
+ * OrderFormModal.module.css — formulario de creación de órdenes [FE7].
+ * Solo consume tokens de src/styles/tokens.css (regla del contrato).
+ * ========================================================================== */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Toggle de lado (compra/venta) ----------------------------------------- */
+
+.sideFieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sideLegend {
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.sideToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+}
+
+.sideOption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sideOption:hover {
+  color: var(--text-primary);
+}
+
+/* El radio queda accesible (focusable) pero visualmente discreto. */
+.sideRadio {
+  width: 1rem;
+  height: 1rem;
+  accent-color: currentColor;
+  margin: 0;
+}
+
+.sideBuyActive {
+  background-color: var(--color-state-active-soft);
+  color: var(--color-state-active);
+  font-weight: var(--weight-semibold);
+}
+
+.sideSellActive {
+  background-color: var(--color-state-bankrupt-soft);
+  color: var(--color-state-bankrupt);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Distribución ------------------------------------------------------------ */
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 480px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Vista previa -------------------------------------------------------------- */
+
+.preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.preview dt {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.preview dd {
+  margin: 0;
+  justify-self: end;
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.domainError {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-danger-soft);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+/* ---- Acciones y botones ---------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+}
+
+.btnPrimary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.btnSecondary {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border);
+  color: var(--text-primary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background-color: var(--surface-3);
+}

@@ -70,14 +70,28 @@ function getDummyHash(): Promise<string> {
  * Traduce la unique violation de Postgres (23505 sobre agent.username) a
  * username_taken: cubre la carrera entre el check explícito y el INSERT de
  * dos registros concurrentes con el mismo username.
+ *
+ * drizzle-orm (>= 0.4x, driver postgres-js) envuelve el PostgresError del
+ * driver en un DrizzleQueryError dejando el original en `cause`, así que se
+ * inspecciona primero la causa desenvuelta; el propio `err` queda como
+ * fallback por si drizzle dejara de envolver.
  */
+function isUsernameUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { code?: unknown }).code === "23505" &&
+    String((e as { constraint_name?: unknown }).constraint_name ?? "").includes("username")
+  );
+}
+
 function translateUniqueUsername(err: unknown, username: string): unknown {
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: unknown }).code === "23505" &&
-    String((err as { constraint_name?: unknown }).constraint_name ?? "").includes("username")
-  ) {
+  const cause: unknown =
+    typeof err === "object" && err !== null && "cause" in err
+      ? (err as { cause?: unknown }).cause
+      : undefined;
+  const pg: unknown = cause ? cause : err;
+  if (isUsernameUniqueViolation(pg) || isUsernameUniqueViolation(err)) {
     return domainError(
       "username_taken",
       `El nombre de usuario "${username}" ya está en uso.`,

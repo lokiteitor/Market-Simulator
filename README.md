@@ -83,6 +83,19 @@ bun run worker              # worker BullMQ en otra terminal
 Configuración por variables de entorno: ver [`backend/.env.example`](backend/.env.example)
 (defaults de desarrollo) e [`infra/.env.docker`](infra/.env.docker) (hosts de la red docker).
 
+## Hardening pendiente para producción
+
+Esto es una simulación local; los siguientes puntos son aceptables en ese contexto pero deben
+endurecerse antes de exponerla fuera de un entorno de laboratorio:
+
+- `JWT_SECRET` tiene un default de desarrollo (`dev-secret-change-me`) sin guard que impida arrancar con él en producción.
+- Los agentes seed comparten una única contraseña (`SEED_AGENT_PASSWORD`), conocida por cualquiera con acceso al repo o al env.
+- Los contenedores de core/worker corren como root y la imagen incluye devDependencies.
+- Redis corre sin persistencia (AOF/RDB) y no hay auto-reparación de los schedulers repetibles de BullMQ si se pierden sus datos.
+- El job de snapshot no es idempotente ante la stalled-recovery de BullMQ (un job recuperado puede insertar un snapshot duplicado).
+- El top-of-book no desempata por `order_id` cuando hay empates exactos de precio y `created_at`.
+- El salario de un proceso no es computable desde la API pública: esta expone la duración en segundos reales, mientras el salario se calcula sobre segundos simulados.
+
 ## Estado
 
 **Implementación en curso.** Fundación (tooling, capa de datos, libs compartidas, infra) completa;

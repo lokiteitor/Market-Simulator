@@ -78,129 +78,138 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
   const normalizedNote =
     note !== null && note !== undefined && note.trim().length > 0 ? note.trim() : null;
 
-  const result = await withTransaction(async (tx) => {
-    // --- Agregados de cabecera -------------------------------------------
-    const agentAggRows = await tx
-      .select({
-        activeAgents: sql<string | number>`count(*) filter (where ${agent.status} = 'active')`,
-        totalMoneyCents: sql<
-          string | number
-        >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
-      })
-      .from(agent);
-    const feeAggRows = await tx
-      .select({
-        feesCollectedCents: sql<
-          string | number
-        >`coalesce(sum(${trade.feeBuyerCents} + ${trade.feeSellerCents}), 0)`,
-      })
-      .from(trade);
+  // REPEATABLE READ: el snapshot lee agregados en varias sentencias (capital,
+  // fees, capital por agente, inventario, libro); bajo READ COMMITTED cada
+  // SELECT vería un snapshot MVCC distinto y un trade concurrente rompería la
+  // regla Σ capital_total == total_money_cents (documentacion_base_datos.md
+  // §15/§16). Con un único snapshot MVCC la foto es consistente; los INSERT
+  // son de filas nuevas, sin riesgo de errores de serialización.
+  const result = await withTransaction(
+    async (tx) => {
+      // --- Agregados de cabecera -------------------------------------------
+      const agentAggRows = await tx
+        .select({
+          activeAgents: sql<string | number>`count(*) filter (where ${agent.status} = 'active')`,
+          totalMoneyCents: sql<
+            string | number
+          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
+        })
+        .from(agent);
+      const feeAggRows = await tx
+        .select({
+          feesCollectedCents: sql<
+            string | number
+          >`coalesce(sum(${trade.feeBuyerCents} + ${trade.feeSellerCents}), 0)`,
+        })
+        .from(trade);
 
-    const activeAgents = num(agentAggRows[0]?.activeAgents ?? 0);
-    const totalMoneyCents = num(agentAggRows[0]?.totalMoneyCents ?? 0);
-    const feesCollectedCents = num(feeAggRows[0]?.feesCollectedCents ?? 0);
+      const activeAgents = num(agentAggRows[0]?.activeAgents ?? 0);
+      const totalMoneyCents = num(agentAggRows[0]?.totalMoneyCents ?? 0);
+      const feesCollectedCents = num(feeAggRows[0]?.feesCollectedCents ?? 0);
 
-    const insertedHead = await tx
-      .insert(marketSnapshot)
-      .values({
+      const insertedHead = await tx
+        .insert(marketSnapshot)
+        .values({
+          activeAgents,
+          totalMoneyCents,
+          feesCollectedCents,
+          note: normalizedNote,
+        })
+        .returning({
+          snapshotId: marketSnapshot.snapshotId,
+          takenAt: marketSnapshot.takenAt,
+        });
+      const head = insertedHead[0];
+      if (head === undefined) {
+        throw new Error("snapshot: INSERT market_snapshot no devolvió fila");
+      }
+
+      // --- Capital total por agente ----------------------------------------
+      const capitals = await tx
+        .select({
+          agentId: agent.agentId,
+          capitalTotal: sql<string | number>`${agent.capitalAvailable} + ${agent.capitalReserved}`,
+        })
+        .from(agent);
+      const capitalRows = capitals.map((c) => ({
+        snapshotId: head.snapshotId,
+        agentId: c.agentId,
+        capitalTotal: num(c.capitalTotal),
+      }));
+      for (const chunk of chunked(capitalRows, INSERT_CHUNK_SIZE)) {
+        await tx.insert(marketSnapshotAgentCapital).values(chunk);
+      }
+
+      // --- Por producto: inventario total + best bid/ask --------------------
+      const products = await tx.select({ productId: product.productId }).from(product);
+
+      const invTotals = await tx
+        .select({
+          productId: inventoryLot.productId,
+          totalInventory: sql<
+            string | number
+          >`coalesce(sum(${inventoryLot.qtyAvailable} + ${inventoryLot.qtyReserved}), 0)`,
+        })
+        .from(inventoryLot)
+        .groupBy(inventoryLot.productId);
+      const invByProduct = new Map(invTotals.map((r) => [r.productId, num(r.totalInventory)]));
+
+      // Top-of-book vigente: active/partial y NO expiradas (§10.6).
+      const books = await tx
+        .select({
+          productId: marketOrder.productId,
+          bestBidCents: sql<
+            string | number | null
+          >`max(${marketOrder.limitPriceCents}) filter (where ${marketOrder.side} = 'buy')`,
+          bestAskCents: sql<
+            string | number | null
+          >`min(${marketOrder.limitPriceCents}) filter (where ${marketOrder.side} = 'sell')`,
+        })
+        .from(marketOrder)
+        .where(
+          and(
+            inArray(marketOrder.status, ["active", "partial"]),
+            gt(marketOrder.expiresAt, sql`now()`),
+          ),
+        )
+        .groupBy(marketOrder.productId);
+      const bookByProduct = new Map(books.map((r) => [r.productId, r]));
+
+      const productRows = products.map((p) => {
+        const book = bookByProduct.get(p.productId);
+        return {
+          snapshotId: head.snapshotId,
+          productId: p.productId,
+          totalInventory: invByProduct.get(p.productId) ?? 0,
+          bestBidCents: numOrNull(book?.bestBidCents ?? null),
+          bestAskCents: numOrNull(book?.bestAskCents ?? null),
+        };
+      });
+      for (const chunk of chunked(productRows, INSERT_CHUNK_SIZE)) {
+        await tx.insert(marketSnapshotProduct).values(chunk);
+      }
+
+      // --- Event log (misma tx, §0/§9) --------------------------------------
+      const payload: SnapshotTakenPayload = {
+        snapshot_id: head.snapshotId,
+        note: normalizedNote ?? "",
+      };
+      await appendEvent(tx, { type: "snapshot_taken", payload });
+
+      const summary: SnapshotResult = {
+        snapshotId: head.snapshotId,
+        takenAt: head.takenAt.toISOString(),
+        note: normalizedNote,
         activeAgents,
         totalMoneyCents,
         feesCollectedCents,
-        note: normalizedNote,
-      })
-      .returning({
-        snapshotId: marketSnapshot.snapshotId,
-        takenAt: marketSnapshot.takenAt,
-      });
-    const head = insertedHead[0];
-    if (head === undefined) {
-      throw new Error("snapshot: INSERT market_snapshot no devolvió fila");
-    }
-
-    // --- Capital total por agente ----------------------------------------
-    const capitals = await tx
-      .select({
-        agentId: agent.agentId,
-        capitalTotal: sql<string | number>`${agent.capitalAvailable} + ${agent.capitalReserved}`,
-      })
-      .from(agent);
-    const capitalRows = capitals.map((c) => ({
-      snapshotId: head.snapshotId,
-      agentId: c.agentId,
-      capitalTotal: num(c.capitalTotal),
-    }));
-    for (const chunk of chunked(capitalRows, INSERT_CHUNK_SIZE)) {
-      await tx.insert(marketSnapshotAgentCapital).values(chunk);
-    }
-
-    // --- Por producto: inventario total + best bid/ask --------------------
-    const products = await tx.select({ productId: product.productId }).from(product);
-
-    const invTotals = await tx
-      .select({
-        productId: inventoryLot.productId,
-        totalInventory: sql<
-          string | number
-        >`coalesce(sum(${inventoryLot.qtyAvailable} + ${inventoryLot.qtyReserved}), 0)`,
-      })
-      .from(inventoryLot)
-      .groupBy(inventoryLot.productId);
-    const invByProduct = new Map(invTotals.map((r) => [r.productId, num(r.totalInventory)]));
-
-    // Top-of-book vigente: active/partial y NO expiradas (§10.6).
-    const books = await tx
-      .select({
-        productId: marketOrder.productId,
-        bestBidCents: sql<
-          string | number | null
-        >`max(${marketOrder.limitPriceCents}) filter (where ${marketOrder.side} = 'buy')`,
-        bestAskCents: sql<
-          string | number | null
-        >`min(${marketOrder.limitPriceCents}) filter (where ${marketOrder.side} = 'sell')`,
-      })
-      .from(marketOrder)
-      .where(
-        and(
-          inArray(marketOrder.status, ["active", "partial"]),
-          gt(marketOrder.expiresAt, sql`now()`),
-        ),
-      )
-      .groupBy(marketOrder.productId);
-    const bookByProduct = new Map(books.map((r) => [r.productId, r]));
-
-    const productRows = products.map((p) => {
-      const book = bookByProduct.get(p.productId);
-      return {
-        snapshotId: head.snapshotId,
-        productId: p.productId,
-        totalInventory: invByProduct.get(p.productId) ?? 0,
-        bestBidCents: numOrNull(book?.bestBidCents ?? null),
-        bestAskCents: numOrNull(book?.bestAskCents ?? null),
+        agentsSnapshotted: capitalRows.length,
+        productsSnapshotted: productRows.length,
       };
-    });
-    for (const chunk of chunked(productRows, INSERT_CHUNK_SIZE)) {
-      await tx.insert(marketSnapshotProduct).values(chunk);
-    }
-
-    // --- Event log (misma tx, §0/§9) --------------------------------------
-    const payload: SnapshotTakenPayload = {
-      snapshot_id: head.snapshotId,
-      note: normalizedNote ?? "",
-    };
-    await appendEvent(tx, { type: "snapshot_taken", payload });
-
-    const summary: SnapshotResult = {
-      snapshotId: head.snapshotId,
-      takenAt: head.takenAt.toISOString(),
-      note: normalizedNote,
-      activeAgents,
-      totalMoneyCents,
-      feesCollectedCents,
-      agentsSnapshotted: capitalRows.length,
-      productsSnapshotted: productRows.length,
-    };
-    return summary;
-  });
+      return summary;
+    },
+    { isolationLevel: "repeatable read" },
+  );
 
   log.info(
     {

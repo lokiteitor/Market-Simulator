@@ -894,6 +894,69 @@ async function main(): Promise<void> {
     await cancelOrder(bob, first.order_id, "DELETE /orders (idempotente)");
   });
 
+  // ---- 22b. Idempotencia CONCURRENTE (reclamo atómico) ------------------------
+
+  await step("22b. órdenes: 2 POST simultáneos con el mismo client_order_id ⇒ exactamente 1 orden", async () => {
+    // El reclamo atómico (SET NX) debe dejar pasar exactamente UN 201; el otro
+    // POST responde 200 (replay con la misma orden) o 409 conflict_state (si el
+    // original seguía en vuelo al llegar el duplicado). qty/limit distintivos
+    // (60q @ 110c) para poder verificar unicidad vía GET /orders sin ambigüedad
+    // con órdenes de pasos anteriores. Sin llamadas /auth/*: no afecta el
+    // presupuesto de rate limit de APISIX.
+    const CONC_QTY = 60;
+    const CONC_LIMIT = 110;
+    const body: PlaceOrderBody = {
+      product_id: germProduct.product_id,
+      side: "buy",
+      qty_cent: CONC_QTY,
+      limit_price_cents: CONC_LIMIT,
+      ttl_seconds: MAIN_TTL_SIM_S,
+      client_order_id: `e2e-idem-conc-${runId}`,
+    };
+    const [r1, r2] = await Promise.all([
+      api.post<PlaceOrderResponse>("/orders", { token: bob.accessToken, body }),
+      api.post<PlaceOrderResponse>("/orders", { token: bob.accessToken, body }),
+    ]);
+
+    const created = [r1, r2].filter((r) => r.status === 201);
+    assertEqual(
+      created.length,
+      1,
+      `exactamente un 201 entre los dos POST concurrentes (status recibidos: ${r1.status} y ${r2.status})`,
+    );
+    const winner = created[0];
+    assert(winner !== undefined, "respuesta 201 presente");
+    const winnerOrder = winner.body;
+    trackOrder(winnerOrder.order_id, bob);
+    assertEqual(winnerOrder.status, "active", "orden ganadora activa (sin asks en el libro)");
+
+    const loser = r1.status === 201 ? r2 : r1;
+    assertOneOf(loser.status, [200, 409] as const, "el POST perdedor responde 200 (replay) o 409 (conflict_state)");
+    if (loser.status === 200) {
+      assertEqual(loser.body.order_id, winnerOrder.order_id, "el replay 200 devuelve la MISMA orden");
+      assertEqual((loser.body.trades_generated ?? []).length, 0, "sin re-matching en el replay concurrente");
+    } else {
+      expectProblem(loser, 409, "POST /orders concurrente (perdedor)", { code: "conflict_state" });
+    }
+
+    // Unicidad observable: solo UNA orden viva de bob con esos parámetros.
+    const open = expectStatus<Page<Order>>(
+      await api.get("/orders", {
+        token: bob.accessToken,
+        query: { product_id: germProduct.product_id, side: "buy", limit: 200 },
+      }),
+      200,
+      "GET /orders (bob, abiertas)",
+    );
+    const matching = open.items.filter(
+      (o) => o.qty_original_cent === CONC_QTY && o.limit_price_cents === CONC_LIMIT,
+    );
+    assertEqual(matching.length, 1, "exactamente UNA orden viva creada por los dos POST concurrentes");
+    assertEqual(matching[0]?.order_id, winnerOrder.order_id, "la orden viva es la del 201");
+
+    await cancelOrder(bob, winnerOrder.order_id, "DELETE /orders (idem concurrente)");
+  });
+
   // ---- 23. Errores Problem+JSON ----------------------------------------------
 
   await step("23. errores: Problem+JSON (401, insufficient_capital, insufficient_inventory, ttl, not_owner)", async () => {
