@@ -130,8 +130,10 @@ function loadConfig(): Config {
   if (!parsed.success) {
     // Fail-fast ANTES de que exista el logger (pino depende de esta config);
     // por eso se usa console.error aquí y solo aquí.
+    // eslint-disable-next-line no-console
     console.error("[config] Variables de entorno inválidas — abortando arranque:");
     for (const issue of parsed.error.issues) {
+      // eslint-disable-next-line no-console
       console.error(`  - ${issue.path.join(".") || "(env)"}: ${issue.message}`);
     }
     process.exit(1);

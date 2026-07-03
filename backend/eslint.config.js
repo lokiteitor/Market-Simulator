@@ -8,6 +8,15 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
+    rules: {
+      // Convención: argumentos/variables intencionalmente sin uso llevan prefijo _.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     rules: {
       // Logs con pino (src/observability/logger.ts); nunca console.log en src/.
