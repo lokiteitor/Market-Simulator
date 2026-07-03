@@ -1,0 +1,12 @@
+# APISIX en modo standalone (data plane sin etcd).
+# Las rutas/upstreams se cargan desde conf/apisix.yaml (config_provider: yaml).
+# Este fichero se monta en /usr/local/apisix/conf/config.yaml (read-only); el
+# entrypoint de la imagen solo lo generaría si no existiera.
+
+apisix:
+  node_listen: 9080
+
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml

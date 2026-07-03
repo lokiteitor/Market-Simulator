@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    // Lenguaje y entorno (Bun >= 1.3)
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "types": ["bun"],
+
+    // Módulos ESM resueltos por el bundler/runtime (Bun)
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+
+    // Strict total
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Bun ejecuta TS directamente; tsc solo typechecking
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "tests", "drizzle.config.ts"]
+}

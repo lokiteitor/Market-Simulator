@@ -1,0 +1,156 @@
+# =============================================================================
+# Simulación de Mercado Agrícola — despliegue local con Docker Compose.
+#
+# Uso (desde infra/):
+#   docker compose up -d --build          # levanta todo el stack
+#   docker compose --profile seed run --rm seed   # siembra el catálogo (one-shot)
+#
+# Red interna: SOLO apisix (9080), prometheus (9090) y grafana (3000)
+# publican puertos al host. core/worker/postgres/redis son internos.
+# =============================================================================
+
+name: mercado-agricola
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: market
+      POSTGRES_PASSWORD: market
+      POSTGRES_DB: market
+    volumes:
+      # postgres:18 usa PGDATA=/var/lib/postgresql/18/docker; el volumen se
+      # monta en /var/lib/postgresql (no en .../data como en <=17).
+      - pgdata:/var/lib/postgresql
+      # El DDL se aplica una sola vez al inicializar el cluster.
+      - ../specs/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U market -d market"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks: [market]
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [market]
+
+  core:
+    build: &app-build
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: runtime
+    image: mercado-agricola-app:local
+    command: ["bun", "src/server.ts"]
+    env_file:
+      - .env.docker
+    expose:
+      - "8000" # API HTTP/WS (interno; se accede vía APISIX)
+      - "8001" # métricas Prometheus
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # La imagen no incluye curl/wget; se usa el propio runtime de bun.
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:8000/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    networks: [market]
+
+  worker:
+    build: *app-build
+    image: mercado-agricola-app:local
+    command: ["bun", "src/worker.ts"]
+    env_file:
+      - .env.docker
+    expose:
+      - "8002" # métricas Prometheus del worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [market]
+
+  seed:
+    build: *app-build
+    image: mercado-agricola-app:local
+    command: ["bun", "src/seed.ts"]
+    env_file:
+      - .env.docker
+    profiles: ["seed"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [market]
+
+  apisix:
+    image: apache/apisix:3.13.0-debian
+    environment:
+      APISIX_STAND_ALONE: "true"
+    volumes:
+      # El entrypoint de la imagen solo genera estos ficheros si NO existen,
+      # así que es seguro montarlos read-only.
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports:
+      - "9080:9080"
+    depends_on:
+      core:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [market]
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks: [market]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks: [market]
+
+networks:
+  market:
+    driver: bridge
+
+volumes:
+  pgdata:

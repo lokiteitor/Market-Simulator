@@ -1,0 +1,11 @@
+# Dependencias
+node_modules/
+
+# Entorno local (deploy/.env.docker SÍ se versiona; bun.lock también)
+.env
+.env.local
+
+# Build / artefactos
+dist/
+*.log
+coverage/

@@ -1,0 +1,15 @@
+# Prometheus — scrape de métricas del core (Fastify, puerto 8001) y del
+# worker (BullMQ, puerto 8002) dentro de la red docker.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: core
+    static_configs:
+      - targets: ["core:8001"]
+
+  - job_name: worker
+    static_configs:
+      - targets: ["worker:8002"]

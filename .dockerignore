@@ -1,0 +1,23 @@
+# Contexto de build: raíz del repo (infra/Dockerfile).
+# OJO: en .dockerignore los patrones sin ** se anclan a la raíz del contexto.
+**/node_modules
+.git
+.gitignore
+backend/tests
+frontend
+docs
+specs
+
+# Documentación markdown (el runtime no la necesita).
+**/*.md
+
+# Secretos/env locales (el compose inyecta infra/.env.docker vía env_file).
+**/.env
+**/.env.*
+infra/.env.docker
+
+# Artefactos de infra no necesarios dentro de la imagen.
+infra/docker-compose.yml
+infra/apisix
+infra/prometheus
+infra/grafana

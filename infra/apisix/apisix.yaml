@@ -1,0 +1,50 @@
+# Declaración standalone de rutas y upstreams (APISIX 3.x).
+# IMPORTANTE: la última línea debe ser "#END" o APISIX no carga las reglas.
+
+routes:
+  # Ruta 1: endpoints de autenticación — rate limit estricto (10 req/60 s por IP).
+  # priority mayor => gana sobre la ruta genérica /v1/* para /v1/auth/*.
+  - id: 1
+    name: auth
+    uri: /v1/auth/*
+    priority: 10
+    upstream_id: 1
+    plugins:
+      limit-count:
+        count: 10
+        time_window: 60
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+        policy: local
+      cors: {}
+
+  # Ruta 2: resto de la API v1 (incluye /v1/ws — websocket habilitado).
+  - id: 2
+    name: api
+    uri: /v1/*
+    priority: 1
+    upstream_id: 1
+    enable_websocket: true
+    # Timeouts largos de lectura/escritura para no cortar conexiones WS ociosas.
+    timeout:
+      connect: 60
+      send: 3600
+      read: 3600
+    plugins:
+      limit-count:
+        count: 600
+        time_window: 10
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+        policy: local
+      cors: {}
+
+upstreams:
+  - id: 1
+    name: core
+    type: roundrobin
+    nodes:
+      "core:8000": 1
+#END

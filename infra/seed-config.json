@@ -1,0 +1,148 @@
+{
+  "$comment": "Catálogo agrícola inicial (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Cadenas: trigo→harina→pan, maiz→masa→tortilla, leche→queso, tomate→salsa.",
+  "products": [
+    { "key": "trigo", "name": "Trigo", "unit": "kg", "category": "raw_primary" },
+    { "key": "maiz", "name": "Maíz", "unit": "kg", "category": "raw_primary" },
+    { "key": "leche", "name": "Leche", "unit": "litro", "category": "raw_primary" },
+    { "key": "tomate", "name": "Tomate", "unit": "kg", "category": "raw_primary" },
+    { "key": "germinado", "name": "Germinado", "unit": "kg", "category": "raw_primary" },
+    { "key": "harina", "name": "Harina de trigo", "unit": "kg", "category": "intermediate" },
+    { "key": "masa", "name": "Masa nixtamalizada", "unit": "kg", "category": "intermediate" },
+    { "key": "pan", "name": "Pan", "unit": "kg", "category": "final_consumption" },
+    { "key": "tortilla", "name": "Tortilla", "unit": "kg", "category": "final_consumption" },
+    { "key": "queso", "name": "Queso fresco", "unit": "kg", "category": "final_consumption" },
+    { "key": "salsa", "name": "Salsa de tomate", "unit": "litro", "category": "final_consumption" }
+  ],
+  "recipes": [
+    {
+      "key": "cultivo_trigo",
+      "name": "Cultivo de trigo",
+      "output": "trigo",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_maiz",
+      "name": "Cultivo de maíz",
+      "output": "maiz",
+      "output_qty_cent": 60000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "ordena",
+      "name": "Ordeña de vacas",
+      "output": "leche",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_tomate",
+      "name": "Cultivo de tomate",
+      "output": "tomate",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "germinado_rapido",
+      "name": "Germinado rápido",
+      "output": "germinado",
+      "output_qty_cent": 1000,
+      "duration_sim_seconds": 60,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "molienda",
+      "name": "Molienda de trigo",
+      "output": "harina",
+      "output_qty_cent": 8000,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [{ "product": "trigo", "qty_cent": 10000 }]
+    },
+    {
+      "key": "panaderia",
+      "name": "Panadería",
+      "output": "pan",
+      "output_qty_cent": 10000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [{ "product": "harina", "qty_cent": 8000 }]
+    },
+    {
+      "key": "nixtamalizado",
+      "name": "Nixtamalizado de maíz",
+      "output": "masa",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 2700,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [{ "product": "maiz", "qty_cent": 10000 }]
+    },
+    {
+      "key": "tortilleria",
+      "name": "Tortillería",
+      "output": "tortilla",
+      "output_qty_cent": 9500,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [{ "product": "masa", "qty_cent": 10000 }]
+    },
+    {
+      "key": "queseria",
+      "name": "Quesería",
+      "output": "queso",
+      "output_qty_cent": 1000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [{ "product": "leche", "qty_cent": 10000 }]
+    },
+    {
+      "key": "salseria",
+      "name": "Salsería",
+      "output": "salsa",
+      "output_qty_cent": 8000,
+      "duration_sim_seconds": 2700,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [{ "product": "tomate", "qty_cent": 10000 }]
+    }
+  ],
+  "roles": {
+    "primary_producer": {
+      "initial_agents": 3,
+      "capacities": [
+        { "recipe": "cultivo_trigo", "installations": 2 },
+        { "recipe": "cultivo_maiz", "installations": 2 },
+        { "recipe": "ordena", "installations": 2 },
+        { "recipe": "cultivo_tomate", "installations": 2 },
+        { "recipe": "germinado_rapido", "installations": 1 }
+      ]
+    },
+    "transformer": {
+      "initial_agents": 3,
+      "capacities": [
+        { "recipe": "molienda", "installations": 2 },
+        { "recipe": "panaderia", "installations": 1 },
+        { "recipe": "nixtamalizado", "installations": 2 },
+        { "recipe": "tortilleria", "installations": 1 },
+        { "recipe": "queseria", "installations": 1 },
+        { "recipe": "salseria", "installations": 1 }
+      ]
+    },
+    "consumer": {
+      "initial_agents": 2,
+      "capacities": []
+    },
+    "trader": {
+      "initial_agents": 2,
+      "capacities": []
+    }
+  }
+}
