@@ -1,0 +1,36 @@
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.bar {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-3);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.bar:nth-child(3n + 1) {
+  width: 92%;
+}
+
+.bar:nth-child(3n + 2) {
+  width: 78%;
+}
+
+.bar:nth-child(3n) {
+  width: 85%;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}

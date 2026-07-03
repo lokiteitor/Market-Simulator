@@ -7,6 +7,7 @@
  * el redondeo es SIEMPRE floor (división entera de BigInt sobre positivos).
  */
 import { config } from "../config";
+import { domainError } from "./errors";
 
 function toBigInt(value: number, name: string): bigint {
   if (!Number.isSafeInteger(value)) {
@@ -15,12 +16,34 @@ function toBigInt(value: number, name: string): bigint {
   return BigInt(value);
 }
 
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * Convierte un resultado BigInt a number verificando que sea representable
+ * como entero seguro. Un monto > 2^53 centavos es inalcanzable para cualquier
+ * agente (la masa monetaria total es órdenes de magnitud menor), así que se
+ * reporta como capital insuficiente (422) — semánticamente exacto — en vez de
+ * dejar que un double no entero reviente en la columna BIGINT (500).
+ */
+function toSafeAmount(r: bigint, context: string): number {
+  if (r > MAX_SAFE) {
+    throw domainError(
+      "insufficient_capital",
+      `El monto calculado (${context}) excede cualquier capital alcanzable en el mercado.`,
+    );
+  }
+  return Number(r);
+}
+
 /**
  * Valor nocional en centavos: floor(qtyCent × priceCents / 100).
  * (priceCents es por UNIDAD entera; qtyCent está en centésimas de unidad.)
  */
 export function notionalCents(qtyCent: number, priceCents: number): number {
-  return Number((toBigInt(qtyCent, "qtyCent") * toBigInt(priceCents, "priceCents")) / 100n);
+  return toSafeAmount(
+    (toBigInt(qtyCent, "qtyCent") * toBigInt(priceCents, "priceCents")) / 100n,
+    "nocional",
+  );
 }
 
 /**
@@ -30,7 +53,7 @@ export function notionalCents(qtyCent: number, priceCents: number): number {
 export function feeCents(notional: number): number {
   return (
     config.fees.fixedCents +
-    Number((toBigInt(notional, "notional") * BigInt(config.fees.rateBps)) / 10000n)
+    toSafeAmount((toBigInt(notional, "notional") * BigInt(config.fees.rateBps)) / 10000n, "fee")
   );
 }
 
@@ -44,7 +67,7 @@ export function unitCostFromTotal(totalCents: number, qtyCent: number): number {
   if (qty <= 0n) {
     throw new Error(`unitCostFromTotal: qtyCent debe ser > 0; recibido: ${qtyCent}`);
   }
-  return Number((toBigInt(totalCents, "totalCents") * 100n) / qty);
+  return toSafeAmount((toBigInt(totalCents, "totalCents") * 100n) / qty, "costo unitario");
 }
 
 /**

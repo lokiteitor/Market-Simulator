@@ -18,7 +18,7 @@ import type {
   TransformationProcessRow,
 } from "../db/schema";
 import { decodeCursor } from "../lib/cursor";
-import { domainError } from "../lib/errors";
+import { DomainError, domainError } from "../lib/errors";
 import {
   appendEvent,
   type ProcessCancelledPayload,
@@ -327,7 +327,13 @@ async function startTransformation(
 
     const found = await repo.findRecipeWithInputs(tx, recipeId);
     if (found === undefined) {
-      throw domainError("unknown_recipe", `La receta ${recipeId} no existe.`, {
+      // openapi manda: POST /transformations enumera unknown_recipe como causa
+      // 422 y no declara 404 (el 404 queda para GET /catalog/recipes/{id}).
+      throw new DomainError({
+        code: "unknown_recipe",
+        status: 422,
+        title: "Receta desconocida",
+        detail: `La receta ${recipeId} no existe.`,
         field: "recipe_id",
       });
     }

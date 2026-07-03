@@ -11,7 +11,7 @@ import { config } from "../config";
 import { withTransaction, type Tx } from "../db";
 import { agent, product, type MarketOrderRow, type TradeRow } from "../db/schema";
 import { decodeCursor } from "../lib/cursor";
-import { domainError } from "../lib/errors";
+import { DomainError, domainError } from "../lib/errors";
 import {
   appendEvent,
   type OrderCancelledPayload,
@@ -157,7 +157,14 @@ async function assertProductExists(tx: Tx, productId: string): Promise<void> {
     .where(eq(product.productId, productId))
     .limit(1);
   if (rows[0] === undefined) {
-    throw domainError("unknown_product", `El producto ${productId} no existe.`, {
+    // openapi manda: POST /orders solo declara 422 para fallos de dominio
+    // ("producto desconocido" incluido); el 404 de unknown_product queda para
+    // los GET de catálogo/mercado.
+    throw new DomainError({
+      code: "unknown_product",
+      status: 422,
+      title: "Producto desconocido",
+      detail: `El producto ${productId} no existe.`,
       field: "product_id",
     });
   }

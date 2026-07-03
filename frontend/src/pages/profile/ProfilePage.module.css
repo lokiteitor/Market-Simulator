@@ -1,0 +1,255 @@
+/* ProfilePage — perfil del agente [FE4]. Colores solo desde tokens.css. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 960px;
+}
+
+.pageHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pageTitle {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+.pageSubtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ---- Cards / secciones ------------------------------------------------- */
+
+.topGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 720px) {
+  .topGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cardBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.sectionSubtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.loadError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+/* ---- Identidad ----------------------------------------------------------- */
+
+.identityHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--text-inverse);
+  background-color: var(--color-state-cancelled);
+}
+
+.avatarPrimaryProducer {
+  background-color: var(--color-role-primary-producer);
+}
+
+.avatarTransformer {
+  background-color: var(--color-role-transformer);
+}
+
+.avatarConsumer {
+  background-color: var(--color-role-consumer);
+}
+
+.avatarTrader {
+  background-color: var(--color-role-trader);
+}
+
+.identityMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.username {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: 1px solid var(--surface-border);
+  padding-top: var(--space-3);
+}
+
+.metaRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.metaRow dt {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.metaRow dd {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.mutedInline {
+  color: var(--text-secondary);
+}
+
+/* ---- Sesión / WS ----------------------------------------------------------- */
+
+.wsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.wsDot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+}
+
+.wsOn {
+  background-color: var(--color-state-active);
+}
+
+.wsOff {
+  background-color: var(--color-state-cancelled);
+}
+
+.wsHint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.sessionActions {
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
+
+/* ---- Capital --------------------------------------------------------------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ---- Botones ---------------------------------------------------------------- */
+
+.btnDanger {
+  appearance: none;
+  border: 1px solid var(--color-danger);
+  background-color: transparent;
+  color: var(--color-danger);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+}
+
+.btnDanger:hover:not(:disabled) {
+  background-color: var(--color-danger-soft);
+}
+
+.btnDanger:disabled {
+  opacity: 0.6;
+}
+
+.btnGhost {
+  appearance: none;
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-1);
+  color: var(--text-primary);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-md);
+}
+
+.btnGhost:hover:not(:disabled) {
+  background-color: var(--surface-2);
+}
+
+.btnGhost:disabled {
+  opacity: 0.6;
+}
+
+/* ---- Modal de logout ---------------------------------------------------------- */
+
+.modalText {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}

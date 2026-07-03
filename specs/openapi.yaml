@@ -494,6 +494,15 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
       responses:
+        '200':
+          description: |
+            Replay idempotente: el `client_order_id` ya fue usado dentro de la
+            ventana de idempotencia. Devuelve la orden previamente creada (en su
+            estado actual), sin re-ejecutar matching y con `trades_generated`
+            vacío.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceOrderResponse' }
         '201':
           description: |
             Orden aceptada. Incluye su estado tras el primer ciclo de matching

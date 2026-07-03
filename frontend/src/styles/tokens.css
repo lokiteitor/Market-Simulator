@@ -1,0 +1,162 @@
+/* ============================================================================
+ * tokens.css — Design tokens del Mercado Agrícola.
+ * ÚNICA fuente de colores semánticos (roles y estados), superficies,
+ * tipografía, espaciado, radios, sombras y focus ring.
+ * Light por defecto; dark vía prefers-color-scheme.
+ * ========================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---- Tipografía ------------------------------------------------------- */
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- Espaciado (escala 4px) ------------------------------------------ */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- Radios ------------------------------------------------------------ */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* ---- Superficies y texto (light) --------------------------------------- */
+  --surface-0: #f5f5f0; /* fondo de página */
+  --surface-1: #ffffff; /* cards, paneles */
+  --surface-2: #eceee7; /* insets, filas alternas, chips */
+  --surface-3: #e0e3d8; /* hover de filas, separadores fuertes */
+  --surface-border: #d4d7cb;
+  --surface-overlay: rgba(24, 28, 20, 0.5); /* backdrop de modales */
+
+  --text-primary: #1d221a;
+  --text-secondary: #58604f; /* .muted — AA sobre surface-0/1 */
+  --text-inverse: #ffffff;
+  --text-link: #2f6faf;
+
+  /* ---- Sombras ------------------------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgba(24, 28, 20, 0.08);
+  --shadow-md: 0 2px 8px rgba(24, 28, 20, 0.12);
+  --shadow-lg: 0 8px 24px rgba(24, 28, 20, 0.18);
+
+  /* ---- Acción principal / marca ------------------------------------------- */
+  --color-accent: #4c7a34;
+  --color-accent-hover: #3e6529;
+  --color-accent-text: #ffffff;
+
+  /* ---- Focus ring ---------------------------------------------------------- */
+  --focus-ring-color: #4c7a34;
+  --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring-color);
+
+  /* ---- Colores por ROL de agente ------------------------------------------ */
+  --color-role-primary-producer: #4c7a34; /* verde tierra */
+  --color-role-transformer: #c96f1f; /* naranja */
+  --color-role-consumer: #2f6faf; /* azul */
+  --color-role-trader: #7a4fa3; /* púrpura */
+
+  /* fondos suaves para badges de rol (texto = color de rol, AA) */
+  --color-role-primary-producer-soft: #e5eedd;
+  --color-role-transformer-soft: #f8e8d8;
+  --color-role-consumer-soft: #e0ebf6;
+  --color-role-trader-soft: #ece2f4;
+
+  /* ---- Colores por ESTADO (órdenes, procesos, agentes) ---------------------- */
+  --color-state-active: #2e7d32; /* verde */
+  --color-state-partial: #8a6d00; /* amarillo (legible AA) */
+  --color-state-completed: #2f6faf; /* azul */
+  --color-state-cancelled: #666e63; /* gris */
+  --color-state-expired: #666e63; /* gris */
+  --color-state-bankrupt: #b3261e; /* rojo */
+
+  --color-state-active-soft: #e1f0e2;
+  --color-state-partial-soft: #f8efce;
+  --color-state-completed-soft: #e0ebf6;
+  --color-state-cancelled-soft: #e8eae5;
+  --color-state-expired-soft: #e8eae5;
+  --color-state-bankrupt-soft: #f9e2e0;
+
+  /* ---- Semánticos de feedback (toasts, banners) ------------------------------ */
+  --color-success: var(--color-state-active);
+  --color-warning: var(--color-state-partial);
+  --color-info: var(--color-state-completed);
+  --color-danger: var(--color-state-bankrupt);
+  --color-success-soft: var(--color-state-active-soft);
+  --color-warning-soft: var(--color-state-partial-soft);
+  --color-info-soft: var(--color-state-completed-soft);
+  --color-danger-soft: var(--color-state-bankrupt-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ---- Superficies y texto (dark) --------------------------------------- */
+    --surface-0: #14170f;
+    --surface-1: #1d2118;
+    --surface-2: #272c20;
+    --surface-3: #333a2b;
+    --surface-border: #3d4433;
+    --surface-overlay: rgba(0, 0, 0, 0.6);
+
+    --text-primary: #eceee6;
+    --text-secondary: #a9b19d;
+    --text-inverse: #14170f;
+    --text-link: #7fabdd;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+    --color-accent: #7fb35a;
+    --color-accent-hover: #93c470;
+    --color-accent-text: #14170f;
+
+    --focus-ring-color: #93c470;
+
+    /* Roles aclarados para contraste AA sobre superficies oscuras */
+    --color-role-primary-producer: #8cba67;
+    --color-role-transformer: #e59a55;
+    --color-role-consumer: #74a8dd;
+    --color-role-trader: #b28ad6;
+
+    --color-role-primary-producer-soft: rgba(140, 186, 103, 0.16);
+    --color-role-transformer-soft: rgba(229, 154, 85, 0.16);
+    --color-role-consumer-soft: rgba(116, 168, 221, 0.16);
+    --color-role-trader-soft: rgba(178, 138, 214, 0.16);
+
+    --color-state-active: #74c278;
+    --color-state-partial: #dcc25a;
+    --color-state-completed: #74a8dd;
+    --color-state-cancelled: #9aa392;
+    --color-state-expired: #9aa392;
+    --color-state-bankrupt: #ee7b72;
+
+    --color-state-active-soft: rgba(116, 194, 120, 0.16);
+    --color-state-partial-soft: rgba(220, 194, 90, 0.16);
+    --color-state-completed-soft: rgba(116, 168, 221, 0.16);
+    --color-state-cancelled-soft: rgba(154, 163, 146, 0.16);
+    --color-state-expired-soft: rgba(154, 163, 146, 0.16);
+    --color-state-bankrupt-soft: rgba(238, 123, 114, 0.16);
+  }
+}
