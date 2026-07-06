@@ -26,6 +26,7 @@ import {
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { API_BASE_URL } from "../api/client";
+import { ConnectionContext } from "../components/ConnectionContext";
 import type { Notification, NotificationType } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { fmtMoney, fmtQty } from "../lib/format";
@@ -309,9 +310,19 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<NotificationsValue>(() => ({ connected }), [connected]);
 
+  // FIX B1 (indicador WS): el estado REAL del socket vive aquí, pero el Header
+  // pinta el indicador leyendo ConnectionContext (capa de presentación), que
+  // antes NADIE proveía (default {connected:false}) → punto siempre rojo.
+  // Solución elegida (puente, sin acoplar el Header al feature WS): este único
+  // proveedor refleja `connected` también en ConnectionContext. Así el Header
+  // sigue desacoplado de este módulo y el indicador muestra el estado real
+  // ("Conectado"/"Sin conexión") en TODAS las páginas protegidas, que cuelgan
+  // de este subárbol. `value` ({ connected }) satisface ambos contextos.
   return (
     <NotificationsContext.Provider value={value}>
-      {children}
+      <ConnectionContext.Provider value={value}>
+        {children}
+      </ConnectionContext.Provider>
     </NotificationsContext.Provider>
   );
 }

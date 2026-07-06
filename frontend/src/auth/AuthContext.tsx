@@ -22,6 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   api,
@@ -113,6 +114,7 @@ function decodeJwtExpMs(token: string): number | null {
 // ---------------------------------------------------------------------------
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [agent, setAgent] = useState<SelfState | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -168,8 +170,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setAgent(null);
     writeStoredRefreshToken(null);
+    // Purga la caché de react-query: evita que el siguiente agente que inicie
+    // sesión vea datos privados del anterior (['self'], ['orders'],
+    // ['processes'], ['history'], ['market']…) hasta el refetch.
+    queryClient.clear();
     setStatus("anonymous");
-  }, [clearRefreshTimer]);
+  }, [clearRefreshTimer, queryClient]);
 
   /**
    * Intercambia el refresh token guardado por un par nuevo (rotación).
@@ -228,6 +234,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [performRefresh]);
 
   // Arranque: reconexión silenciosa con el refresh token persistido.
+  // El refresh se encamina por `performRefresh` (single-flight): así un 401
+  // concurrente de cualquier query reusa la MISMA petición y el refresh token
+  // rotatorio se consume una sola vez (evita el clearSession espurio).
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
@@ -237,13 +246,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("anonymous");
         return;
       }
+      const ok = await performRefresh();
+      if (!ok) {
+        // 401/403 ya limpió la sesión en performRefresh; ante fallo transitorio
+        // (red) volvemos a `anonymous` limpio igualmente.
+        clearSession();
+        return;
+      }
       try {
-        const pair = await api.post<TokenPair>(
-          "/auth/refresh",
-          { refresh_token: stored },
-          { auth: false },
-        );
-        applyTokens(pair);
         const snapshot = await api.get<SelfState>("/agents/me");
         setAgent(snapshot);
         setStatus("authenticated");
@@ -251,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearSession();
       }
     })();
-  }, [applyTokens, clearSession]);
+  }, [performRefresh, clearSession]);
 
   // Limpieza del timer al desmontar el provider.
   useEffect(() => {

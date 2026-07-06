@@ -1,14 +1,15 @@
 /**
  * Layout — armazón común de las rutas protegidas:
  * Sidebar (izquierda) + Header (indicador WS, campana, usuario) + contenido.
- * Monta también el host global de toasts (<Toast/>), de modo que cualquier
- * página protegida recibe las notificaciones `ma:toast`.
+ *
+ * El host global de toasts (<Toast/>) se monta UNA sola vez en main.tsx
+ * (cubre también /auth). No lo montamos aquí para no duplicar cada notificación
+ * `ma:toast` (FIX B2: ambos hosts escuchaban el mismo evento global).
  */
 import type { ReactNode } from "react";
 
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
-import { Toast } from "./Toast";
 import styles from "./Layout.module.css";
 
 export interface LayoutProps {
@@ -32,7 +33,6 @@ export function Layout({ children, connected, user }: LayoutProps) {
           {children}
         </main>
       </div>
-      <Toast />
     </div>
   );
 }

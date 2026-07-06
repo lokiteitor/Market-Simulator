@@ -36,6 +36,7 @@ import type {
   SelfState,
   TransformationProcess,
 } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
   CopyId,
@@ -148,17 +149,24 @@ function cx(...names: Array<string | undefined>): string {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   // ---- Datos ---------------------------------------------------------------
+  // Guard `enabled`: no consultar endpoints autenticados hasta que el bootstrap
+  // fije el access token; así evitamos un 401 que dispararía un refresh en
+  // carrera con el del arranque (mismo refresh token rotatorio).
   const selfQuery = useQuery({
     queryKey: ["self"],
     queryFn: ({ signal }) => api.get<SelfState>("/agents/me", { signal }),
+    enabled: authenticated,
   });
 
   const lotsQuery = useQuery({
     queryKey: ["self", "lots"],
     queryFn: ({ signal }) =>
       api.get<InventoryLot[]>("/agents/me/inventory/lots", { signal }),
+    enabled: authenticated,
   });
 
   const productsQuery = useQuery({

@@ -35,9 +35,9 @@ describe("fmtDurationSeconds", () => {
 });
 
 describe("presets de TTL simulado (design doc §4.2)", () => {
-  test("1 min / 1 h / 1 día / 1 semana simulados", () => {
+  test("1 min / 1 h / 6 h / 1 día / 1 semana simulados", () => {
     expect(TTL_PRESETS.map((p) => p.simSeconds)).toEqual([
-      60, 3_600, 86_400, 604_800,
+      60, 3_600, 21_600, 86_400, 604_800,
     ]);
     expect(TTL_PRESETS.map((p) => p.simSeconds)).toContain(
       DEFAULT_TTL_SIM_SECONDS,

@@ -26,6 +26,7 @@ import type {
   Trade,
   TradePage,
 } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
   CopyId,
@@ -67,11 +68,17 @@ function cx(...names: Array<string | undefined>): string {
 
 export default function HistoryPage() {
   const [tab, setTab] = useState<HistoryTab>("trades");
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   // ---- Datos de apoyo ---------------------------------------------------------
+  // Guard `enabled: authenticated`: no consultar endpoints autenticados hasta
+  // que el bootstrap fije el access token; así evitamos un 401 que dispararía
+  // un refresh en carrera con el del arranque (mismo refresh token rotatorio).
   const selfQuery = useQuery({
     queryKey: ["self"],
     queryFn: ({ signal }) => api.get<SelfState>("/agents/me", { signal }),
+    enabled: authenticated,
   });
   const productsQuery = useQuery({
     queryKey: ["catalog", "products"],
@@ -102,7 +109,7 @@ export default function HistoryPage() {
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? null,
-    enabled: tab === "trades",
+    enabled: authenticated && tab === "trades",
   });
 
   const eventsQuery = useInfiniteQuery({
@@ -113,7 +120,7 @@ export default function HistoryPage() {
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? null,
-    enabled: tab === "events",
+    enabled: authenticated && tab === "events",
   });
 
   const trades = useMemo(

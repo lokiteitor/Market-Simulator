@@ -28,6 +28,7 @@ import type {
   TopOfBookSide,
   Trade,
 } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
   CopyId,
@@ -178,6 +179,8 @@ export default function MarketPage() {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const hasProduct = productId !== undefined;
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   // ---- Datos ---------------------------------------------------------------
   const productsQuery = useQuery({
@@ -187,16 +190,21 @@ export default function MarketPage() {
     staleTime: Infinity,
   });
 
+  // Guard `enabled: authenticated`: los endpoints autenticados no se consultan
+  // hasta que el bootstrap fije el access token, evitando un 401 en carrera con
+  // el refresh de arranque (mismo refresh token rotatorio). El catálogo es
+  // público y no necesita guard.
   const selfQuery = useQuery({
     queryKey: ["self"],
     queryFn: ({ signal }) => api.get<SelfState>("/agents/me", { signal }),
+    enabled: authenticated,
   });
 
   const topQuery = useQuery({
     queryKey: ["market", productId ?? "", "top"],
     queryFn: ({ signal }) =>
       api.get<TopOfBook>(`/market/${productId}/top`, { signal }),
-    enabled: hasProduct,
+    enabled: hasProduct && authenticated,
     refetchInterval: 5_000,
   });
 
@@ -215,7 +223,7 @@ export default function MarketPage() {
         { signal },
       );
     },
-    enabled: hasProduct,
+    enabled: hasProduct && authenticated,
     refetchInterval: 15_000,
   });
 

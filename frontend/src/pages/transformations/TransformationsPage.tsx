@@ -26,6 +26,7 @@ import {
 
 import { api, ApiError } from "../../api/client";
 import type {
+  LotConsumption,
   Problem,
   ProcessStatus,
   Product,
@@ -33,7 +34,9 @@ import type {
   SelfState,
   TransformationPage,
   TransformationProcess,
+  TransformationProcessDetail,
 } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
   CopyId,
@@ -46,7 +49,13 @@ import {
   showToast,
   type DataTableColumn,
 } from "../../components";
-import { fmtDateTime, fmtMoney, fmtRelative, truncId } from "../../lib/format";
+import {
+  fmtDateTime,
+  fmtMoney,
+  fmtQty,
+  fmtRelative,
+  truncId,
+} from "../../lib/format";
 import { fmtDurationSeconds, realDurationSimHint } from "../market/simTime";
 import { PROCESS_STATUS_BADGE, PROCESS_STATUS_LABEL } from "./processLabels";
 import { availableSlots } from "./transformMath";
@@ -123,6 +132,8 @@ function cx(...names: Array<string | undefined>): string {
 
 export default function TransformationsPage() {
   const queryClient = useQueryClient();
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   // ---- Filtro de estados (multi-chip; vacío = todos) ---------------------------
   const [selected, setSelected] = useState<ReadonlySet<ProcessStatus>>(
@@ -143,9 +154,13 @@ export default function TransformationsPage() {
   };
 
   // ---- Datos ---------------------------------------------------------------------
+  // Guard `enabled: authenticated`: no consultar endpoints autenticados hasta
+  // que el bootstrap fije el access token; así evitamos un 401 que dispararía
+  // un refresh en carrera con el del arranque (mismo refresh token rotatorio).
   const selfQuery = useQuery({
     queryKey: ["self"],
     queryFn: ({ signal }) => api.get<SelfState>("/agents/me", { signal }),
+    enabled: authenticated,
   });
   const recipesQuery = useQuery({
     queryKey: ["catalog", "recipes"],
@@ -169,6 +184,7 @@ export default function TransformationsPage() {
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? null,
+    enabled: authenticated,
   });
 
   const self = selfQuery.data ?? null;
@@ -191,6 +207,8 @@ export default function TransformationsPage() {
     recipeById.get(recipeId)?.name ?? truncId(recipeId);
   const productName = (productId: string): string =>
     productById.get(productId)?.name ?? truncId(productId);
+  const productUnit = (productId: string): string | undefined =>
+    productById.get(productId)?.unit;
 
   const rows = useMemo(
     () => processesQuery.data?.pages.flatMap((p) => p.items) ?? [],
@@ -204,6 +222,55 @@ export default function TransformationsPage() {
   const [startOpen, setStartOpen] = useState(false);
   const [processToCancel, setProcessToCancel] =
     useState<TransformationProcess | null>(null);
+
+  // ---- Detalle de proceso (trazabilidad FIFO) --------------------------------------
+  const [processToView, setProcessToView] =
+    useState<TransformationProcess | null>(null);
+  const viewId = processToView?.process_id ?? null;
+
+  const processDetailQuery = useQuery({
+    queryKey: ["process", viewId],
+    queryFn: ({ signal }) =>
+      api.get<TransformationProcessDetail>(`/transformations/${viewId}`, {
+        signal,
+      }),
+    enabled: viewId !== null,
+  });
+  const detail = processDetailQuery.data ?? null;
+  const inputsConsumed = detail?.inputs_consumed ?? [];
+  const producedLot = detail?.produced_lot ?? null;
+
+  const inputColumns: Array<DataTableColumn<LotConsumption>> = [
+    {
+      key: "product",
+      header: "Producto",
+      render: (row) => (
+        <span className={styles["cellProduct"]}>
+          {productName(row.product_id)}
+          <CopyId id={row.product_id} />
+        </span>
+      ),
+    },
+    {
+      key: "lot_id",
+      header: "Lote de origen",
+      render: (row) => <CopyId id={row.lot_id} />,
+    },
+    {
+      key: "qty_consumed_cent",
+      header: "Cantidad",
+      align: "right",
+      mono: true,
+      render: (row) => fmtQty(row.qty_consumed_cent, productUnit(row.product_id)),
+    },
+    {
+      key: "unit_cost_cents",
+      header: "Costo unitario",
+      align: "right",
+      mono: true,
+      render: (row) => fmtMoney(row.unit_cost_cents),
+    },
+  ];
 
   const cancelProcess = useMutation({
     mutationFn: (processId: string) =>
@@ -305,18 +372,29 @@ export default function TransformationsPage() {
       key: "actions",
       header: <span className="visually-hidden">Acciones</span>,
       align: "right",
-      render: (row) =>
-        row.status === "running" ? (
+      render: (row) => (
+        <span className={styles["rowActions"]}>
           <button
             type="button"
-            className={cx(styles["btn"], styles["btnDangerGhost"])}
-            onClick={() => openCancel(row)}
-            disabled={bankrupt}
-            aria-label={`Cancelar proceso ${truncId(row.process_id)}`}
+            className={cx(styles["btn"], styles["btnGhost"])}
+            onClick={() => setProcessToView(row)}
+            aria-label={`Ver detalle del proceso ${truncId(row.process_id)}`}
           >
-            Cancelar
+            Detalle
           </button>
-        ) : null,
+          {row.status === "running" && (
+            <button
+              type="button"
+              className={cx(styles["btn"], styles["btnDangerGhost"])}
+              onClick={() => openCancel(row)}
+              disabled={bankrupt}
+              aria-label={`Cancelar proceso ${truncId(row.process_id)}`}
+            >
+              Cancelar
+            </button>
+          )}
+        </span>
+      ),
     },
   ];
 
@@ -550,6 +628,121 @@ export default function TransformationsPage() {
                 {cancelProcess.isPending
                   ? "Cancelando…"
                   : "Cancelar sin reembolso"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: detalle de proceso (trazabilidad FIFO) */}
+      <Modal
+        open={processToView !== null}
+        onClose={() => setProcessToView(null)}
+        title="Detalle del proceso"
+      >
+        {processToView !== null && (
+          <div className={styles["modalBody"]}>
+            <dl className={styles["detailList"]}>
+              <dt>Proceso</dt>
+              <dd>
+                <CopyId id={processToView.process_id} />
+              </dd>
+              <dt>Receta</dt>
+              <dd>{recipeName(processToView.recipe_id)}</dd>
+              <dt>Estado</dt>
+              <dd>
+                <Badge kind={PROCESS_STATUS_BADGE[processToView.status]}>
+                  {PROCESS_STATUS_LABEL[processToView.status]}
+                </Badge>
+              </dd>
+              <dt>Ejecución</dt>
+              <dd className={styles["mono"]}>
+                {processToView.current_execution}/
+                {processToView.executions_planned}
+              </dd>
+              <dt>Salario pagado</dt>
+              <dd className={styles["mono"]}>
+                {fmtMoney(processToView.wage_paid_cents)}
+              </dd>
+            </dl>
+
+            {processDetailQuery.isError ? (
+              <>
+                <ErrorBanner problem={toProblem(processDetailQuery.error)} />
+                <div>
+                  <button
+                    type="button"
+                    className={cx(styles["btn"], styles["btnSecondary"])}
+                    onClick={() => void processDetailQuery.refetch()}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Insumos consumidos (FIFO) */}
+                <section className={styles["detailSection"]}>
+                  <h3 className={styles["detailLabel"]}>
+                    Insumos consumidos (FIFO)
+                  </h3>
+                  <DataTable
+                    columns={inputColumns}
+                    rows={inputsConsumed}
+                    loading={processDetailQuery.isPending}
+                    rowKey={(row) => row.lot_id}
+                    caption="Lotes de insumos consumidos por el proceso, con cantidad y costo unitario al momento del consumo"
+                    empty={
+                      <EmptyState
+                        title="Sin insumos registrados"
+                        hint="Este proceso no consumió lotes de insumos o el detalle aún no está disponible."
+                      />
+                    }
+                  />
+                </section>
+
+                {/* Lote producido */}
+                <section className={styles["detailSection"]}>
+                  <h3 className={styles["detailLabel"]}>Lote producido</h3>
+                  {processDetailQuery.isPending ? (
+                    <Skeleton rows={2} />
+                  ) : producedLot !== null ? (
+                    <dl className={styles["detailList"]}>
+                      <dt>Lote</dt>
+                      <dd>
+                        <CopyId id={producedLot.lot_id} />
+                      </dd>
+                      <dt>Producto</dt>
+                      <dd>{productName(producedLot.product_id)}</dd>
+                      <dt>Cantidad producida</dt>
+                      <dd className={styles["mono"]}>
+                        {fmtQty(
+                          producedLot.qty_original_cent,
+                          productUnit(producedLot.product_id),
+                        )}
+                      </dd>
+                      <dt>Costo unitario</dt>
+                      <dd className={styles["mono"]}>
+                        {fmtMoney(producedLot.unit_cost_cents)}
+                      </dd>
+                    </dl>
+                  ) : (
+                    <EmptyState
+                      title="Aún sin lote producido"
+                      hint="El lote se materializa cuando el proceso completa; mientras está en curso no hay producción."
+                    />
+                  )}
+                </section>
+              </>
+            )}
+
+            <div className={styles["modalActions"]}>
+              <button
+                type="button"
+                className={cx(styles["btn"], styles["btnSecondary"])}
+                onClick={() => setProcessToView(null)}
+              >
+                Cerrar
               </button>
             </div>
           </div>

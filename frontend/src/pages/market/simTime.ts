@@ -55,10 +55,11 @@ export interface TtlPreset {
   label: string;
 }
 
-/** Presets del design doc: 1 min / 1 h / 1 día / 1 semana SIMULADOS. */
+/** Presets del design doc: 1 min / 1 h / 6 h / 1 día / 1 semana SIMULADOS. */
 export const TTL_PRESETS: readonly TtlPreset[] = [
   { simSeconds: 60, label: "1 min" },
   { simSeconds: 3_600, label: "1 h" },
+  { simSeconds: 21_600, label: "6 h" },
   { simSeconds: 86_400, label: "1 día" },
   { simSeconds: 604_800, label: "1 semana" },
 ];

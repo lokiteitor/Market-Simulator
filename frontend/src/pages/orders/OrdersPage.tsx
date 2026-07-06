@@ -32,6 +32,7 @@ import type {
   Product,
   SelfState,
 } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
   CopyId,
@@ -102,6 +103,8 @@ function cx(...names: Array<string | undefined>): string {
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
+  const { status } = useAuth();
+  const authenticated = status === "authenticated";
 
   // ---- Filtro de estados (multi-chip; vacío = todas) -------------------------
   const [selected, setSelected] = useState<ReadonlySet<OrderStatus>>(
@@ -125,6 +128,9 @@ export default function OrdersPage() {
   };
 
   // ---- Datos -------------------------------------------------------------------
+  // Guard `enabled: authenticated`: no consultar endpoints autenticados hasta
+  // que el bootstrap fije el access token; así evitamos un 401 que dispararía
+  // un refresh en carrera con el del arranque (mismo refresh token rotatorio).
   const ordersQuery = useInfiniteQuery({
     queryKey: ["orders", "list", effectiveStatuses],
     queryFn: ({ pageParam, signal }) =>
@@ -134,6 +140,7 @@ export default function OrdersPage() {
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? null,
+    enabled: authenticated,
   });
 
   const productsQuery = useQuery({
@@ -146,6 +153,7 @@ export default function OrdersPage() {
   const selfQuery = useQuery({
     queryKey: ["self"],
     queryFn: ({ signal }) => api.get<SelfState>("/agents/me", { signal }),
+    enabled: authenticated,
   });
 
   const bankrupt = selfQuery.data?.agent.status === "bankrupt";
