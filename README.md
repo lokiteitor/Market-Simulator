@@ -98,5 +98,15 @@ endurecerse antes de exponerla fuera de un entorno de laboratorio:
 
 ## Estado
 
-**Implementación en curso.** Fundación (tooling, capa de datos, libs compartidas, infra) completa;
-los módulos de dominio del backend y el frontend se están implementando por fases.
+**Backend funcional y verificado.** Fundación, módulos de dominio, worker, seed e infra completos;
+`tsc` estricto limpio, 188 tests unitarios en verde y suite E2E contra el stack Docker (APISIX →
+Core → Postgres/Redis) pasando. El backend pasó una revisión adversarial multi-agente cuyos hallazgos
+confirmados están corregidos (idempotencia atómica de `client_order_id`, retry ante deadlock 40P01,
+materialización lazy antes de cancelar/listar procesos, guard de nocional sub-centavo, etc.).
+
+**Frontend completo.** SPA React con las 8 pantallas de [`docs/system_design.md`](docs/system_design.md),
+cliente API con refresh automático y WebSocket con reconexión; `tsc` limpio, build de producción e
+imagen nginx (servicio `frontend` en el compose, puerto 8080).
+
+Ver la sección anterior de *Hardening pendiente para producción* para los puntos deliberadamente no
+endurecidos por tratarse de una simulación local.
