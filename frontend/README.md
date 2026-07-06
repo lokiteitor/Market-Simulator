@@ -46,16 +46,19 @@ bun run preview     # sirve dist/ localmente
 (SPA fallback a `index.html`, gzip y cache inmutable de `/assets/`).
 
 El servicio `frontend` está declarado en [`infra/docker-compose.yml`](../infra/docker-compose.yml)
-(context `../frontend`, puerto `8080:80`, `depends_on: apisix`, red `market`):
+(context `../frontend`, puerto `${FRONTEND_PORT:-8090}:80`, `depends_on: apisix`, red `market`):
 
 ```sh
 cd ../infra
 docker compose up -d --build frontend
+# ¿8090 ocupado? usa otro puerto de host:
+FRONTEND_PORT=8091 docker compose up -d frontend
 ```
 
-La app queda en **http://localhost:8080** (la API sigue siendo `http://localhost:9080/v1`
-desde el navegador, vía APISIX). Si la API se expone en otra URL, reconstruir con
-`docker compose build --build-arg VITE_API_BASE_URL=<url> frontend` o pasar `args` en el compose.
+La app queda en **http://localhost:8090** (la API sigue siendo `http://localhost:9080/v1`
+desde el navegador, vía APISIX). El puerto de host es configurable con `FRONTEND_PORT` (default 8090,
+elegido para no chocar con el 8080, habitualmente ocupado). Si la API se expone en otra URL,
+reconstruir con `docker compose build --build-arg VITE_API_BASE_URL=<url> frontend`.
 
 ## Credenciales de agentes seed (para probar login)
 

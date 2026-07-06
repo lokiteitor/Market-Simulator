@@ -106,7 +106,8 @@ materialización lazy antes de cancelar/listar procesos, guard de nocional sub-c
 
 **Frontend completo.** SPA React con las 8 pantallas de [`docs/system_design.md`](docs/system_design.md),
 cliente API con refresh automático y WebSocket con reconexión; `tsc` limpio, build de producción e
-imagen nginx (servicio `frontend` en el compose, puerto 8080).
+imagen nginx (servicio `frontend` en el compose, puerto 8090 por defecto,
+configurable con `FRONTEND_PORT`).
 
 Ver la sección anterior de *Hardening pendiente para producción* para los puntos deliberadamente no
 endurecidos por tratarse de una simulación local.

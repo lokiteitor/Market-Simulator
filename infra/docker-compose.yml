@@ -5,7 +5,7 @@
 #   docker compose up -d --build          # levanta todo el stack
 #   docker compose --profile seed run --rm seed   # siembra el catálogo (one-shot)
 #
-# Red interna: SOLO apisix (9080), frontend (8080), prometheus (9090) y
+# Red interna: SOLO apisix (9080), frontend (8090 por defecto), prometheus (9090) y
 # grafana (3000) publican puertos al host. core/worker/postgres/redis son
 # internos.
 # =============================================================================
@@ -128,8 +128,10 @@ services:
   frontend:
     build:
       context: ../frontend
+    # Puerto de host configurable (FRONTEND_PORT); default 8090 para no chocar
+    # con el 8080, muy habitualmente ocupado por otros servicios locales.
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8090}:80"
     depends_on:
       - apisix
     restart: unless-stopped
