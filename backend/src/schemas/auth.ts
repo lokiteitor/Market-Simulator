@@ -111,6 +111,7 @@ export const RegisterAgentSnapshotSchema = z.object({
   active_orders: z.array(z.unknown()),
   running_processes: z.array(z.unknown()),
   capacities: z.array(CapacityStatusSchema),
+  recent_events: z.array(z.unknown()),
 });
 
 /** openapi RegisterAgentResponse = TokenPair ∪ { agent: AgentSnapshot }. */

@@ -54,6 +54,7 @@ function toRegisterResponseJson(r: RegisterResult): RegisterAgentResponseJson {
         running: 0,
         available_slots: c.installations,
       })),
+      recent_events: [],
     },
   };
 }

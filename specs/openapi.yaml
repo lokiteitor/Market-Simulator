@@ -1130,7 +1130,7 @@ components:
 
     AgentPublic:
       type: object
-      required: [agent_id, username, role, status, registered_at]
+      required: [agent_id, username, role, status, registered_at, bankrupt_at]
       properties:
         agent_id: { type: string, format: uuid }
         username: { type: string }
@@ -1157,6 +1157,7 @@ components:
         - active_orders
         - running_processes
         - capacities
+        - recent_events
       properties:
         agent: { $ref: '#/components/schemas/AgentPublic' }
         capital_available_cents:
@@ -1193,7 +1194,7 @@ components:
 
     CapacityStatus:
       type: object
-      required: [recipe_id, installations, running]
+      required: [recipe_id, installations, running, available_slots]
       properties:
         recipe_id: { type: string, format: uuid }
         installations:
@@ -1240,6 +1241,8 @@ components:
         - qty_reserved_cent
         - unit_cost_cents
         - acquired_at
+        - source_trade_id
+        - source_process_id
       properties:
         lot_id: { type: string, format: uuid }
         product_id: { type: string, format: uuid }
@@ -1317,6 +1320,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Order'
         - type: object
+          required: [trades_generated]
           properties:
             trades_generated:
               type: array
@@ -1361,7 +1365,7 @@ components:
 
     OrderPage:
       type: object
-      required: [items]
+      required: [items, next_cursor]
       properties:
         items:
           type: array
@@ -1413,7 +1417,7 @@ components:
 
     TradePage:
       type: object
-      required: [items]
+      required: [items, next_cursor]
       properties:
         items:
           type: array
@@ -1424,7 +1428,7 @@ components:
 
     TopOfBook:
       type: object
-      required: [product_id, observed_at]
+      required: [product_id, observed_at, best_bid, best_ask]
       properties:
         product_id: { type: string, format: uuid }
         observed_at: { type: string, format: date-time }
@@ -1482,6 +1486,7 @@ components:
         - wage_paid_cents
         - started_at
         - expected_end_at
+        - actual_end_at
       properties:
         process_id: { type: string, format: uuid }
         agent_id: { type: string, format: uuid }
@@ -1508,6 +1513,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/TransformationProcess'
         - type: object
+          required: [inputs_consumed, produced_lot]
           properties:
             inputs_consumed:
               type: array
@@ -1538,7 +1544,7 @@ components:
 
     TransformationPage:
       type: object
-      required: [items]
+      required: [items, next_cursor]
       properties:
         items:
           type: array
@@ -1565,7 +1571,7 @@ components:
 
     Event:
       type: object
-      required: [event_id, event_type, occurred_at, payload]
+      required: [event_id, event_type, agent_id, occurred_at, payload]
       properties:
         event_id: { type: string, format: uuid }
         event_type: { $ref: '#/components/schemas/EventType' }
@@ -1584,7 +1590,7 @@ components:
 
     EventPage:
       type: object
-      required: [items]
+      required: [items, next_cursor]
       properties:
         items:
           type: array
