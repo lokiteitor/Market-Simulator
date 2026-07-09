@@ -1,0 +1,317 @@
+package models
+
+import "time"
+
+type AgentRole string
+
+const (
+	RolePrimaryProducer AgentRole = "primary_producer"
+	RoleTransformer     AgentRole = "transformer"
+	RoleConsumer        AgentRole = "consumer"
+	RoleTrader          AgentRole = "trader"
+)
+
+type AgentStatus string
+
+const (
+	StatusActive   AgentStatus = "active"
+	StatusBankrupt AgentStatus = "bankrupt"
+)
+
+type AgentPublic struct {
+	AgentID      string      `json:"agent_id"`
+	Username     string      `json:"username"`
+	Role         AgentRole   `json:"role"`
+	Status       AgentStatus `json:"status"`
+	RegisteredAt time.Time   `json:"registered_at"`
+	BankruptAt   *time.Time  `json:"bankrupt_at,omitempty"`
+}
+
+type ProductCategory string
+
+const (
+	CategoryRawPrimary        ProductCategory = "raw_primary"
+	CategoryIntermediate      ProductCategory = "intermediate"
+	CategoryFinalConsumption  ProductCategory = "final_consumption"
+)
+
+type Product struct {
+	ProductID string          `json:"product_id"`
+	Name      string          `json:"name"`
+	Unit      string          `json:"unit"`
+	Category  ProductCategory `json:"category"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+type RecipeInput struct {
+	ProductID       string `json:"product_id"`
+	QtyRequiredCent int64  `json:"qty_required_cent"`
+}
+
+type Recipe struct {
+	RecipeID             string        `json:"recipe_id"`
+	Name                 string        `json:"name"`
+	OutputProductID      string        `json:"output_product_id"`
+	OutputQtyCent        int64         `json:"output_qty_cent"`
+	DurationSeconds      int64         `json:"duration_seconds"`
+	WageRateCentsPerSec  int64         `json:"wage_rate_cents_per_sec"`
+	Inputs               []RecipeInput `json:"inputs"`
+	CreatedAt            time.Time     `json:"created_at"`
+}
+
+type CapacityStatus struct {
+	RecipeID      string `json:"recipe_id"`
+	Installations int    `json:"installations"`
+	Running       int    `json:"running"`
+	AvailableSlots int   `json:"available_slots"`
+}
+
+type InventoryPosition struct {
+	ProductID        string `json:"product_id"`
+	QtyAvailableCent int64  `json:"qty_available_cent"`
+	QtyReservedCent  int64  `json:"qty_reserved_cent"`
+}
+
+type InventoryLotOrigin string
+
+const (
+	OriginInitial    InventoryLotOrigin = "initial"
+	OriginProduction InventoryLotOrigin = "production"
+	OriginPurchase   InventoryLotOrigin = "purchase"
+)
+
+type InventoryLot struct {
+	LotID            string             `json:"lot_id"`
+	ProductID        string             `json:"product_id"`
+	Origin           InventoryLotOrigin `json:"origin"`
+	QtyOriginalCent  int64              `json:"qty_original_cent"`
+	QtyAvailableCent int64              `json:"qty_available_cent"`
+	QtyReservedCent  int64              `json:"qty_reserved_cent"`
+	UnitCostCents    int64              `json:"unit_cost_cents"`
+	AcquiredAt       time.Time          `json:"acquired_at"`
+	SourceTradeID    *string            `json:"source_trade_id,omitempty"`
+	SourceProcessID  *string            `json:"source_process_id,omitempty"`
+}
+
+type OrderSide string
+
+const (
+	SideBuy  OrderSide = "buy"
+	SideSell OrderSide = "sell"
+)
+
+type OrderStatus string
+
+const (
+	OrderStatusActive    OrderStatus = "active"
+	OrderStatusPartial   OrderStatus = "partial"
+	OrderStatusCompleted OrderStatus = "completed"
+	OrderStatusCancelled OrderStatus = "cancelled"
+	OrderStatusExpired   OrderStatus = "expired"
+)
+
+type Order struct {
+	OrderID          string      `json:"order_id"`
+	AgentID          string      `json:"agent_id"`
+	ProductID        string      `json:"product_id"`
+	Side             OrderSide   `json:"side"`
+	QtyOriginalCent  int64       `json:"qty_original_cent"`
+	QtyPendingCent   int64       `json:"qty_pending_cent"`
+	LimitPriceCents  int64       `json:"limit_price_cents"`
+	Status           OrderStatus `json:"status"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	ExpiresAt        time.Time   `json:"expires_at"`
+}
+
+type OrderPage struct {
+	Items      []Order `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+type Trade struct {
+	TradeID         string    `json:"trade_id"`
+	BuyOrderID      string    `json:"buy_order_id"`
+	SellOrderID     string    `json:"sell_order_id"`
+	BuyerAgentID    string    `json:"buyer_agent_id"`
+	SellerAgentID   string    `json:"seller_agent_id"`
+	ProductID       string    `json:"product_id"`
+	QtyExecutedCent int64     `json:"qty_executed_cent"`
+	PriceCents      int64     `json:"price_cents"`
+	FeeBuyerCents   int64     `json:"fee_buyer_cents"`
+	FeeSellerCents  int64     `json:"fee_seller_cents"`
+	ExecutedAt      time.Time `json:"executed_at"`
+}
+
+type TradePage struct {
+	Items      []Trade `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+type TopOfBookSide struct {
+	OrderID        string `json:"order_id"`
+	AgentID        string `json:"agent_id"`
+	PriceCents     int64  `json:"price_cents"`
+	QtyPendingCent int64  `json:"qty_pending_cent"`
+}
+
+type TopOfBook struct {
+	ProductID  string         `json:"product_id"`
+	ObservedAt time.Time      `json:"observed_at"`
+	BestBid    *TopOfBookSide `json:"best_bid"`
+	BestAsk    *TopOfBookSide `json:"best_ask"`
+}
+
+type ProcessStatus string
+
+const (
+	ProcessRunning   ProcessStatus = "running"
+	ProcessCompleted ProcessStatus = "completed"
+	ProcessCancelled ProcessStatus = "cancelled"
+)
+
+type TransformationProcess struct {
+	ProcessID         string        `json:"process_id"`
+	AgentID           string        `json:"agent_id"`
+	RecipeID          string        `json:"recipe_id"`
+	ExecutionsPlanned int           `json:"executions_planned"`
+	CurrentExecution  int           `json:"current_execution"`
+	Status            ProcessStatus `json:"status"`
+	WagePaidCents     int64         `json:"wage_paid_cents"`
+	StartedAt         time.Time     `json:"started_at"`
+	ExpectedEndAt     time.Time     `json:"expected_end_at"`
+	ActualEndAt       *time.Time    `json:"actual_end_at,omitempty"`
+}
+
+type LotConsumption struct {
+	LotID           string `json:"lot_id"`
+	ProductID       string `json:"product_id"`
+	QtyConsumedCent int64  `json:"qty_consumed_cent"`
+	UnitCostCents   int64  `json:"unit_cost_cents"`
+}
+
+type TransformationProcessDetail struct {
+	TransformationProcess
+	InputsConsumed []LotConsumption `json:"inputs_consumed"`
+	ProducedLot    *InventoryLot    `json:"produced_lot,omitempty"`
+}
+
+type TransformationPage struct {
+	Items      []TransformationProcess `json:"items"`
+	NextCursor *string                 `json:"next_cursor"`
+}
+
+type EventType string
+
+const (
+	EventAgentRegistered      EventType = "agent_registered"
+	EventAgentBankrupt        EventType = "agent_bankrupt"
+	EventOrderPlaced          EventType = "order_placed"
+	EventOrderCancelled       EventType = "order_cancelled"
+	EventOrderExpired         EventType = "order_expired"
+	EventTradeExecuted        EventType = "trade_executed"
+	EventProcessStarted       EventType = "process_started"
+	EventProcessCompleted     EventType = "process_completed"
+	EventProcessCancelled     EventType = "process_cancelled"
+	EventSnapshotTaken        EventType = "snapshot_taken"
+
+	// Websocket-specific events
+	EventOrderExecuted        EventType = "order_executed"
+	EventTransformationCompleted EventType = "transformation_completed"
+	EventBankruptcyNotice     EventType = "bankruptcy_notice"
+	EventAgentJoined          EventType = "agent_joined"
+)
+
+type Event struct {
+	EventID   string                 `json:"event_id"`
+	EventType EventType              `json:"event_type"`
+	AgentID   *string                `json:"agent_id"`
+	OccurredAt time.Time              `json:"occurred_at"`
+	Payload   map[string]interface{} `json:"payload"`
+}
+
+type EventPage struct {
+	Items      []Event `json:"items"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+type AgentSnapshot struct {
+	Agent                 AgentPublic             `json:"agent"`
+	CapitalAvailableCents int64                   `json:"capital_available_cents"`
+	CapitalReservedCents  int64                   `json:"capital_reserved_cents"`
+	Inventory             []InventoryPosition    `json:"inventory"`
+	ActiveOrders          []Order                 `json:"active_orders"`
+	RunningProcesses      []TransformationProcess `json:"running_processes"`
+	Capacities            []CapacityStatus        `json:"capacities"`
+	RecentEvents          []Event                 `json:"recent_events"`
+}
+
+// Request and Response helper structures
+
+type RequestedCapacity struct {
+	RecipeID      string `json:"recipe_id"`
+	Installations int    `json:"installations"`
+}
+
+type RegisterAgentRequest struct {
+	Username            string              `json:"username"`
+	Password            string              `json:"password"`
+	Role                AgentRole           `json:"role"`
+	RequestedCapacities []RequestedCapacity `json:"requested_capacities,omitempty"`
+}
+
+type RegisterAgentResponse struct {
+	TokenPair
+	Agent AgentSnapshot `json:"agent"`
+}
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type TokenPair struct {
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"refresh_token"`
+	TokenType        string    `json:"token_type"`
+	AccessExpiresAt  time.Time `json:"access_expires_at"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+}
+
+type PlaceOrderRequest struct {
+	ProductID       string    `json:"product_id"`
+	Side            OrderSide `json:"side"`
+	QtyCent         int64     `json:"qty_cent"`
+	LimitPriceCents int64     `json:"limit_price_cents"`
+	TTLSeconds      int64     `json:"ttl_seconds"`
+	ClientOrderID   string    `json:"client_order_id,omitempty"`
+}
+
+type PlaceOrderResponse struct {
+	Order
+	TradesGenerated []Trade `json:"trades_generated"`
+}
+
+type StartTransformationRequest struct {
+	RecipeID          string `json:"recipe_id"`
+	ExecutionsPlanned int    `json:"executions_planned"`
+}
+
+type ErrorDetail struct {
+	Code    string  `json:"code"`
+	Field   *string `json:"field,omitempty"`
+	Message string  `json:"message"`
+}
+
+type Problem struct {
+	Type     string        `json:"type"`
+	Title    string        `json:"title"`
+	Status   int           `json:"status"`
+	Detail   string        `json:"detail,omitempty"`
+	Instance string        `json:"instance,omitempty"`
+	Errors   []ErrorDetail `json:"errors,omitempty"`
+}

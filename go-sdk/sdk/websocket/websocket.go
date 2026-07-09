@@ -1,0 +1,260 @@
+package websocket
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/lokiteitor/market-simulator/sdk/events"
+	"github.com/lokiteitor/market-simulator/sdk/util"
+)
+
+type TokenProvider interface {
+	GetAccessToken(ctx context.Context) (string, error)
+}
+
+type wsEnvelope struct {
+	Type       string          `json:"type"`
+	OccurredAt time.Time       `json:"occurred_at"`
+	Payload    json.RawMessage `json:"payload"`
+}
+
+type Client struct {
+	sync.Mutex
+	wsURL         string
+	tokenProvider TokenProvider
+	logger        *slog.Logger
+	conn          *websocket.Conn
+	eventChan     chan events.Event
+	ctx           context.Context
+	cancel        context.CancelFunc
+	running       bool
+	backoff       *util.Backoff
+}
+
+func NewClient(wsURL string, tokenProvider TokenProvider, logger *slog.Logger) *Client {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	// Convert HTTP/S to WS/S if necessary
+	if strings.HasPrefix(wsURL, "https://") {
+		wsURL = "wss://" + strings.TrimPrefix(wsURL, "https://")
+	} else if strings.HasPrefix(wsURL, "http://") {
+		wsURL = "ws://" + strings.TrimPrefix(wsURL, "http://")
+	}
+	return &Client{
+		wsURL:         wsURL,
+		tokenProvider: tokenProvider,
+		logger:        logger.With("system", "websocket"),
+		eventChan:     make(chan events.Event, 100),
+		backoff:       util.NewBackoff(1*time.Second, 30*time.Second, 2.0),
+	}
+}
+
+func (c *Client) Events() <-chan events.Event {
+	return c.eventChan
+}
+
+func (c *Client) Start(ctx context.Context) error {
+	c.Lock()
+	if c.running {
+		c.Unlock()
+		return errors.New("websocket client is already running")
+	}
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.running = true
+	c.Unlock()
+
+	go c.connectionLoop()
+	return nil
+}
+
+func (c *Client) Stop() {
+	c.Lock()
+	if !c.running {
+		c.Unlock()
+		return
+	}
+	c.running = false
+	if c.cancel != nil {
+		c.cancel()
+	}
+	if c.conn != nil {
+		c.conn.Close()
+	}
+	c.Unlock()
+}
+
+func (c *Client) connectionLoop() {
+	attempt := 0
+	for {
+		c.Lock()
+		running := c.running
+		c.Unlock()
+
+		if !running || c.ctx.Err() != nil {
+			c.logger.Info("websocket connection loop exiting")
+			return
+		}
+
+		// Get access token for this connection attempt
+		token, err := c.tokenProvider.GetAccessToken(c.ctx)
+		if err != nil {
+			c.logger.Error("websocket failed to get access token for connection", "error", err)
+			// Wait and retry
+			attempt++
+			if err := c.backoff.Sleep(c.ctx, attempt); err != nil {
+				return
+			}
+			continue
+		}
+
+		// Construct URL with ?access_token=...
+		u, err := url.Parse(c.wsURL)
+		if err != nil {
+			c.logger.Error("websocket invalid URL configuration", "url", c.wsURL, "error", err)
+			return
+		}
+		q := u.Query()
+		q.Set("access_token", token)
+		u.RawQuery = q.Encode()
+
+		c.logger.Info("connecting to websocket", "url", c.wsURL)
+		dialer := websocket.DefaultDialer
+		dialer.HandshakeTimeout = 10 * time.Second
+
+		conn, _, err := dialer.DialContext(c.ctx, u.String(), nil)
+		if err != nil {
+			c.logger.Error("websocket dial failed", "error", err)
+			attempt++
+			if err := c.backoff.Sleep(c.ctx, attempt); err != nil {
+				return
+			}
+			continue
+		}
+
+		c.Lock()
+		c.conn = conn
+		c.Unlock()
+
+		attempt = 0 // reset backoff on successful connection
+		c.logger.Info("websocket connected successfully")
+
+		// Dispatch connected event to channel
+		select {
+		case c.eventChan <- events.WSConnected{ConnectedAt: time.Now()}:
+		default:
+		}
+
+		// Run the read loop
+		c.readLoop(conn)
+
+		c.Lock()
+		if c.conn == conn {
+			c.conn = nil
+		}
+		c.Unlock()
+	}
+}
+
+func (c *Client) readLoop(conn *websocket.Conn) {
+	// Set read deadline and handle heartbeats
+	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(appData string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			c.logger.Error("websocket read error", "error", err)
+			break
+		}
+
+		event, err := c.parseWSEvent(message)
+		if err != nil {
+			c.logger.Warn("failed to parse websocket message", "error", err, "message", string(message))
+			continue
+		}
+
+		select {
+		case c.eventChan <- event:
+		case <-c.ctx.Done():
+			return
+		default:
+			c.logger.Warn("websocket event channel full, dropping event")
+		}
+	}
+}
+
+func (c *Client) parseWSEvent(msg []byte) (events.Event, error) {
+	var env wsEnvelope
+	if err := json.Unmarshal(msg, &env); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ws envelope: %w", err)
+	}
+
+	var ev events.Event
+	switch env.Type {
+	case "order_executed":
+		var p events.OrderExecuted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.ExecutedAt = env.OccurredAt
+		ev = p
+	case "order_expired":
+		var p events.OrderExpired
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.ExpiredAt = env.OccurredAt
+		ev = p
+	case "order_cancelled":
+		var p events.OrderCancelled
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.CancelledAt = env.OccurredAt
+		ev = p
+	case "transformation_completed":
+		var p events.TransformationCompleted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.CompletedAt = env.OccurredAt
+		ev = p
+	case "bankruptcy_notice":
+		var p events.BankruptcyNotice
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.BankruptAt = env.OccurredAt
+		ev = p
+	case "agent_joined":
+		var p events.AgentJoined
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.JoinedAt = env.OccurredAt
+		ev = p
+	case "agent_bankrupt":
+		var p events.AgentBankrupt
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.BankruptAt = env.OccurredAt
+		ev = p
+	default:
+		return nil, fmt.Errorf("unknown event type: %s", env.Type)
+	}
+
+	return ev, nil
+}
