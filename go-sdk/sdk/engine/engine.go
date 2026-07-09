@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lokiteitor/market-simulator/sdk/actions"
@@ -40,7 +41,18 @@ type Engine struct {
 	cancel  context.CancelFunc
 	running bool
 	wg      sync.WaitGroup
+	
+	stratCtx   *strategy.Context
+	sleepUntil time.Time
 }
+
+var sharedTransport = &http.Transport{
+	MaxIdleConns:        10000,
+	MaxIdleConnsPerHost: 10000,
+	IdleConnTimeout:     90 * time.Second,
+}
+
+var seedCounter uint64
 
 func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Provider, clock strategy.Clock) *Engine {
 	if metricsProvider == nil {
@@ -59,7 +71,10 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 		cfg.Bot.PersistPath,
 	)
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: sharedTransport,
+	}
 	restClient := client.NewClient(cfg.Server.BaseURL, httpClient, authMgr)
 
 	authMgr.SetRefresher(func(ctx context.Context, refreshToken string) (*models.TokenPair, error) {
@@ -69,8 +84,10 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 	wsClient := websocket.NewClient(cfg.Server.WSURL, authMgr, logger)
 	stateMgr := state.NewStateManager()
 	sched := scheduler.NewScheduler()
+	
+	seed := uint64(time.Now().UnixNano()) + atomic.AddUint64(&seedCounter, 1)
 
-	return &Engine{
+	e := &Engine{
 		config:    cfg,
 		logger:    logger.With("system", "engine"),
 		metrics:   metricsProvider,
@@ -82,6 +99,16 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 		scheduler: sched,
 		strategy:  strat,
 	}
+	
+	e.stratCtx = &strategy.Context{
+		State:  stateMgr,
+		Logger: e.logger.With("system", "strategy"),
+		Rand:   rand.New(rand.NewPCG(seed, 0)),
+		Clock:  clock,
+		Config: cfg.Strategy,
+	}
+	
+	return e
 }
 
 func (e *Engine) Start(ctx context.Context) error {
@@ -172,6 +199,12 @@ func (e *Engine) Start(ctx context.Context) error {
 		interval = 5 * time.Second
 	}
 	e.scheduler.SchedulePeriodic(interval, func(ctx context.Context) {
+		e.Lock()
+		sleeping := e.clock.Now().Before(e.sleepUntil)
+		e.Unlock()
+		if sleeping {
+			return
+		}
 		e.logger.Debug("triggering periodic strategy tick")
 		actionsList := e.strategy.Tick(e.newStrategyContext())
 		e.executeActions(ctx, actionsList)
@@ -212,24 +245,33 @@ func (e *Engine) eventDispatcher() {
 			// Check if it's connection reestablished
 			if connEv, ok := ev.(events.WSConnected); ok {
 				e.logger.Info("websocket connected/reconnected", "at", connEv.ConnectedAt)
-				// Fetch snapshot and rebuild state
-				snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
-				if err != nil {
-					e.logger.Error("failed to reload snapshot on websocket reconnect", "error", err)
-				} else {
-					e.state.Rebuild(snap)
-					e.logger.Info("local state synchronized with server snapshot")
-				}
+				// Fetch snapshot asynchronusly with jitter
+				go func() {
+					jitter := time.Duration(e.stratCtx.Rand.IntN(5000)) * time.Millisecond
+					time.Sleep(jitter)
+					snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
+					if err != nil {
+						e.logger.Error("failed to reload snapshot on websocket reconnect", "error", err)
+					} else {
+						e.state.Rebuild(snap)
+						e.logger.Info("local state synchronized with server snapshot")
+					}
+				}()
 				continue
 			}
 
 			// Apply to StateManager cache
 			e.state.ApplyEvent(ev)
-
-			// Dispatch to Strategy
-			stratCtx := e.newStrategyContext()
-			actionsList := e.strategy.HandleEvent(stratCtx, ev)
-			e.executeActions(e.ctx, actionsList)
+			
+			e.Lock()
+			sleeping := e.clock.Now().Before(e.sleepUntil)
+			e.Unlock()
+			
+			if !sleeping {
+				stratCtx := e.newStrategyContext()
+				actionsList := e.strategy.HandleEvent(stratCtx, ev)
+				e.executeActions(e.ctx, actionsList)
+			}
 
 		case <-e.ctx.Done():
 			return
@@ -283,11 +325,9 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 			}
 		case actions.Sleep:
 			e.logger.Info("strategy requested sleep", "duration_seconds", act.DurationSeconds)
-			select {
-			case <-time.After(time.Duration(act.DurationSeconds) * time.Second):
-			case <-ctx.Done():
-				return
-			}
+			e.Lock()
+			e.sleepUntil = e.clock.Now().Add(time.Duration(act.DurationSeconds) * time.Second)
+			e.Unlock()
 		default:
 			e.logger.Warn("unknown action type", "type", action.Type())
 		}
@@ -299,11 +339,5 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 }
 
 func (e *Engine) newStrategyContext() *strategy.Context {
-	return &strategy.Context{
-		State:  e.state,
-		Logger: e.logger.With("system", "strategy"),
-		Rand:   rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0)),
-		Clock:  e.clock,
-		Config: e.config.Strategy,
-	}
+	return e.stratCtx
 }

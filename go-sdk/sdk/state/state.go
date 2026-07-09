@@ -26,6 +26,22 @@ type StateManager struct {
 	products         map[string]models.Product
 	recipes          map[string]models.Recipe
 	publicAgents     map[string]models.AgentPublic
+
+	cachedInventory        []models.InventoryPosition
+	cachedActiveOrders     []models.Order
+	cachedRunningProcesses []models.TransformationProcess
+	cachedCapacities       []models.CapacityStatus
+	cachedProducts         []models.Product
+	cachedRecipes          []models.Recipe
+	cachedPublicAgents     []models.AgentPublic
+
+	inventoryDirty        bool
+	activeOrdersDirty     bool
+	runningProcessesDirty bool
+	capacitiesDirty       bool
+	productsDirty         bool
+	recipesDirty          bool
+	publicAgentsDirty     bool
 }
 
 func NewStateManager() *StateManager {
@@ -37,6 +53,13 @@ func NewStateManager() *StateManager {
 		products:         make(map[string]models.Product),
 		recipes:          make(map[string]models.Recipe),
 		publicAgents:     make(map[string]models.AgentPublic),
+		inventoryDirty:        true,
+		activeOrdersDirty:     true,
+		runningProcessesDirty: true,
+		capacitiesDirty:       true,
+		productsDirty:         true,
+		recipesDirty:          true,
+		publicAgentsDirty:     true,
 	}
 }
 
@@ -74,6 +97,10 @@ func (s *StateManager) Rebuild(snap *models.AgentSnapshot) {
 	for _, capStatus := range snap.Capacities {
 		s.capacities[capStatus.RecipeID] = capStatus
 	}
+	s.inventoryDirty = true
+	s.activeOrdersDirty = true
+	s.runningProcessesDirty = true
+	s.capacitiesDirty = true
 }
 
 // SetCatalog sets the static catalog data.
@@ -90,6 +117,8 @@ func (s *StateManager) SetCatalog(products []models.Product, recipes []models.Re
 	for _, r := range recipes {
 		s.recipes[r.RecipeID] = r
 	}
+	s.productsDirty = true
+	s.recipesDirty = true
 }
 
 // AddOrder manually registers a new order in the local state.
@@ -97,6 +126,8 @@ func (s *StateManager) AddOrder(order models.Order) {
 	s.Lock()
 	defer s.Unlock()
 	s.activeOrders[order.OrderID] = order
+	s.activeOrdersDirty = true
+	s.inventoryDirty = true
 
 	// Optimistically adjust reservations in the local cache
 	if order.Side == models.SideBuy {
@@ -118,6 +149,9 @@ func (s *StateManager) AddProcess(proc models.TransformationProcess) {
 	s.Lock()
 	defer s.Unlock()
 	s.runningProcesses[proc.ProcessID] = proc
+	s.runningProcessesDirty = true
+	s.capacitiesDirty = true
+	s.inventoryDirty = true
 
 	// Adjust capacities and reservations
 	recipe, ok := s.recipes[proc.RecipeID]
@@ -152,6 +186,8 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 
 	switch e := ev.(type) {
 	case events.OrderExecuted:
+		s.activeOrdersDirty = true
+		s.inventoryDirty = true
 		order, ok := s.activeOrders[e.OrderID]
 		if ok {
 			// Update pending quantity
@@ -193,6 +229,8 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 
 	case events.OrderCancelled:
+		s.activeOrdersDirty = true
+		s.inventoryDirty = true
 		order, ok := s.activeOrders[e.OrderID]
 		if ok {
 			delete(s.activeOrders, e.OrderID)
@@ -210,6 +248,8 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 
 	case events.OrderExpired:
+		s.activeOrdersDirty = true
+		s.inventoryDirty = true
 		order, ok := s.activeOrders[e.OrderID]
 		if ok {
 			delete(s.activeOrders, e.OrderID)
@@ -227,6 +267,9 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 
 	case events.TransformationCompleted:
+		s.runningProcessesDirty = true
+		s.capacitiesDirty = true
+		s.inventoryDirty = true
 		proc, ok := s.runningProcesses[e.ProcessID]
 		if ok {
 			delete(s.runningProcesses, e.ProcessID)
@@ -261,6 +304,7 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 
 	case events.AgentJoined:
+		s.publicAgentsDirty = true
 		s.publicAgents[e.AgentID] = models.AgentPublic{
 			AgentID:      e.AgentID,
 			Username:     e.Username,
@@ -270,6 +314,7 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 
 	case events.AgentBankrupt:
+		s.publicAgentsDirty = true
 		agent, ok := s.publicAgents[e.AgentID]
 		if ok {
 			agent.Status = models.StatusBankrupt
@@ -295,12 +340,22 @@ func (s *StateManager) Capital() (available int64, reserved int64) {
 
 func (s *StateManager) Inventory() []models.InventoryPosition {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.InventoryPosition, 0, len(s.inventory))
-	for _, pos := range s.inventory {
-		res = append(res, pos)
+	if !s.inventoryDirty {
+		res := s.cachedInventory
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.inventoryDirty {
+		s.cachedInventory = make([]models.InventoryPosition, 0, len(s.inventory))
+		for _, x := range s.inventory {
+			s.cachedInventory = append(s.cachedInventory, x)
+		}
+		s.inventoryDirty = false
+	}
+	return s.cachedInventory
 }
 
 func (s *StateManager) InventoryForProduct(productID string) models.InventoryPosition {
@@ -315,32 +370,62 @@ func (s *StateManager) InventoryForProduct(productID string) models.InventoryPos
 
 func (s *StateManager) ActiveOrders() []models.Order {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.Order, 0, len(s.activeOrders))
-	for _, o := range s.activeOrders {
-		res = append(res, o)
+	if !s.activeOrdersDirty {
+		res := s.cachedActiveOrders
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.activeOrdersDirty {
+		s.cachedActiveOrders = make([]models.Order, 0, len(s.activeOrders))
+		for _, x := range s.activeOrders {
+			s.cachedActiveOrders = append(s.cachedActiveOrders, x)
+		}
+		s.activeOrdersDirty = false
+	}
+	return s.cachedActiveOrders
 }
 
 func (s *StateManager) RunningProcesses() []models.TransformationProcess {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.TransformationProcess, 0, len(s.runningProcesses))
-	for _, p := range s.runningProcesses {
-		res = append(res, p)
+	if !s.runningProcessesDirty {
+		res := s.cachedRunningProcesses
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.runningProcessesDirty {
+		s.cachedRunningProcesses = make([]models.TransformationProcess, 0, len(s.runningProcesses))
+		for _, x := range s.runningProcesses {
+			s.cachedRunningProcesses = append(s.cachedRunningProcesses, x)
+		}
+		s.runningProcessesDirty = false
+	}
+	return s.cachedRunningProcesses
 }
 
 func (s *StateManager) CatalogProducts() []models.Product {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.Product, 0, len(s.products))
-	for _, p := range s.products {
-		res = append(res, p)
+	if !s.productsDirty {
+		res := s.cachedProducts
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.productsDirty {
+		s.cachedProducts = make([]models.Product, 0, len(s.products))
+		for _, x := range s.products {
+			s.cachedProducts = append(s.cachedProducts, x)
+		}
+		s.productsDirty = false
+	}
+	return s.cachedProducts
 }
 
 func (s *StateManager) Product(productID string) (models.Product, bool) {
@@ -352,12 +437,22 @@ func (s *StateManager) Product(productID string) (models.Product, bool) {
 
 func (s *StateManager) CatalogRecipes() []models.Recipe {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.Recipe, 0, len(s.recipes))
-	for _, r := range s.recipes {
-		res = append(res, r)
+	if !s.recipesDirty {
+		res := s.cachedRecipes
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.recipesDirty {
+		s.cachedRecipes = make([]models.Recipe, 0, len(s.recipes))
+		for _, x := range s.recipes {
+			s.cachedRecipes = append(s.cachedRecipes, x)
+		}
+		s.recipesDirty = false
+	}
+	return s.cachedRecipes
 }
 
 func (s *StateManager) Recipe(recipeID string) (models.Recipe, bool) {
@@ -369,12 +464,22 @@ func (s *StateManager) Recipe(recipeID string) (models.Recipe, bool) {
 
 func (s *StateManager) Capacities() []models.CapacityStatus {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.CapacityStatus, 0, len(s.capacities))
-	for _, c := range s.capacities {
-		res = append(res, c)
+	if !s.capacitiesDirty {
+		res := s.cachedCapacities
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.capacitiesDirty {
+		s.cachedCapacities = make([]models.CapacityStatus, 0, len(s.capacities))
+		for _, x := range s.capacities {
+			s.cachedCapacities = append(s.cachedCapacities, x)
+		}
+		s.capacitiesDirty = false
+	}
+	return s.cachedCapacities
 }
 
 func (s *StateManager) Capacity(recipeID string) (models.CapacityStatus, bool) {
@@ -386,12 +491,22 @@ func (s *StateManager) Capacity(recipeID string) (models.CapacityStatus, bool) {
 
 func (s *StateManager) PublicAgents() []models.AgentPublic {
 	s.RLock()
-	defer s.RUnlock()
-	res := make([]models.AgentPublic, 0, len(s.publicAgents))
-	for _, a := range s.publicAgents {
-		res = append(res, a)
+	if !s.publicAgentsDirty {
+		res := s.cachedPublicAgents
+		s.RUnlock()
+		return res
 	}
-	return res
+	s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
+	if s.publicAgentsDirty {
+		s.cachedPublicAgents = make([]models.AgentPublic, 0, len(s.publicAgents))
+		for _, x := range s.publicAgents {
+			s.cachedPublicAgents = append(s.cachedPublicAgents, x)
+		}
+		s.publicAgentsDirty = false
+	}
+	return s.cachedPublicAgents
 }
 
 func (s *StateManager) PublicAgent(agentID string) (models.AgentPublic, bool) {

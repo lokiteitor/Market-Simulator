@@ -53,7 +53,7 @@ func NewClient(wsURL string, tokenProvider TokenProvider, logger *slog.Logger) *
 		wsURL:         wsURL,
 		tokenProvider: tokenProvider,
 		logger:        logger.With("system", "websocket"),
-		eventChan:     make(chan events.Event, 100),
+		eventChan:     make(chan events.Event, 10000),
 		backoff:       util.NewBackoff(1*time.Second, 30*time.Second, 2.0),
 	}
 }
@@ -189,8 +189,6 @@ func (c *Client) readLoop(conn *websocket.Conn) {
 		case c.eventChan <- event:
 		case <-c.ctx.Done():
 			return
-		default:
-			c.logger.Warn("websocket event channel full, dropping event")
 		}
 	}
 }
