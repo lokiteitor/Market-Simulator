@@ -1,0 +1,79 @@
+server:
+  base_url: "http://localhost:9080/v1"
+  ws_url: "ws://localhost:9080/v1/ws"
+
+logging:
+  level: "info"
+  format: "text" # text or json
+
+retry:
+  max_attempts: 5
+  initial_backoff_ms: 1000
+  max_backoff_ms: 30000
+
+# Base prices for evaluating trades and calculating margins (in cents)
+prices:
+  trigo: 15
+  maiz: 12
+  leche: 30
+  tomate: 20
+  germinado: 5
+  harina: 25
+  masa: 18
+  pan: 40
+  tortilla: 30
+  queso: 80
+  salsa: 45
+
+bots:
+  - username: "primary_producer_1"
+    password: "dev-password-123"
+    role: "primary_producer"
+    tick_interval_seconds: 5
+    persist_path: "./.session_prod_1.json"
+    auto_register: true
+    requested_capacities:
+      - recipe_id: "cultivo_trigo"
+        installations: 2
+      - recipe_id: "cultivo_maiz"
+        installations: 2
+      - recipe_id: "ordena"
+        installations: 2
+      - recipe_id: "cultivo_tomate"
+        installations: 2
+      - recipe_id: "germinado_rapido"
+        installations: 1
+
+  - username: "transformer_1"
+    password: "dev-password-123"
+    role: "transformer"
+    tick_interval_seconds: 5
+    persist_path: "./.session_trans_1.json"
+    auto_register: true
+    requested_capacities:
+      - recipe_id: "molienda"
+        installations: 2
+      - recipe_id: "panaderia"
+        installations: 1
+      - recipe_id: "nixtamalizado"
+        installations: 2
+      - recipe_id: "tortilleria"
+        installations: 1
+      - recipe_id: "queseria"
+        installations: 1
+      - recipe_id: "salseria"
+        installations: 1
+
+  - username: "consumer_1"
+    password: "dev-password-123"
+    role: "consumer"
+    tick_interval_seconds: 5
+    persist_path: "./.session_cons_1.json"
+    auto_register: true
+
+  - username: "trader_1"
+    password: "dev-password-123"
+    role: "trader"
+    tick_interval_seconds: 5
+    persist_path: "./.session_trade_1.json"
+    auto_register: true
