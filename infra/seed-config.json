@@ -1,17 +1,936 @@
 {
-  "$comment": "Catálogo agrícola inicial (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Cadenas: trigo→harina→pan, maiz→masa→tortilla, leche→queso, tomate→salsa.",
+  "$comment": "Catálogo del simulador (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L; discretos: 100 = 1 unidad). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Incluye el catálogo agrícola original + el catálogo industrial de docs/catalogo_productos_recetas.md.",
   "products": [
-    { "key": "trigo", "name": "Trigo", "unit": "kg", "category": "raw_primary" },
-    { "key": "maiz", "name": "Maíz", "unit": "kg", "category": "raw_primary" },
-    { "key": "leche", "name": "Leche", "unit": "litro", "category": "raw_primary" },
-    { "key": "tomate", "name": "Tomate", "unit": "kg", "category": "raw_primary" },
-    { "key": "germinado", "name": "Germinado", "unit": "kg", "category": "raw_primary" },
-    { "key": "harina", "name": "Harina de trigo", "unit": "kg", "category": "intermediate" },
-    { "key": "masa", "name": "Masa nixtamalizada", "unit": "kg", "category": "intermediate" },
-    { "key": "pan", "name": "Pan", "unit": "kg", "category": "final_consumption" },
-    { "key": "tortilla", "name": "Tortilla", "unit": "kg", "category": "final_consumption" },
-    { "key": "queso", "name": "Queso fresco", "unit": "kg", "category": "final_consumption" },
-    { "key": "salsa", "name": "Salsa de tomate", "unit": "litro", "category": "final_consumption" }
+    {
+      "key": "trigo",
+      "name": "Trigo",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "maiz",
+      "name": "Maíz",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "leche",
+      "name": "Leche",
+      "unit": "litro",
+      "category": "raw_primary"
+    },
+    {
+      "key": "tomate",
+      "name": "Tomate",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "germinado",
+      "name": "Germinado",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "harina",
+      "name": "Harina de trigo",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "masa",
+      "name": "Masa nixtamalizada",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "pan",
+      "name": "Pan",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "tortilla",
+      "name": "Tortilla",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "queso",
+      "name": "Queso fresco",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "salsa",
+      "name": "Salsa de tomate",
+      "unit": "litro",
+      "category": "final_consumption"
+    },
+    {
+      "key": "hierro",
+      "name": "Hierro",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "carbon",
+      "name": "Carbón",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "mineral_cobre",
+      "name": "Mineral de cobre",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "bauxita",
+      "name": "Bauxita",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "litio",
+      "name": "Litio",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "niquel",
+      "name": "Níquel",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "oro",
+      "name": "Oro",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "plata",
+      "name": "Plata",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "uranio",
+      "name": "Uranio",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "arena",
+      "name": "Arena",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "piedra",
+      "name": "Piedra",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "caliza",
+      "name": "Caliza",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "arcilla",
+      "name": "Arcilla",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "fosfato",
+      "name": "Fosfato",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "sal",
+      "name": "Sal",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "petroleo",
+      "name": "Petróleo",
+      "unit": "litro",
+      "category": "raw_primary"
+    },
+    {
+      "key": "gas_natural",
+      "name": "Gas natural",
+      "unit": "m3",
+      "category": "raw_primary"
+    },
+    {
+      "key": "agua",
+      "name": "Agua",
+      "unit": "litro",
+      "category": "raw_primary"
+    },
+    {
+      "key": "troncos",
+      "name": "Troncos",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "soya",
+      "name": "Soya",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "algodon",
+      "name": "Algodón",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "cana_azucar",
+      "name": "Caña de azúcar",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "cafe",
+      "name": "Café",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "cacao",
+      "name": "Cacao",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "frutas",
+      "name": "Frutas",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "verduras",
+      "name": "Verduras",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "ganado_bovino",
+      "name": "Ganado bovino",
+      "unit": "unidad",
+      "category": "raw_primary"
+    },
+    {
+      "key": "cerdos",
+      "name": "Cerdos",
+      "unit": "unidad",
+      "category": "raw_primary"
+    },
+    {
+      "key": "pollos",
+      "name": "Pollos",
+      "unit": "unidad",
+      "category": "raw_primary"
+    },
+    {
+      "key": "lana",
+      "name": "Lana",
+      "unit": "kg",
+      "category": "raw_primary"
+    },
+    {
+      "key": "acero",
+      "name": "Acero",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "acero_inoxidable",
+      "name": "Acero inoxidable",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "aluminio",
+      "name": "Aluminio",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cobre_refinado",
+      "name": "Cobre refinado",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cemento",
+      "name": "Cemento",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "hormigon",
+      "name": "Hormigón",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "vidrio",
+      "name": "Vidrio",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "ladrillos",
+      "name": "Ladrillos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "asfalto",
+      "name": "Asfalto",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "plastico",
+      "name": "Plástico",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "caucho_sintetico",
+      "name": "Caucho sintético",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "fertilizantes",
+      "name": "Fertilizantes",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "productos_quimicos",
+      "name": "Productos químicos",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "silicio",
+      "name": "Silicio",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "tablas",
+      "name": "Tablas",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "celulosa",
+      "name": "Celulosa",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "papel",
+      "name": "Papel",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "carton",
+      "name": "Cartón",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "azucar",
+      "name": "Azúcar",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "aceite_vegetal",
+      "name": "Aceite vegetal",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "carne_procesada",
+      "name": "Carne procesada",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "lacteos",
+      "name": "Lácteos",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "gasolina",
+      "name": "Gasolina",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "diesel",
+      "name": "Diésel",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "queroseno",
+      "name": "Queroseno",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "lubricantes",
+      "name": "Lubricantes",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "viga_acero",
+      "name": "Vigas de acero",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "lamina_acero",
+      "name": "Láminas de acero",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "tubo_acero",
+      "name": "Tubos de acero",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "perfil_metalico",
+      "name": "Perfiles metálicos",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "lamina_aluminio",
+      "name": "Láminas de aluminio",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "perfil_aluminio",
+      "name": "Perfiles de aluminio",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cable_cobre",
+      "name": "Cable de cobre",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "bobina_cobre",
+      "name": "Bobinas de cobre",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cristal_plano",
+      "name": "Cristal plano",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cristal_tecnico",
+      "name": "Cristal técnico",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "polimeros",
+      "name": "Polímeros",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "resinas",
+      "name": "Resinas",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "fibra_sintetica",
+      "name": "Fibra sintética",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "lubricante_industrial",
+      "name": "Lubricante industrial",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "madera_tratada",
+      "name": "Madera tratada",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "contrachapado",
+      "name": "Contrachapado",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "conservas",
+      "name": "Conservas",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "piensos",
+      "name": "Piensos",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "bebidas",
+      "name": "Bebidas",
+      "unit": "litro",
+      "category": "intermediate"
+    },
+    {
+      "key": "chasis",
+      "name": "Chasis",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "motor_combustion",
+      "name": "Motor de combustión",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "caja_cambios",
+      "name": "Caja de cambios",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "suspension",
+      "name": "Suspensión",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "frenos",
+      "name": "Frenos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "rodamientos",
+      "name": "Rodamientos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "bomba_industrial",
+      "name": "Bomba industrial",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "motor_electrico",
+      "name": "Motor eléctrico",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "transformador",
+      "name": "Transformador",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "generador",
+      "name": "Generador",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "bateria",
+      "name": "Batería",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "cableado",
+      "name": "Cableado",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "circuito_impreso",
+      "name": "Circuitos impresos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "microchip",
+      "name": "Microchips",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "sensor",
+      "name": "Sensores",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "pantalla",
+      "name": "Pantallas",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "ventana",
+      "name": "Ventanas",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "puerta_industrial",
+      "name": "Puertas industriales",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "panel_prefabricado",
+      "name": "Panel prefabricado",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "tuberia",
+      "name": "Tuberías",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "asiento",
+      "name": "Asientos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "panel_interior",
+      "name": "Paneles interiores",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "neumatico",
+      "name": "Neumáticos",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "turbina",
+      "name": "Turbina",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "sistema_hidraulico",
+      "name": "Sistema hidráulico",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "motor_aeronautico",
+      "name": "Motor aeronáutico",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "sistema_control",
+      "name": "Sistema de control",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "tanque_especializado",
+      "name": "Tanque especializado",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "sistema_refrigeracion",
+      "name": "Sistema de refrigeración",
+      "unit": "unidad",
+      "category": "intermediate"
+    },
+    {
+      "key": "aislamiento_termico",
+      "name": "Aislamiento térmico",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "camion_carga",
+      "name": "Camión de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "camion_cisterna",
+      "name": "Camión cisterna",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "camion_refrigerado",
+      "name": "Camión refrigerado",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "locomotora_diesel",
+      "name": "Locomotora diésel",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "vagon_carga",
+      "name": "Vagón de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "barco_carga",
+      "name": "Barco de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "barco_petrolero",
+      "name": "Barco petrolero",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "avion_carga",
+      "name": "Avión de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "planta_industrial",
+      "name": "Planta industrial genérica",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "refineria",
+      "name": "Refinería de petróleo",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "central_electrica",
+      "name": "Central eléctrica",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "planta_ensamblaje",
+      "name": "Planta de ensamblaje automotriz",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "astillero",
+      "name": "Astillero",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "fabrica_aeronaves",
+      "name": "Fábrica de aeronaves",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "planta_quimica",
+      "name": "Planta química",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "estacion_carga",
+      "name": "Estación de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "terminal_ferroviaria",
+      "name": "Terminal ferroviaria",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "puerto_comercial",
+      "name": "Puerto comercial",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "aeropuerto_carga",
+      "name": "Aeropuerto de carga",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "automovil",
+      "name": "Automóvil",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "refrigerador",
+      "name": "Refrigerador",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "lavadora",
+      "name": "Lavadora",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "televisor",
+      "name": "Televisor",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "computadora",
+      "name": "Computadora",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "telefono",
+      "name": "Teléfono",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "excavadora",
+      "name": "Excavadora",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "grua",
+      "name": "Grúa",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "generador_industrial",
+      "name": "Generador industrial",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "panel_solar",
+      "name": "Panel solar",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "turbina_eolica",
+      "name": "Turbina eólica",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "transformador_electrico",
+      "name": "Transformador eléctrico",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "edificio_residencial",
+      "name": "Edificio residencial",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "edificio_comercial",
+      "name": "Edificio comercial",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "fabrica_urbana_ligera",
+      "name": "Fábrica urbana ligera",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "almacen_logistico",
+      "name": "Almacén logístico",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "mantequilla",
+      "name": "Mantequilla",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "yogur",
+      "name": "Yogur",
+      "unit": "litro",
+      "category": "final_consumption"
+    },
+    {
+      "key": "chocolate",
+      "name": "Chocolate",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "textiles",
+      "name": "Textiles",
+      "unit": "kg",
+      "category": "final_consumption"
+    }
   ],
   "recipes": [
     {
@@ -66,7 +985,12 @@
       "output_qty_cent": 8000,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
-      "inputs": [{ "product": "trigo", "qty_cent": 10000 }]
+      "inputs": [
+        {
+          "product": "trigo",
+          "qty_cent": 10000
+        }
+      ]
     },
     {
       "key": "panaderia",
@@ -75,7 +999,12 @@
       "output_qty_cent": 10000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 3,
-      "inputs": [{ "product": "harina", "qty_cent": 8000 }]
+      "inputs": [
+        {
+          "product": "harina",
+          "qty_cent": 8000
+        }
+      ]
     },
     {
       "key": "nixtamalizado",
@@ -84,7 +1013,12 @@
       "output_qty_cent": 18000,
       "duration_sim_seconds": 2700,
       "wage_rate_cents_per_sec": 2,
-      "inputs": [{ "product": "maiz", "qty_cent": 10000 }]
+      "inputs": [
+        {
+          "product": "maiz",
+          "qty_cent": 10000
+        }
+      ]
     },
     {
       "key": "tortilleria",
@@ -93,7 +1027,12 @@
       "output_qty_cent": 9500,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
-      "inputs": [{ "product": "masa", "qty_cent": 10000 }]
+      "inputs": [
+        {
+          "product": "masa",
+          "qty_cent": 10000
+        }
+      ]
     },
     {
       "key": "queseria",
@@ -102,7 +1041,12 @@
       "output_qty_cent": 1000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
-      "inputs": [{ "product": "leche", "qty_cent": 10000 }]
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 10000
+        }
+      ]
     },
     {
       "key": "salseria",
@@ -111,29 +1055,3105 @@
       "output_qty_cent": 8000,
       "duration_sim_seconds": 2700,
       "wage_rate_cents_per_sec": 2,
-      "inputs": [{ "product": "tomate", "qty_cent": 10000 }]
+      "inputs": [
+        {
+          "product": "tomate",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "mineria_hierro",
+      "name": "Minería de hierro",
+      "output": "hierro",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_carbon",
+      "name": "Minería de carbón",
+      "output": "carbon",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_cobre",
+      "name": "Minería de cobre",
+      "output": "mineral_cobre",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_bauxita",
+      "name": "Minería de bauxita",
+      "output": "bauxita",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_litio",
+      "name": "Minería de litio",
+      "output": "litio",
+      "output_qty_cent": 10000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "mineria_niquel",
+      "name": "Minería de níquel",
+      "output": "niquel",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_oro",
+      "name": "Minería de oro",
+      "output": "oro",
+      "output_qty_cent": 2000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "mineria_plata",
+      "name": "Minería de plata",
+      "output": "plata",
+      "output_qty_cent": 3000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "mineria_uranio",
+      "name": "Minería de uranio",
+      "output": "uranio",
+      "output_qty_cent": 2000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "extraccion_arena",
+      "name": "Extracción de arena",
+      "output": "arena",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cantera_piedra",
+      "name": "Cantera de piedra",
+      "output": "piedra",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cantera_caliza",
+      "name": "Cantera de caliza",
+      "output": "caliza",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "extraccion_arcilla",
+      "name": "Extracción de arcilla",
+      "output": "arcilla",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "mineria_fosfato",
+      "name": "Minería de fosfato",
+      "output": "fosfato",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "extraccion_sal",
+      "name": "Extracción de sal",
+      "output": "sal",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "pozo_petroleo",
+      "name": "Pozo petrolero",
+      "output": "petroleo",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "pozo_gas",
+      "name": "Pozo de gas",
+      "output": "gas_natural",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "captacion_agua",
+      "name": "Captación de agua",
+      "output": "agua",
+      "output_qty_cent": 100000,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "tala",
+      "name": "Tala de árboles",
+      "output": "troncos",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_soya",
+      "name": "Cultivo de soya",
+      "output": "soya",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_algodon",
+      "name": "Cultivo de algodón",
+      "output": "algodon",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_cana",
+      "name": "Cultivo de caña de azúcar",
+      "output": "cana_azucar",
+      "output_qty_cent": 60000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_cafe",
+      "name": "Cultivo de café",
+      "output": "cafe",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cultivo_cacao",
+      "name": "Cultivo de cacao",
+      "output": "cacao",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cosecha_frutas",
+      "name": "Cosecha de frutas",
+      "output": "frutas",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cosecha_verduras",
+      "name": "Cosecha de verduras",
+      "output": "verduras",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "cria_bovino",
+      "name": "Cría de ganado bovino",
+      "output": "ganado_bovino",
+      "output_qty_cent": 1000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "cria_cerdos",
+      "name": "Cría de cerdos",
+      "output": "cerdos",
+      "output_qty_cent": 2000,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": []
+    },
+    {
+      "key": "cria_pollos",
+      "name": "Cría de pollos",
+      "output": "pollos",
+      "output_qty_cent": 5000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "esquila",
+      "name": "Esquila de lana",
+      "output": "lana",
+      "output_qty_cent": 10000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": []
+    },
+    {
+      "key": "fundicion_acero",
+      "name": "Fundición de acero",
+      "output": "acero",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "hierro",
+          "qty_cent": 40000
+        },
+        {
+          "product": "carbon",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "fundicion_inox",
+      "name": "Fundición de acero inoxidable",
+      "output": "acero_inoxidable",
+      "output_qty_cent": 38000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 40000
+        },
+        {
+          "product": "niquel",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "refino_aluminio",
+      "name": "Refino de aluminio",
+      "output": "aluminio",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "bauxita",
+          "qty_cent": 50000
+        }
+      ]
+    },
+    {
+      "key": "refino_cobre",
+      "name": "Refino de cobre",
+      "output": "cobre_refinado",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "mineral_cobre",
+          "qty_cent": 50000
+        }
+      ]
+    },
+    {
+      "key": "produccion_cemento",
+      "name": "Producción de cemento",
+      "output": "cemento",
+      "output_qty_cent": 35000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "caliza",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "mezcla_hormigon",
+      "name": "Mezcla de hormigón",
+      "output": "hormigon",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cemento",
+          "qty_cent": 15000
+        },
+        {
+          "product": "arena",
+          "qty_cent": 20000
+        },
+        {
+          "product": "agua",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "fundicion_vidrio",
+      "name": "Fundición de vidrio",
+      "output": "vidrio",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "arena",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "coccion_ladrillos",
+      "name": "Cocción de ladrillos",
+      "output": "ladrillos",
+      "output_qty_cent": 50000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "arcilla",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "produccion_asfalto",
+      "name": "Producción de asfalto",
+      "output": "asfalto",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 20000
+        },
+        {
+          "product": "piedra",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "sintesis_plastico",
+      "name": "Síntesis de plástico",
+      "output": "plastico",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "sintesis_caucho",
+      "name": "Síntesis de caucho",
+      "output": "caucho_sintetico",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "produccion_fertilizantes",
+      "name": "Producción de fertilizantes",
+      "output": "fertilizantes",
+      "output_qty_cent": 35000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "gas_natural",
+          "qty_cent": 20000
+        },
+        {
+          "product": "fosfato",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "sintesis_quimicos",
+      "name": "Síntesis de productos químicos",
+      "output": "productos_quimicos",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 25000
+        },
+        {
+          "product": "sal",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "produccion_silicio",
+      "name": "Producción de silicio",
+      "output": "silicio",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "arena",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "aserrado",
+      "name": "Aserradero",
+      "output": "tablas",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "troncos",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "produccion_celulosa",
+      "name": "Producción de celulosa",
+      "output": "celulosa",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "troncos",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "produccion_papel",
+      "name": "Producción de papel",
+      "output": "papel",
+      "output_qty_cent": 28000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "celulosa",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "produccion_carton",
+      "name": "Producción de cartón",
+      "output": "carton",
+      "output_qty_cent": 28000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "papel",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "refino_azucar",
+      "name": "Refino de azúcar",
+      "output": "azucar",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cana_azucar",
+          "qty_cent": 50000
+        }
+      ]
+    },
+    {
+      "key": "prensado_aceite",
+      "name": "Prensado de aceite vegetal",
+      "output": "aceite_vegetal",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "soya",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "procesado_carne",
+      "name": "Procesado de carne",
+      "output": "carne_procesada",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "ganado_bovino",
+          "qty_cent": 500
+        }
+      ]
+    },
+    {
+      "key": "planta_lactea",
+      "name": "Planta láctea",
+      "output": "lacteos",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "refino_gasolina",
+      "name": "Refino de gasolina",
+      "output": "gasolina",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "refino_diesel",
+      "name": "Refino de diésel",
+      "output": "diesel",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "refino_queroseno",
+      "name": "Refino de queroseno",
+      "output": "queroseno",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "refino_lubricantes",
+      "name": "Refino de lubricantes",
+      "output": "lubricantes",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "petroleo",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "laminado_viga",
+      "name": "Laminado de vigas",
+      "output": "viga_acero",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "laminado_lamina",
+      "name": "Laminado de láminas de acero",
+      "output": "lamina_acero",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "extrusion_tubo",
+      "name": "Extrusión de tubos",
+      "output": "tubo_acero",
+      "output_qty_cent": 17000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "perfilado_metal",
+      "name": "Perfilado metálico",
+      "output": "perfil_metalico",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "laminado_aluminio",
+      "name": "Laminado de aluminio",
+      "output": "lamina_aluminio",
+      "output_qty_cent": 13000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "aluminio",
+          "qty_cent": 15000
+        }
+      ]
+    },
+    {
+      "key": "perfilado_aluminio",
+      "name": "Perfilado de aluminio",
+      "output": "perfil_aluminio",
+      "output_qty_cent": 13000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "aluminio",
+          "qty_cent": 15000
+        }
+      ]
+    },
+    {
+      "key": "trefilado_cable",
+      "name": "Trefilado de cable de cobre",
+      "output": "cable_cobre",
+      "output_qty_cent": 14000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cobre_refinado",
+          "qty_cent": 15000
+        }
+      ]
+    },
+    {
+      "key": "bobinado_cobre",
+      "name": "Bobinado de cobre",
+      "output": "bobina_cobre",
+      "output_qty_cent": 13000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cobre_refinado",
+          "qty_cent": 15000
+        }
+      ]
+    },
+    {
+      "key": "templado_cristal",
+      "name": "Templado de cristal plano",
+      "output": "cristal_plano",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "vidrio",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "produccion_cristal_tecnico",
+      "name": "Producción de cristal técnico",
+      "output": "cristal_tecnico",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "vidrio",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "polimerizacion",
+      "name": "Polimerización",
+      "output": "polimeros",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "plastico",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "produccion_resinas",
+      "name": "Producción de resinas",
+      "output": "resinas",
+      "output_qty_cent": 17000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "productos_quimicos",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "hilado_fibra",
+      "name": "Hilado de fibra sintética",
+      "output": "fibra_sintetica",
+      "output_qty_cent": 16000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "plastico",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "produccion_lubricante_ind",
+      "name": "Producción de lubricante industrial",
+      "output": "lubricante_industrial",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "lubricantes",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "tratado_madera",
+      "name": "Tratado de madera",
+      "output": "madera_tratada",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "tablas",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "produccion_contrachapado",
+      "name": "Producción de contrachapado",
+      "output": "contrachapado",
+      "output_qty_cent": 17000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "tablas",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "enlatado_conservas",
+      "name": "Enlatado de conservas",
+      "output": "conservas",
+      "output_qty_cent": 35000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "frutas",
+          "qty_cent": 20000
+        },
+        {
+          "product": "verduras",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "produccion_piensos",
+      "name": "Producción de piensos",
+      "output": "piensos",
+      "output_qty_cent": 35000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "maiz",
+          "qty_cent": 20000
+        },
+        {
+          "product": "soya",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "embotellado_bebidas",
+      "name": "Embotellado de bebidas",
+      "output": "bebidas",
+      "output_qty_cent": 35000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 30000
+        },
+        {
+          "product": "azucar",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_chasis",
+      "name": "Ensamblaje de chasis",
+      "output": "chasis",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "viga_acero",
+          "qty_cent": 8000
+        },
+        {
+          "product": "lamina_acero",
+          "qty_cent": 6000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_motor",
+      "name": "Ensamblaje de motor de combustión",
+      "output": "motor_combustion",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 15000
+        },
+        {
+          "product": "aluminio",
+          "qty_cent": 5000
+        },
+        {
+          "product": "cable_cobre",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_caja",
+      "name": "Ensamblaje de caja de cambios",
+      "output": "caja_cambios",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_suspension",
+      "name": "Ensamblaje de suspensión",
+      "output": "suspension",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 6000
+        },
+        {
+          "product": "caucho_sintetico",
+          "qty_cent": 3000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_frenos",
+      "name": "Ensamblaje de frenos",
+      "output": "frenos",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 4000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_rodamientos",
+      "name": "Ensamblaje de rodamientos",
+      "output": "rodamientos",
+      "output_qty_cent": 200,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 3000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_bomba",
+      "name": "Ensamblaje de bomba industrial",
+      "output": "bomba_industrial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 5000
+        },
+        {
+          "product": "tubo_acero",
+          "qty_cent": 3000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_motor_elec",
+      "name": "Ensamblaje de motor eléctrico",
+      "output": "motor_electrico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "bobina_cobre",
+          "qty_cent": 4000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_transformador",
+      "name": "Ensamblaje de transformador",
+      "output": "transformador",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "bobina_cobre",
+          "qty_cent": 6000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_generador",
+      "name": "Ensamblaje de generador",
+      "output": "generador",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "acero",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_bateria",
+      "name": "Ensamblaje de batería",
+      "output": "bateria",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "litio",
+          "qty_cent": 3000
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_cableado",
+      "name": "Ensamblaje de cableado",
+      "output": "cableado",
+      "output_qty_cent": 8000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cable_cobre",
+          "qty_cent": 5000
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 3000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_circuito",
+      "name": "Ensamblaje de circuitos impresos",
+      "output": "circuito_impreso",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "oro",
+          "qty_cent": 100
+        },
+        {
+          "product": "cobre_refinado",
+          "qty_cent": 1000
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 500
+        }
+      ]
+    },
+    {
+      "key": "ensamble_microchip",
+      "name": "Fabricación de microchips",
+      "output": "microchip",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        },
+        {
+          "product": "productos_quimicos",
+          "qty_cent": 500
+        },
+        {
+          "product": "silicio",
+          "qty_cent": 1000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_sensor",
+      "name": "Fabricación de sensores",
+      "output": "sensor",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "ensamble_pantalla",
+      "name": "Fabricación de pantallas",
+      "output": "pantalla",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cristal_tecnico",
+          "qty_cent": 3000
+        },
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "ensamble_ventana",
+      "name": "Fabricación de ventanas",
+      "output": "ventana",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cristal_plano",
+          "qty_cent": 4000
+        },
+        {
+          "product": "perfil_aluminio",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_puerta",
+      "name": "Fabricación de puertas industriales",
+      "output": "puerta_industrial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 6000
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_panel_pref",
+      "name": "Fabricación de panel prefabricado",
+      "output": "panel_prefabricado",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 15000
+        },
+        {
+          "product": "viga_acero",
+          "qty_cent": 4000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_tuberia",
+      "name": "Fabricación de tuberías",
+      "output": "tuberia",
+      "output_qty_cent": 8000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "tubo_acero",
+          "qty_cent": 6000
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_asiento",
+      "name": "Fabricación de asientos",
+      "output": "asiento",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "fibra_sintetica",
+          "qty_cent": 3000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_panel_int",
+      "name": "Fabricación de paneles interiores",
+      "output": "panel_interior",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "polimeros",
+          "qty_cent": 4000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_neumatico",
+      "name": "Fabricación de neumáticos",
+      "output": "neumatico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "caucho_sintetico",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_turbina",
+      "name": "Ensamblaje de turbina",
+      "output": "turbina",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "perfil_metalico",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_hidraulico",
+      "name": "Ensamblaje de sistema hidráulico",
+      "output": "sistema_hidraulico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 8000
+        },
+        {
+          "product": "tubo_acero",
+          "qty_cent": 4000
+        },
+        {
+          "product": "bomba_industrial",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "ensamble_motor_aero",
+      "name": "Ensamblaje de motor aeronáutico",
+      "output": "motor_aeronautico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "aluminio",
+          "qty_cent": 15000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 10000
+        },
+        {
+          "product": "microchip",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "ensamble_control",
+      "name": "Ensamblaje de sistema de control",
+      "output": "sistema_control",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "microchip",
+          "qty_cent": 200
+        },
+        {
+          "product": "sensor",
+          "qty_cent": 200
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_tanque",
+      "name": "Fabricación de tanque especializado",
+      "output": "tanque_especializado",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "lamina_acero",
+          "qty_cent": 12000
+        },
+        {
+          "product": "tubo_acero",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_refrig",
+      "name": "Ensamblaje de sistema de refrigeración",
+      "output": "sistema_refrigeracion",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "motor_electrico",
+          "qty_cent": 100
+        },
+        {
+          "product": "tuberia",
+          "qty_cent": 3000
+        },
+        {
+          "product": "productos_quimicos",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "ensamble_aislamiento",
+      "name": "Producción de aislamiento térmico",
+      "output": "aislamiento_termico",
+      "output_qty_cent": 10000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "polimeros",
+          "qty_cent": 5000
+        },
+        {
+          "product": "fibra_sintetica",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "fab_camion_carga",
+      "name": "Fabricación de camión de carga",
+      "output": "camion_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "chasis",
+          "qty_cent": 100
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "caja_cambios",
+          "qty_cent": 100
+        },
+        {
+          "product": "suspension",
+          "qty_cent": 100
+        },
+        {
+          "product": "frenos",
+          "qty_cent": 200
+        },
+        {
+          "product": "neumatico",
+          "qty_cent": 600
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 3000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        },
+        {
+          "product": "cristal_plano",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "fab_camion_cisterna",
+      "name": "Fabricación de camión cisterna",
+      "output": "camion_cisterna",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "chasis",
+          "qty_cent": 100
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "tanque_especializado",
+          "qty_cent": 100
+        },
+        {
+          "product": "bomba_industrial",
+          "qty_cent": 100
+        },
+        {
+          "product": "neumatico",
+          "qty_cent": 600
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_camion_refrigerado",
+      "name": "Fabricación de camión refrigerado",
+      "output": "camion_refrigerado",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "chasis",
+          "qty_cent": 100
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_refrigeracion",
+          "qty_cent": 100
+        },
+        {
+          "product": "aislamiento_termico",
+          "qty_cent": 3000
+        },
+        {
+          "product": "neumatico",
+          "qty_cent": 600
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_locomotora",
+      "name": "Fabricación de locomotora diésel",
+      "output": "locomotora_diesel",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 21600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "motor_combustion",
+          "qty_cent": 200
+        },
+        {
+          "product": "chasis",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        },
+        {
+          "product": "generador",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_vagon",
+      "name": "Fabricación de vagón de carga",
+      "output": "vagon_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 10800,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "viga_acero",
+          "qty_cent": 15000
+        },
+        {
+          "product": "rodamientos",
+          "qty_cent": 800
+        },
+        {
+          "product": "perfil_metalico",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "fab_barco_carga",
+      "name": "Fabricación de barco de carga",
+      "output": "barco_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 21600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "viga_acero",
+          "qty_cent": 50000
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 200
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "fab_barco_petrolero",
+      "name": "Fabricación de barco petrolero",
+      "output": "barco_petrolero",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 21600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "viga_acero",
+          "qty_cent": 50000
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 200
+        },
+        {
+          "product": "tanque_especializado",
+          "qty_cent": 300
+        },
+        {
+          "product": "bomba_industrial",
+          "qty_cent": 200
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        }
+      ]
+    },
+    {
+      "key": "fab_avion",
+      "name": "Fabricación de avión de carga",
+      "output": "avion_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 21600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "lamina_aluminio",
+          "qty_cent": 30000
+        },
+        {
+          "product": "motor_aeronautico",
+          "qty_cent": 200
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        },
+        {
+          "product": "cristal_tecnico",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "constr_planta_industrial",
+      "name": "Construcción de planta industrial",
+      "output": "planta_industrial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "hormigon",
+          "qty_cent": 40000
+        },
+        {
+          "product": "vidrio",
+          "qty_cent": 10000
+        },
+        {
+          "product": "rodamientos",
+          "qty_cent": 400
+        }
+      ]
+    },
+    {
+      "key": "constr_refineria",
+      "name": "Construcción de refinería",
+      "output": "refineria",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 40000
+        },
+        {
+          "product": "tubo_acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        },
+        {
+          "product": "bomba_industrial",
+          "qty_cent": 400
+        }
+      ]
+    },
+    {
+      "key": "constr_central_electrica",
+      "name": "Construcción de central eléctrica",
+      "output": "central_electrica",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "turbina",
+          "qty_cent": 200
+        },
+        {
+          "product": "generador",
+          "qty_cent": 200
+        },
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "constr_planta_ensamblaje",
+      "name": "Construcción de planta de ensamblaje",
+      "output": "planta_ensamblaje",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        },
+        {
+          "product": "rodamientos",
+          "qty_cent": 400
+        },
+        {
+          "product": "hormigon",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "constr_astillero",
+      "name": "Construcción de astillero",
+      "output": "astillero",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 40000
+        },
+        {
+          "product": "sistema_hidraulico",
+          "qty_cent": 200
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "constr_fabrica_aeronaves",
+      "name": "Construcción de fábrica de aeronaves",
+      "output": "fabrica_aeronaves",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "aluminio",
+          "qty_cent": 30000
+        },
+        {
+          "product": "microchip",
+          "qty_cent": 500
+        },
+        {
+          "product": "motor_aeronautico",
+          "qty_cent": 100
+        },
+        {
+          "product": "rodamientos",
+          "qty_cent": 400
+        }
+      ]
+    },
+    {
+      "key": "constr_planta_quimica",
+      "name": "Construcción de planta química",
+      "output": "planta_quimica",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "tubo_acero",
+          "qty_cent": 15000
+        },
+        {
+          "product": "bomba_industrial",
+          "qty_cent": 300
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        }
+      ]
+    },
+    {
+      "key": "constr_estacion",
+      "name": "Construcción de estación de carga",
+      "output": "estacion_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "hormigon",
+          "qty_cent": 30000
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "constr_terminal",
+      "name": "Construcción de terminal ferroviaria",
+      "output": "terminal_ferroviaria",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 25000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 200
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "constr_puerto",
+      "name": "Construcción de puerto comercial",
+      "output": "puerto_comercial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 50000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "sistema_hidraulico",
+          "qty_cent": 200
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "constr_aeropuerto",
+      "name": "Construcción de aeropuerto de carga",
+      "output": "aeropuerto_carga",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 50000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 30000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 300
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "fab_automovil",
+      "name": "Fabricación de automóvil",
+      "output": "automovil",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "chasis",
+          "qty_cent": 100
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        },
+        {
+          "product": "cristal_plano",
+          "qty_cent": 1500
+        },
+        {
+          "product": "neumatico",
+          "qty_cent": 400
+        },
+        {
+          "product": "asiento",
+          "qty_cent": 200
+        },
+        {
+          "product": "panel_interior",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_refrigerador",
+      "name": "Fabricación de refrigerador",
+      "output": "refrigerador",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 5000
+        },
+        {
+          "product": "sistema_refrigeracion",
+          "qty_cent": 100
+        },
+        {
+          "product": "panel_interior",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_lavadora",
+      "name": "Fabricación de lavadora",
+      "output": "lavadora",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 5000
+        },
+        {
+          "product": "motor_electrico",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_televisor",
+      "name": "Fabricación de televisor",
+      "output": "televisor",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "pantalla",
+          "qty_cent": 100
+        },
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 2000
+        }
+      ]
+    },
+    {
+      "key": "fab_computadora",
+      "name": "Fabricación de computadora",
+      "output": "computadora",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "microchip",
+          "qty_cent": 200
+        },
+        {
+          "product": "pantalla",
+          "qty_cent": 100
+        },
+        {
+          "product": "plastico",
+          "qty_cent": 2000
+        },
+        {
+          "product": "cobre_refinado",
+          "qty_cent": 500
+        }
+      ]
+    },
+    {
+      "key": "fab_telefono",
+      "name": "Fabricación de teléfono",
+      "output": "telefono",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "microchip",
+          "qty_cent": 100
+        },
+        {
+          "product": "pantalla",
+          "qty_cent": 100
+        },
+        {
+          "product": "bateria",
+          "qty_cent": 100
+        },
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_excavadora",
+      "name": "Fabricación de excavadora",
+      "output": "excavadora",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 25000
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_hidraulico",
+          "qty_cent": 200
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_grua",
+      "name": "Fabricación de grúa",
+      "output": "grua",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 25000
+        },
+        {
+          "product": "motor_combustion",
+          "qty_cent": 100
+        },
+        {
+          "product": "sistema_hidraulico",
+          "qty_cent": 200
+        }
+      ]
+    },
+    {
+      "key": "fab_generador_ind",
+      "name": "Fabricación de generador industrial",
+      "output": "generador_industrial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 10800,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 10000
+        },
+        {
+          "product": "bobina_cobre",
+          "qty_cent": 5000
+        },
+        {
+          "product": "generador",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_panel_solar",
+      "name": "Fabricación de panel solar",
+      "output": "panel_solar",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cristal_tecnico",
+          "qty_cent": 3000
+        },
+        {
+          "product": "silicio",
+          "qty_cent": 2000
+        },
+        {
+          "product": "circuito_impreso",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_turbina_eolica",
+      "name": "Fabricación de turbina eólica",
+      "output": "turbina_eolica",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 18000,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "turbina",
+          "qty_cent": 100
+        },
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "fab_transformador_elec",
+      "name": "Fabricación de transformador eléctrico",
+      "output": "transformador_electrico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 10800,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cobre_refinado",
+          "qty_cent": 8000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 10000
+        },
+        {
+          "product": "transformador",
+          "qty_cent": 100
+        }
+      ]
+    },
+    {
+      "key": "constr_edificio_res",
+      "name": "Construcción de edificio residencial",
+      "output": "edificio_residencial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 60000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "ventana",
+          "qty_cent": 500
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 5000
+        },
+        {
+          "product": "madera_tratada",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "constr_edificio_com",
+      "name": "Construcción de edificio comercial",
+      "output": "edificio_comercial",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 60000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 25000
+        },
+        {
+          "product": "ventana",
+          "qty_cent": 800
+        },
+        {
+          "product": "puerta_industrial",
+          "qty_cent": 300
+        }
+      ]
+    },
+    {
+      "key": "constr_fabrica_ligera",
+      "name": "Construcción de fábrica urbana ligera",
+      "output": "fabrica_urbana_ligera",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero",
+          "qty_cent": 20000
+        },
+        {
+          "product": "hormigon",
+          "qty_cent": 30000
+        },
+        {
+          "product": "sistema_control",
+          "qty_cent": 100
+        },
+        {
+          "product": "contrachapado",
+          "qty_cent": 3000
+        }
+      ]
+    },
+    {
+      "key": "constr_almacen",
+      "name": "Construcción de almacén logístico",
+      "output": "almacen_logistico",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 14400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 40000
+        },
+        {
+          "product": "acero",
+          "qty_cent": 25000
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 5000
+        },
+        {
+          "product": "puerta_industrial",
+          "qty_cent": 200
+        }
+      ]
+    },
+    {
+      "key": "elab_mantequilla",
+      "name": "Elaboración de mantequilla",
+      "output": "mantequilla",
+      "output_qty_cent": 8000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 40000
+        }
+      ]
+    },
+    {
+      "key": "elab_yogur",
+      "name": "Elaboración de yogur",
+      "output": "yogur",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 30000
+        }
+      ]
+    },
+    {
+      "key": "elab_chocolate",
+      "name": "Elaboración de chocolate",
+      "output": "chocolate",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cacao",
+          "qty_cent": 15000
+        },
+        {
+          "product": "azucar",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "elab_textiles",
+      "name": "Elaboración de textiles",
+      "output": "textiles",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "algodon",
+          "qty_cent": 20000
+        }
+      ]
     }
   ],
   "roles": {
     "primary_producer": {
       "initial_agents": 3,
       "capacities": [
-        { "recipe": "cultivo_trigo", "installations": 2 },
-        { "recipe": "cultivo_maiz", "installations": 2 },
-        { "recipe": "ordena", "installations": 2 },
-        { "recipe": "cultivo_tomate", "installations": 2 },
-        { "recipe": "germinado_rapido", "installations": 1 }
+        {
+          "recipe": "cultivo_trigo",
+          "installations": 2
+        },
+        {
+          "recipe": "cultivo_maiz",
+          "installations": 2
+        },
+        {
+          "recipe": "ordena",
+          "installations": 2
+        },
+        {
+          "recipe": "cultivo_tomate",
+          "installations": 2
+        },
+        {
+          "recipe": "germinado_rapido",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_hierro",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_carbon",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_cobre",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_bauxita",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_litio",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_niquel",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_oro",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_plata",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_uranio",
+          "installations": 1
+        },
+        {
+          "recipe": "extraccion_arena",
+          "installations": 1
+        },
+        {
+          "recipe": "cantera_piedra",
+          "installations": 1
+        },
+        {
+          "recipe": "cantera_caliza",
+          "installations": 1
+        },
+        {
+          "recipe": "extraccion_arcilla",
+          "installations": 1
+        },
+        {
+          "recipe": "mineria_fosfato",
+          "installations": 1
+        },
+        {
+          "recipe": "extraccion_sal",
+          "installations": 1
+        },
+        {
+          "recipe": "pozo_petroleo",
+          "installations": 1
+        },
+        {
+          "recipe": "pozo_gas",
+          "installations": 1
+        },
+        {
+          "recipe": "captacion_agua",
+          "installations": 1
+        },
+        {
+          "recipe": "tala",
+          "installations": 1
+        },
+        {
+          "recipe": "cultivo_soya",
+          "installations": 1
+        },
+        {
+          "recipe": "cultivo_algodon",
+          "installations": 1
+        },
+        {
+          "recipe": "cultivo_cana",
+          "installations": 1
+        },
+        {
+          "recipe": "cultivo_cafe",
+          "installations": 1
+        },
+        {
+          "recipe": "cultivo_cacao",
+          "installations": 1
+        },
+        {
+          "recipe": "cosecha_frutas",
+          "installations": 1
+        },
+        {
+          "recipe": "cosecha_verduras",
+          "installations": 1
+        },
+        {
+          "recipe": "cria_bovino",
+          "installations": 1
+        },
+        {
+          "recipe": "cria_cerdos",
+          "installations": 1
+        },
+        {
+          "recipe": "cria_pollos",
+          "installations": 1
+        },
+        {
+          "recipe": "esquila",
+          "installations": 1
+        }
       ]
     },
     "transformer": {
       "initial_agents": 3,
       "capacities": [
-        { "recipe": "molienda", "installations": 2 },
-        { "recipe": "panaderia", "installations": 1 },
-        { "recipe": "nixtamalizado", "installations": 2 },
-        { "recipe": "tortilleria", "installations": 1 },
-        { "recipe": "queseria", "installations": 1 },
-        { "recipe": "salseria", "installations": 1 }
+        {
+          "recipe": "molienda",
+          "installations": 2
+        },
+        {
+          "recipe": "panaderia",
+          "installations": 1
+        },
+        {
+          "recipe": "nixtamalizado",
+          "installations": 2
+        },
+        {
+          "recipe": "tortilleria",
+          "installations": 1
+        },
+        {
+          "recipe": "queseria",
+          "installations": 1
+        },
+        {
+          "recipe": "salseria",
+          "installations": 1
+        },
+        {
+          "recipe": "fundicion_acero",
+          "installations": 1
+        },
+        {
+          "recipe": "fundicion_inox",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_aluminio",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_cobre",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_cemento",
+          "installations": 1
+        },
+        {
+          "recipe": "mezcla_hormigon",
+          "installations": 1
+        },
+        {
+          "recipe": "fundicion_vidrio",
+          "installations": 1
+        },
+        {
+          "recipe": "coccion_ladrillos",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_asfalto",
+          "installations": 1
+        },
+        {
+          "recipe": "sintesis_plastico",
+          "installations": 1
+        },
+        {
+          "recipe": "sintesis_caucho",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_fertilizantes",
+          "installations": 1
+        },
+        {
+          "recipe": "sintesis_quimicos",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_silicio",
+          "installations": 1
+        },
+        {
+          "recipe": "aserrado",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_celulosa",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_papel",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_carton",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_azucar",
+          "installations": 1
+        },
+        {
+          "recipe": "prensado_aceite",
+          "installations": 1
+        },
+        {
+          "recipe": "procesado_carne",
+          "installations": 1
+        },
+        {
+          "recipe": "planta_lactea",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_gasolina",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_diesel",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_queroseno",
+          "installations": 1
+        },
+        {
+          "recipe": "refino_lubricantes",
+          "installations": 1
+        },
+        {
+          "recipe": "laminado_viga",
+          "installations": 1
+        },
+        {
+          "recipe": "laminado_lamina",
+          "installations": 1
+        },
+        {
+          "recipe": "extrusion_tubo",
+          "installations": 1
+        },
+        {
+          "recipe": "perfilado_metal",
+          "installations": 1
+        },
+        {
+          "recipe": "laminado_aluminio",
+          "installations": 1
+        },
+        {
+          "recipe": "perfilado_aluminio",
+          "installations": 1
+        },
+        {
+          "recipe": "trefilado_cable",
+          "installations": 1
+        },
+        {
+          "recipe": "bobinado_cobre",
+          "installations": 1
+        },
+        {
+          "recipe": "templado_cristal",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_cristal_tecnico",
+          "installations": 1
+        },
+        {
+          "recipe": "polimerizacion",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_resinas",
+          "installations": 1
+        },
+        {
+          "recipe": "hilado_fibra",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_lubricante_ind",
+          "installations": 1
+        },
+        {
+          "recipe": "tratado_madera",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_contrachapado",
+          "installations": 1
+        },
+        {
+          "recipe": "enlatado_conservas",
+          "installations": 1
+        },
+        {
+          "recipe": "produccion_piensos",
+          "installations": 1
+        },
+        {
+          "recipe": "embotellado_bebidas",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_chasis",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_motor",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_caja",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_suspension",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_frenos",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_rodamientos",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_bomba",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_motor_elec",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_transformador",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_generador",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_bateria",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_cableado",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_circuito",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_microchip",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_sensor",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_pantalla",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_ventana",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_puerta",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_panel_pref",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_tuberia",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_asiento",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_panel_int",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_neumatico",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_turbina",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_hidraulico",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_motor_aero",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_control",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_tanque",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_refrig",
+          "installations": 1
+        },
+        {
+          "recipe": "ensamble_aislamiento",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_camion_carga",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_camion_cisterna",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_camion_refrigerado",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_locomotora",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_vagon",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_barco_carga",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_barco_petrolero",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_avion",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_planta_industrial",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_refineria",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_central_electrica",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_planta_ensamblaje",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_astillero",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_fabrica_aeronaves",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_planta_quimica",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_estacion",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_terminal",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_puerto",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_aeropuerto",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_automovil",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_refrigerador",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_lavadora",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_televisor",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_computadora",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_telefono",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_excavadora",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_grua",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_generador_ind",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_panel_solar",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_turbina_eolica",
+          "installations": 1
+        },
+        {
+          "recipe": "fab_transformador_elec",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_edificio_res",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_edificio_com",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_fabrica_ligera",
+          "installations": 1
+        },
+        {
+          "recipe": "constr_almacen",
+          "installations": 1
+        },
+        {
+          "recipe": "elab_mantequilla",
+          "installations": 1
+        },
+        {
+          "recipe": "elab_yogur",
+          "installations": 1
+        },
+        {
+          "recipe": "elab_chocolate",
+          "installations": 1
+        },
+        {
+          "recipe": "elab_textiles",
+          "installations": 1
+        }
       ]
     },
     "consumer": {
