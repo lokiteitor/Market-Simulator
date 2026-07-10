@@ -11,20 +11,181 @@ retry:
   initial_backoff_ms: 1000
   max_backoff_ms: 30000
 
-# Base prices for evaluating trades and calculating margins (in cents)
-prices:
-  trigo: 15
-  maiz: 12
-  leche: 30
-  tomate: 20
-  germinado: 5
-  harina: 25
-  masa: 18
-  pan: 40
-  tortilla: 30
-  queso: 80
-  salsa: 45
+# Factor de tiempo de simulacion del servidor (env SIM_TIME_FACTOR, default 5).
+# El servidor cobra el salario como wage_rate_cents_per_sec * segundos_SIMULADOS,
+# pero /catalog/recipes expone duration_seconds ya convertido a segundos REALES.
+# Los bots multiplican por este factor para estimar el costo laboral correctamente.
+sim_time_factor: 5
 
+# Precios base (cents/unidad) para evaluar trades y margenes.
+# Generados por propagacion de costo desde infra/seed-config.json:
+#   costo_unit = (wage_rate*duration_sim + sum(insumos)) * 100 / output_qty_cent
+# Cubre los 155 productos del catalogo (materias primas, intermedios y finales).
+prices:
+  # --- Materias primas ---
+  trigo: 14
+  maiz: 12
+  leche: 36
+  tomate: 18
+  germinado: 6
+  hierro: 14
+  carbon: 14
+  mineral_cobre: 14
+  bauxita: 14
+  litio: 144
+  niquel: 24
+  oro: 720
+  plata: 480
+  uranio: 720
+  arena: 7
+  piedra: 7
+  caliza: 7
+  arcilla: 7
+  fosfato: 18
+  sal: 9
+  petroleo: 29
+  gas_natural: 36
+  agua: 2
+  troncos: 18
+  soya: 14
+  algodon: 18
+  cana_azucar: 12
+  cafe: 36
+  cacao: 36
+  frutas: 14
+  verduras: 14
+  ganado_bovino: 1440
+  cerdos: 720
+  pollos: 72
+  lana: 36
+  # --- Intermedios ---
+  harina: 63
+  masa: 37
+  acero: 45
+  acero_inoxidable: 93
+  aluminio: 72
+  cobre_refinado: 90
+  cemento: 29
+  hormigon: 24
+  vidrio: 34
+  ladrillos: 19
+  asfalto: 38
+  plastico: 63
+  caucho_sintetico: 63
+  fertilizantes: 51
+  productos_quimicos: 51
+  silicio: 127
+  tablas: 48
+  celulosa: 48
+  papel: 77
+  carton: 108
+  azucar: 66
+  aceite_vegetal: 86
+  carne_procesada: 72
+  lacteos: 72
+  gasolina: 75
+  diesel: 75
+  queroseno: 94
+  lubricantes: 125
+  viga_acero: 90
+  lamina_acero: 90
+  tubo_acero: 95
+  perfil_metalico: 90
+  lamina_aluminio: 138
+  perfil_aluminio: 138
+  cable_cobre: 148
+  bobina_cobre: 159
+  cristal_plano: 77
+  cristal_tecnico: 117
+  polimeros: 110
+  resinas: 102
+  fibra_sintetica: 124
+  lubricante_industrial: 179
+  madera_tratada: 93
+  contrachapado: 99
+  conservas: 36
+  piensos: 36
+  bebidas: 41
+  chasis: 28800
+  motor_combustion: 34907
+  caja_cambios: 19800
+  suspension: 20801
+  frenos: 18000
+  rodamientos: 8775
+  bomba_industrial: 21309
+  motor_electrico: 24819
+  transformador: 29354
+  generador: 55607
+  bateria: 21787
+  cableado: 206
+  circuito_impreso: 18137
+  microchip: 41264
+  sensor: 34337
+  pantalla: 37841
+  ventana: 13063
+  puerta_industrial: 11167
+  panel_prefabricado: 14378
+  tuberia: 177
+  asiento: 20826
+  panel_interior: 15216
+  neumatico: 19368
+  turbina: 37800
+  sistema_hidraulico: 44921
+  motor_aeronautico: 78164
+  sistema_control: 171525
+  tanque_especializado: 31765
+  sistema_refrigeracion: 47359
+  aislamiento_termico: 189
+  # --- Consumo final ---
+  pan: 158
+  tortilla: 76
+  queso: 1980
+  salsa: 90
+  camion_carga: 489772
+  camion_cisterna: 458513
+  camion_refrigerado: 458477
+  locomotora_diesel: 390546
+  vagon_carga: 123300
+  barco_carga: 543281
+  barco_petrolero: 660575
+  avion_carga: 611555
+  planta_industrial: 115500
+  refineria: 519343
+  central_electrica: 274931
+  planta_ensamblaje: 452804
+  astillero: 333366
+  fabrica_aeronaves: 395183
+  planta_quimica: 488770
+  estacion_carga: 69664
+  terminal_ferroviaria: 407808
+  puerto_comercial: 174960
+  aeropuerto_carga: 599693
+  automovil: 413932
+  refrigerador: 86425
+  lavadora: 220194
+  televisor: 78845
+  computadora: 143686
+  telefono: 135229
+  excavadora: 361523
+  grua: 189998
+  generador_industrial: 100469
+  panel_solar: 45785
+  turbina_eolica: 272325
+  transformador_electrico: 73454
+  edificio_residencial: 146798
+  edificio_comercial: 206762
+  fabrica_urbana_ligera: 233844
+  almacen_logistico: 96633
+  mantequilla: 270
+  yogur: 72
+  chocolate: 141
+  textiles: 96
+
+# NOTA: el backend IGNORA `requested_capacities` en el registro; asigna a cada
+# agente TODAS las capacidades de su rol definidas en infra/seed-config.json
+# (~35 recetas para primary_producer, ~120 para transformer). Los bloques
+# `requested_capacities:` de abajo son solo documentacion del subset esperado;
+# el fan-out real lo acota `max_recipes_per_tick` (arriba), no esta lista.
 bots:
   - username: "primary_producer_1"
     password: "dev-password-123"

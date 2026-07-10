@@ -8,12 +8,16 @@ import (
 )
 
 type PrimaryProducerStrategy struct {
-	basePrices map[string]int64
+	basePrices        map[string]int64
+	simTimeFactor     float64
+	maxRecipesPerTick int
 }
 
 func NewPrimaryProducerStrategy() *PrimaryProducerStrategy {
 	return &PrimaryProducerStrategy{
-		basePrices: make(map[string]int64),
+		basePrices:        make(map[string]int64),
+		simTimeFactor:     5,
+		maxRecipesPerTick: 8,
 	}
 }
 
@@ -33,7 +37,9 @@ func (s *PrimaryProducerStrategy) Initialize(ctx *strategy.Context) error {
 			}
 		}
 	}
-	ctx.Logger.Info("PrimaryProducerStrategy initialized", "prices", s.basePrices)
+	s.simTimeFactor = configFloat(ctx.Config, "sim_time_factor", s.simTimeFactor)
+	s.maxRecipesPerTick = configInt(ctx.Config, "max_recipes_per_tick", s.maxRecipesPerTick)
+	ctx.Logger.Info("PrimaryProducerStrategy initialized", "prices", s.basePrices, "sim_time_factor", s.simTimeFactor, "max_recipes_per_tick", s.maxRecipesPerTick)
 	return nil
 }
 
@@ -41,12 +47,19 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	var acts []actions.Action
 	ctx.Logger.Info("PrimaryProducerStrategy tick starting...")
 
-	// 1. Check capacity and start transformations for recipes with no inputs
+	// 1. Check capacity and start transformations for recipes with no inputs.
+	// Cap por tick: seed-config asigna las 35 recetas primarias a cada productor;
+	// iniciar transformaciones de todas cada tick satura al agente y al servidor.
 	capacities := ctx.State.Capacities()
+	recipesActed := 0
 	for _, capStatus := range capacities {
 		if capStatus.AvailableSlots > 0 {
 			recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
 			if ok && len(recipe.Inputs) == 0 {
+				if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
+					break
+				}
+				recipesActed++
 				ctx.Logger.Info("Starting production transformation", "recipe_id", recipe.RecipeID, "slots", capStatus.AvailableSlots)
 				acts = append(acts, actions.StartTransformation{
 					RecipeID:          recipe.RecipeID,
@@ -81,7 +94,9 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
 					if ok && recipe.OutputProductID == pos.ProductID {
 						if recipe.OutputQtyCent > 0 {
-							wageCost := recipe.WageRateCentsPerSec * recipe.DurationSeconds
+							// wage_rate es por segundo SIMULADO; DurationSeconds llega
+							// en segundos reales, reconvertimos con el factor de simulacion.
+							wageCost := int64(float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor)
 							costPerUnit := wageCost / recipe.OutputQtyCent
 							if costPerUnit > 0 {
 								price = int64(float64(costPerUnit) * 1.5)

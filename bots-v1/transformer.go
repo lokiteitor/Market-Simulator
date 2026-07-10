@@ -8,12 +8,16 @@ import (
 )
 
 type TransformerStrategy struct {
-	basePrices map[string]int64
+	basePrices        map[string]int64
+	simTimeFactor     float64
+	maxRecipesPerTick int
 }
 
 func NewTransformerStrategy() *TransformerStrategy {
 	return &TransformerStrategy{
-		basePrices: make(map[string]int64),
+		basePrices:        make(map[string]int64),
+		simTimeFactor:     5,
+		maxRecipesPerTick: 8,
 	}
 }
 
@@ -33,7 +37,9 @@ func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 			}
 		}
 	}
-	ctx.Logger.Info("TransformerStrategy initialized", "prices", s.basePrices)
+	s.simTimeFactor = configFloat(ctx.Config, "sim_time_factor", s.simTimeFactor)
+	s.maxRecipesPerTick = configInt(ctx.Config, "max_recipes_per_tick", s.maxRecipesPerTick)
+	ctx.Logger.Info("TransformerStrategy initialized", "prices", s.basePrices, "sim_time_factor", s.simTimeFactor, "max_recipes_per_tick", s.maxRecipesPerTick)
 	return nil
 }
 
@@ -56,12 +62,20 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		}
 	}
 
-	// 1. Process transformations and check if we need to purchase inputs
+	// 1. Process transformations and check if we need to purchase inputs.
+	// Cap el numero de recetas procesadas por tick: un agente puede tener ~120
+	// recetas asignadas (seed-config asigna TODAS las del rol), y actuar sobre
+	// todas cada tick genera una avalancha de ordenes y diluye el capital.
+	recipesActed := 0
 	for _, capStatus := range capacities {
 		recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
 		if !ok || len(recipe.Inputs) == 0 {
 			continue // Skip recipes with no inputs (handled by producers)
 		}
+		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
+			break
+		}
+		recipesActed++
 
 		// A. Determine how many executions we can run right now with available inventory
 		maxExecutions := capStatus.AvailableSlots
@@ -154,7 +168,10 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					}
 					inputCosts += inp.QtyRequiredCent * inPrice
 				}
-				wageCost := matchedRecipe.WageRateCentsPerSec * matchedRecipe.DurationSeconds
+				// El servidor cobra el salario en segundos SIMULADOS
+				// (wage_rate_cents_per_sec * duration_sim), pero DurationSeconds
+				// llega en segundos REALES. Reconvertimos con el factor de simulacion.
+				wageCost := int64(float64(matchedRecipe.WageRateCentsPerSec*matchedRecipe.DurationSeconds) * s.simTimeFactor)
 				totalCost := inputCosts + wageCost
 				if matchedRecipe.OutputQtyCent > 0 {
 					costPerUnit := totalCost / matchedRecipe.OutputQtyCent

@@ -17,8 +17,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
 import type {
+  CapacityStatus,
   Problem,
   Product,
+  ProductCategory,
   Recipe,
   SelfState,
   StartTransformationRequest,
@@ -27,6 +29,10 @@ import type {
 import { Badge, ErrorBanner, Field, Modal, showToast } from "../../components";
 import { fmtMoney, fmtQty, truncId } from "../../lib/format";
 import { splitProblemByField } from "../auth/validation";
+import {
+  PRODUCT_CATEGORY_LABEL,
+  PRODUCT_CATEGORY_ORDER,
+} from "../catalog/labels";
 import {
   fmtDurationSeconds,
   realDurationSimHint,
@@ -102,6 +108,45 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
     productById.get(productId)?.name ?? truncId(productId);
   const productUnit = (productId: string): string | undefined =>
     productById.get(productId)?.unit;
+
+  // Capacidades agrupadas por la categoría del producto de salida (espejo del
+  // selector de MarketPage). El grupo "other" recoge recetas cuyo catálogo aún
+  // no cargó, para no perder nunca una opción del <select>.
+  const capacityGroups = useMemo(() => {
+    const byCategory = new Map<ProductCategory, CapacityStatus[]>();
+    const other: CapacityStatus[] = [];
+    for (const c of capacities) {
+      const recipe = recipeById.get(c.recipe_id);
+      const category = recipe
+        ? productById.get(recipe.output_product_id)?.category
+        : undefined;
+      if (category === undefined) {
+        other.push(c);
+      } else {
+        const list = byCategory.get(category);
+        if (list === undefined) byCategory.set(category, [c]);
+        else list.push(c);
+      }
+    }
+    const recipeName = (c: CapacityStatus): string =>
+      recipeById.get(c.recipe_id)?.name ?? truncId(c.recipe_id);
+    const sortByName = (list: CapacityStatus[]): CapacityStatus[] =>
+      [...list].sort((a, b) => recipeName(a).localeCompare(recipeName(b), "es"));
+    const groups: Array<{ label: string; items: CapacityStatus[] }> = [];
+    for (const category of PRODUCT_CATEGORY_ORDER) {
+      const list = byCategory.get(category);
+      if (list && list.length > 0) {
+        groups.push({
+          label: PRODUCT_CATEGORY_LABEL[category],
+          items: sortByName(list),
+        });
+      }
+    }
+    if (other.length > 0) {
+      groups.push({ label: "Otras", items: sortByName(other) });
+    }
+    return groups;
+  }, [capacities, recipeById, productById]);
 
   // ---- Estado del formulario ---------------------------------------------------
   const [recipeId, setRecipeId] = useState("");
@@ -271,16 +316,21 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
                 ? "Cargando recetas…"
                 : "Selecciona una receta"}
             </option>
-            {capacities.map((c) => {
-              const r = recipeById.get(c.recipe_id);
-              const slots = availableSlots(c);
-              return (
-                <option key={c.recipe_id} value={c.recipe_id}>
-                  {r?.name ?? truncId(c.recipe_id)} — {slots}/{c.installations}{" "}
-                  {slots === 1 ? "hueco libre" : "huecos libres"}
-                </option>
-              );
-            })}
+            {capacityGroups.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map((c) => {
+                  const r = recipeById.get(c.recipe_id);
+                  const slots = availableSlots(c);
+                  return (
+                    <option key={c.recipe_id} value={c.recipe_id}>
+                      {r?.name ?? truncId(c.recipe_id)} — {slots}/
+                      {c.installations}{" "}
+                      {slots === 1 ? "hueco libre" : "huecos libres"}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ))}
           </select>
         </Field>
 

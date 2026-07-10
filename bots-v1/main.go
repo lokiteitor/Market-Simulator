@@ -35,11 +35,13 @@ type BotRunnerConfig struct {
 }
 
 type GlobalConfig struct {
-	Server  engine.ServerConfig    `yaml:"server"`
-	Logging logging.Config         `yaml:"logging"`
-	Retry   engine.RetryConfig     `yaml:"retry"`
-	Prices  map[string]interface{} `yaml:"prices"`
-	Bots    []BotRunnerConfig      `yaml:"bots"`
+	Server            engine.ServerConfig    `yaml:"server"`
+	Logging           logging.Config         `yaml:"logging"`
+	Retry             engine.RetryConfig     `yaml:"retry"`
+	SimTimeFactor     float64                `yaml:"sim_time_factor"`
+	MaxRecipesPerTick int                    `yaml:"max_recipes_per_tick"`
+	Prices            map[string]interface{} `yaml:"prices"`
+	Bots              []BotRunnerConfig      `yaml:"bots"`
 }
 
 func main() {
@@ -57,6 +59,14 @@ func main() {
 	var globalCfg GlobalConfig
 	if err := yaml.Unmarshal(data, &globalCfg); err != nil {
 		log.Fatalf("Failed to parse config: %v", err)
+	}
+
+	// Defaults defensivos: si no se configuran, usar los del servidor por defecto.
+	if globalCfg.SimTimeFactor <= 0 {
+		globalCfg.SimTimeFactor = 5 // igual al default de SIM_TIME_FACTOR en el backend
+	}
+	if globalCfg.MaxRecipesPerTick <= 0 {
+		globalCfg.MaxRecipesPerTick = 8 // acota el fan-out cuando un agente tiene ~120 recetas
 	}
 
 	// Prepare list of bot configurations
@@ -165,7 +175,9 @@ func main() {
 			Logging: globalCfg.Logging,
 			Retry:   globalCfg.Retry,
 			Strategy: map[string]interface{}{
-				"prices": globalCfg.Prices,
+				"prices":               globalCfg.Prices,
+				"sim_time_factor":      globalCfg.SimTimeFactor,
+				"max_recipes_per_tick": globalCfg.MaxRecipesPerTick,
 			},
 		}
 
