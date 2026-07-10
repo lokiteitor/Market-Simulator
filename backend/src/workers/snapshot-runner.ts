@@ -17,7 +17,7 @@
  *
  * No publica notificaciones: snapshot_taken no es un NotificationType (§9).
  */
-import { and, gt, inArray, sql } from "drizzle-orm";
+import { and, gt, inArray, ne, sql } from "drizzle-orm";
 import { withTransaction } from "../db";
 import {
   agent,
@@ -87,12 +87,16 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
   const result = await withTransaction(
     async (tx) => {
       // --- Agregados de cabecera -------------------------------------------
+      // Excluir admins (rol de solo-monitoreo, capital 0): no son población de
+      // mercado y falsearían active_agents / total_money_cents.
       const agentAggRows = await tx
         .select({
-          activeAgents: sql<string | number>`count(*) filter (where ${agent.status} = 'active')`,
+          activeAgents: sql<
+            string | number
+          >`count(*) filter (where ${agent.status} = 'active' and ${agent.role} <> 'admin')`,
           totalMoneyCents: sql<
             string | number
-          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
+          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}) filter (where ${agent.role} <> 'admin'), 0)`,
         })
         .from(agent);
       const feeAggRows = await tx
@@ -130,7 +134,8 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
           agentId: agent.agentId,
           capitalTotal: sql<string | number>`${agent.capitalAvailable} + ${agent.capitalReserved}`,
         })
-        .from(agent);
+        .from(agent)
+        .where(ne(agent.role, "admin"));
       const capitalRows = capitals.map((c) => ({
         snapshotId: head.snapshotId,
         agentId: c.agentId,

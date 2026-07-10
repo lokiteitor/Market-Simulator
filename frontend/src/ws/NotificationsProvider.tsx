@@ -132,15 +132,6 @@ function toastForNotification(msg: Notification): ToastDetail | null {
         title: "Tu agente está en quiebra",
         body: "Las operaciones de escritura quedan bloqueadas.",
       };
-    case "agent_joined": {
-      const username = strField(p, "username");
-      const detail: ToastDetail = {
-        kind: "info",
-        title: "Nuevo agente en el mercado",
-      };
-      if (username !== null) detail.body = `Se unió ${username}.`;
-      return detail;
-    }
     case "agent_bankrupt": {
       const username = strField(p, "username");
       const detail: ToastDetail = {
@@ -168,7 +159,6 @@ const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   order_cancelled: ["self", "orders", "market"],
   transformation_completed: ["self", "processes", "history"],
   bankruptcy_notice: ["self", "orders", "processes"],
-  agent_joined: [],
   agent_bankrupt: ["market"],
 };
 

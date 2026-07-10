@@ -17,7 +17,7 @@
  * depender de nombres internos de los repos de M3/M4 (que se implementan en
  * paralelo y cuyo API interno no está fijado por el contrato).
  */
-import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
@@ -91,7 +91,8 @@ export const agentRepository = {
         >`floor(avg(${agent.capitalAvailable} + ${agent.capitalReserved}))::bigint`,
       })
       .from(agent)
-      .where(eq(agent.status, "active"));
+      // Excluir admins: son solo-monitoreo (capital 0) y falsearían el promedio.
+      .where(and(eq(agent.status, "active"), ne(agent.role, "admin")));
     const value = rows[0]?.avg;
     return value === null || value === undefined ? null : Number(value);
   },

@@ -18,7 +18,7 @@ info:
       e inicio/cancelación de procesos de transformación.
     - **WebSocket** (`/v1/ws`) para notificaciones push del servidor al agente
       (`order_executed`, `order_expired`, `transformation_completed`,
-      `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`). El canal WS no
+      `bankruptcy_notice`, `agent_bankrupt`). El canal WS no
       acepta comandos: es unidireccional servidor→cliente más heartbeats.
       Su esquema se documenta como complemento al final (sección
       `x-websocket-channel`); está fuera del modelo formal de OpenAPI 3.1.
@@ -106,7 +106,7 @@ paths:
         El servidor asigna **capital semilla = promedio del capital total de
         agentes activos** al momento del registro (registros dinámicos). La
         identidad asignada es fresca y nunca se recicla. Emite el evento
-        `agent_registered` y un broadcast `agent_joined`.
+        de auditoría `agent_registered`.
 
         Endpoint público (no requiere autenticación).
       security: []
@@ -1636,7 +1636,6 @@ x-websocket-channel:
           - order_cancelled      # personal
           - transformation_completed  # personal
           - bankruptcy_notice    # personal
-          - agent_joined         # broadcast
           - agent_bankrupt       # broadcast
       occurred_at: { type: string, format: date-time }
       payload:

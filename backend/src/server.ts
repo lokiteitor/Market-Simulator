@@ -17,6 +17,9 @@ import { buildApp } from "./app";
 import { config } from "./config";
 import { closeDb } from "./db";
 import { closeNotifier } from "./notifier";
+// Registra los gauges de negocio scrape-time SOLO en el core (side-effect del
+// import); el worker no debe exponerlos.
+import "./observability/business-metrics";
 import { logger } from "./observability/logger";
 import { register } from "./observability/metrics";
 

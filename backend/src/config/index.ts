@@ -45,6 +45,10 @@ const EnvSchema = z
     SEED_CAPITAL_TRADER_MAX_CENTS: posIntFromEnv(400000),
     SEED_AGENT_PASSWORD: z.string().min(1).default("dev-password-123"),
     SEED_CONFIG_PATH: z.string().min(1).default("../infra/seed-config.json"),
+    // Bootstrap del agente admin (solo-monitoreo). Se crea con
+    // `bun src/seed-admin.ts`; NO es registrable por /auth/register.
+    ADMIN_USERNAME: z.string().min(3).max(64).default("admin"),
+    ADMIN_PASSWORD: z.string().min(12).max(256).default("change-me-admin-please"),
     TRANSFORMATION_SWEEP_INTERVAL_MS: posIntFromEnv(10000),
     ORDER_EXPIRY_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
     SWEEP_BATCH_SIZE: posIntFromEnv(100),
@@ -109,6 +113,9 @@ export interface Config {
   seedCapitalRanges: Record<AgentRoleKey, SeedCapitalRange>;
   seedAgentPassword: string;
   seedConfigPath: string;
+  /** Credenciales del agente admin (solo-monitoreo); ver src/seed-admin.ts. */
+  adminUsername: string;
+  adminPassword: string;
   sweeps: {
     transformationIntervalMs: number;
     orderExpiryIntervalMs: number;
@@ -182,6 +189,8 @@ function loadConfig(): Config {
     },
     seedAgentPassword: e.SEED_AGENT_PASSWORD,
     seedConfigPath: e.SEED_CONFIG_PATH,
+    adminUsername: e.ADMIN_USERNAME,
+    adminPassword: e.ADMIN_PASSWORD,
     sweeps: {
       transformationIntervalMs: e.TRANSFORMATION_SWEEP_INTERVAL_MS,
       orderExpiryIntervalMs: e.ORDER_EXPIRY_SWEEP_INTERVAL_MS,

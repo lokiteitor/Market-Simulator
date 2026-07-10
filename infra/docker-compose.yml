@@ -108,6 +108,22 @@ services:
         condition: service_healthy
     networks: [market]
 
+  # Bootstrap del agente admin (panel de monitoreo). One-shot idempotente.
+  #   docker compose --profile seed run --rm seed-admin
+  # Credenciales por ADMIN_USERNAME / ADMIN_PASSWORD en .env.docker.
+  seed-admin:
+    build: *app-build
+    image: mercado-agricola-app:local
+    command: ["bun", "src/seed-admin.ts"]
+    env_file:
+      - .env.docker
+    profiles: ["seed"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [market]
+
   caddy:
     image: caddy:2.8.4-alpine
     ports:

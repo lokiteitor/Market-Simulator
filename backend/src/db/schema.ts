@@ -47,6 +47,9 @@ export const agentRole = pgEnum("agent_role", [
   "transformer",
   "consumer",
   "trader",
+  // Rol de solo-monitoreo (panel admin): no participa en el mercado y no es
+  // registrable por /auth/register. Ver MARKET_ROLES en types/contracts.ts.
+  "admin",
 ]);
 
 export const agentStatus = pgEnum("agent_status", ["active", "bankrupt"]);

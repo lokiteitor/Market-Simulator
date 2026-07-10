@@ -47,4 +47,6 @@ export const ROLE_LABEL: Record<AgentRole, string> = {
   transformer: "Transformador",
   consumer: "Consumidor",
   trader: "Trader",
+  // Rol de solo-monitoreo; no aparece en el selector de registro (ROLE_INFOS).
+  admin: "Administrador",
 };

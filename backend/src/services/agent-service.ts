@@ -4,8 +4,7 @@
  * - Implementa `AgentRegistrar` (contratos §8): `createAgent(tx, …)` con
  *   capital semilla dinámico (§10.12) y capacidades del rol leídas de
  *   `infra/seed-config.json` (config.seedConfigPath). Lo consume AuthService
- *   [M1] dentro de SU transacción; el broadcast `agent_joined` lo publica el
- *   caller post-commit (regla §0).
+ *   [M1] dentro de SU transacción.
  * - `getSelfState` (GET /agents/me): materializa lazy los procesos vencidos
  *   del agente (TransformationMaterializer [M4]) y arma el snapshot completo
  *   según openapi `AgentSnapshot`.

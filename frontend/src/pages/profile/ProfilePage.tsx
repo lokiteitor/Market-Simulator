@@ -218,6 +218,7 @@ export default function ProfilePage() {
                       transformer: styles.avatarTransformer,
                       consumer: styles.avatarConsumer,
                       trader: styles.avatarTrader,
+                      admin: undefined,
                     }[snapshot.agent.role],
                   )}
                   aria-hidden="true"

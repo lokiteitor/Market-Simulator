@@ -54,6 +54,19 @@ async function plugin(app: FastifyInstance): Promise<void> {
       request.agentUsername = claims.username;
     },
   );
+
+  // Autorización de administrador (panel de monitoreo). Se encadena SIEMPRE
+  // tras `authenticate` en el array de preHandlers (`[app.authenticate,
+  // app.requireAdmin]`), que corre en orden: para cuando esto se ejecuta,
+  // `request.agentRole` ya viene del JWT verificado.
+  app.decorate(
+    "requireAdmin",
+    async function requireAdmin(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+      if (request.agentRole !== "admin") {
+        throw domainError("forbidden", "Se requiere rol de administrador.");
+      }
+    },
+  );
 }
 
 /**

@@ -37,6 +37,7 @@ import { DomainError, toProblemJson } from "./lib/errors";
 import type { ProblemErrorItem, ProblemJson } from "./lib/errors";
 import { logger } from "./observability/logger";
 import { httpRequestDuration } from "./observability/metrics";
+import { registerAdminRoutes } from "./routes/admin";
 import { registerAgentRoutes } from "./routes/agents";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerCatalogRoutes } from "./routes/catalog";
@@ -242,6 +243,7 @@ export function buildApp(): FastifyInstance {
       await registerOrderRoutes(v1);
       await registerTransformationRoutes(v1);
       await registerHistoryRoutes(v1);
+      registerAdminRoutes(v1);
     },
     { prefix: "/v1" },
   );

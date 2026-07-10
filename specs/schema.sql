@@ -39,7 +39,12 @@ CREATE TYPE agent_role AS ENUM (
     'primary_producer',
     'transformer',
     'consumer',
-    'trader'
+    'trader',
+    -- Rol de solo-monitoreo: NO participa en el mercado (sin capital ni
+    -- capacidades) y NO es registrable vía POST /auth/register. Se crea con el
+    -- bootstrap de admin (bun src/seed-admin.ts). Las agregaciones de mercado
+    -- lo excluyen (role <> 'admin').
+    'admin'
 );
 
 CREATE TYPE agent_status AS ENUM (

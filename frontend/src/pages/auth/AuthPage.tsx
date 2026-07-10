@@ -341,6 +341,8 @@ export default function AuthPage() {
                     transformer: styles.roleTransformer,
                     consumer: styles.roleConsumer,
                     trader: styles.roleTrader,
+                    // admin no aparece en ROLE_INFOS; clave por exhaustividad de tipos.
+                    admin: undefined,
                   }[info.role];
                   return (
                     <label

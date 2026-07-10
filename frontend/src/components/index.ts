@@ -35,3 +35,10 @@ export {
   type ToastDetail,
   type ToastKind,
 } from "./Toast";
+export {
+  CategoryBarChart,
+  type CategoryBarChartProps,
+  TimeSeriesChart,
+  type TimeSeriesChartProps,
+  type TimeSeriesSeries,
+} from "./charts";

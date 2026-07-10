@@ -189,3 +189,36 @@ export function IconInbox(props: IconProps) {
     </Base>
   );
 }
+
+/** Escudo — sección de administración/monitoreo. */
+export function IconShield(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M12 3 5 6v5c0 4.4 3 8 7 10 4-2 7-5.6 7-10V6l-7-3Z" />
+      <path d="m9.2 12 1.9 1.9 3.7-3.9" />
+    </Base>
+  );
+}
+
+/** Grupo de personas — agentes/bots. */
+export function IconUsers(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 5.5a3 3 0 0 1 0 5.9" />
+      <path d="M17 14.2A5.5 5.5 0 0 1 20.5 19" />
+    </Base>
+  );
+}
+
+/** Fábrica — producción/transformaciones globales. */
+export function IconFactory(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 20V10l5 3V10l5 3V10l5 3v7Z" />
+      <path d="M3 20h18" />
+      <path d="M6 4h2l.5 6" />
+    </Base>
+  );
+}

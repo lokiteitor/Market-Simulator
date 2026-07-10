@@ -6,18 +6,26 @@
  * fastify-type-provider-zod para body y serialización de respuestas.
  */
 import { z } from "zod";
+import { agentRole } from "../db/schema";
+import { MARKET_ROLES } from "../types/contracts";
 import { UuidSchema } from "./common";
 
 // ---------------------------------------------------------------------------
 // Enums (openapi AgentRole / AgentStatus)
 // ---------------------------------------------------------------------------
 
-export const AgentRoleSchema = z.enum([
-  "primary_producer",
-  "transformer",
-  "consumer",
-  "trader",
-]);
+/**
+ * Rol completo (incluye `admin`): para SERIALIZAR respuestas de agentes que
+ * podrían ser un administrador (p. ej. AgentPublic). Derivado del enum de la DB.
+ */
+export const AgentRoleSchema = z.enum(agentRole.enumValues);
+
+/**
+ * Roles registrables vía POST /auth/register: solo los de mercado. Excluye
+ * `admin` deliberadamente para que nadie pueda auto-asignarse el rol de
+ * administrador por la vía pública (Zod rechaza el body con 400).
+ */
+export const RegisterableRoleSchema = z.enum(MARKET_ROLES);
 
 export const AgentStatusSchema = z.enum(["active", "bankrupt"]);
 
@@ -33,7 +41,7 @@ export const RegisterAgentRequestSchema = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_.-]+$/, "Solo letras, dígitos y . _ -"),
   password: z.string().min(12).max(256),
-  role: AgentRoleSchema,
+  role: RegisterableRoleSchema,
   // Aceptadas por contrato openapi pero el servidor asigna las capacidades
   // según los parámetros configurados para el rol (seed-config), tal como
   // permite la descripción del campo ("las acepta o ajusta").

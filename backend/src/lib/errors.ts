@@ -21,6 +21,7 @@ export const ErrorCodes = {
   ttl_out_of_range: { status: 422, title: "TTL fuera de rango" },
   agent_bankrupt: { status: 403, title: "Agente en quiebra" },
   not_owner: { status: 403, title: "El recurso pertenece a otro agente" },
+  forbidden: { status: 403, title: "Acceso denegado" },
   unknown_product: { status: 404, title: "Producto desconocido" },
   unknown_order: { status: 404, title: "Orden desconocida" },
   unknown_recipe: { status: 404, title: "Receta desconocida" },

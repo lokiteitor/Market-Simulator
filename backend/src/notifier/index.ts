@@ -18,7 +18,6 @@ export type NotificationType =
   | "order_expired"
   | "order_cancelled"
   | "transformation_completed"
-  | "agent_joined"
   | "agent_bankrupt"
   | "bankruptcy_notice";
 

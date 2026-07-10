@@ -123,10 +123,10 @@ describe("wsHub", () => {
     await hub.addConnection("a1", s2);
     await hub.addConnection("a2", s3);
 
-    sub.emit("broadcast", '{"type":"agent_joined"}');
+    sub.emit("broadcast", '{"type":"agent_bankrupt"}');
 
     for (const s of [s1, s2, s3]) {
-      expect(s.sent).toEqual(['{"type":"agent_joined"}']);
+      expect(s.sent).toEqual(['{"type":"agent_bankrupt"}']);
     }
   });
 

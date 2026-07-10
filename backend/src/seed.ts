@@ -34,7 +34,6 @@ import {
   agent,
   agentCapacity,
   agentCredentials,
-  agentRole,
   product,
   productCategory,
   recipe,
@@ -43,7 +42,7 @@ import {
 import { appendEvent, type AgentRegisteredPayload } from "./lib/event-log";
 import { randIntInclusive, rngFor } from "./lib/rng";
 import { logger } from "./observability/logger";
-import type { AgentRole } from "./types/contracts";
+import { MARKET_ROLES, type AgentRole, type MarketRole } from "./types/contracts";
 
 // =============================================================================
 // Schema Zod del seed-config.json (estructura REAL de infra/seed-config.json)
@@ -95,8 +94,8 @@ const SeedConfigSchema = z.object({
 
 export type SeedConfig = z.infer<typeof SeedConfigSchema>;
 
-/** Orden canónico de roles (el del enum de la DB): plan determinista. */
-const ROLE_ORDER: readonly AgentRole[] = agentRole.enumValues;
+/** Orden canónico de roles de MERCADO: plan determinista (excluye `admin`). */
+const ROLE_ORDER: readonly MarketRole[] = MARKET_ROLES;
 
 // =============================================================================
 // Funciones puras (testeables sin DB)
@@ -199,7 +198,7 @@ export function seedConfigHash(rawJson: string): string {
 export interface SeedAgentPlanEntry {
   /** `{role}_{i}` con i 1-based (p. ej. `primary_producer_1`). */
   username: string;
-  role: AgentRole;
+  role: MarketRole;
   /** Capital semilla determinista: rngFor(masterSeed, username) en el rango del rol. */
   capitalCents: number;
 }
@@ -346,7 +345,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
 
     // Capacidades por rol resueltas a recipe_id (una vez, no por agente).
     const capacitiesByRole = new Map<
-      AgentRole,
+      MarketRole,
       Array<{ recipeId: string; installations: number }>
     >();
     for (const role of ROLE_ORDER) {

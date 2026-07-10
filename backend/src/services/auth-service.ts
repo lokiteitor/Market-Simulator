@@ -4,15 +4,12 @@
  * Flujos: register, login, refresh (rotación), logout, y
  * `revokeAllForAgent` (consumido por [M2] al aplicar quiebras, §10.13).
  *
- * Coordinación de eventos/notificaciones en register (§10.12):
+ * Coordinación de eventos en register (§10.12):
  *  - `appendEvent(agent_registered)` lo hace `agentRegistrar.createAgent`
  *    [M2] DENTRO de la misma transacción.
- *  - El broadcast `agent_joined` lo publica ESTE service post-commit.
  */
 import { withTransaction, type Tx } from "../db";
 import { domainError } from "../lib/errors";
-import { publishBroadcast } from "../notifier";
-import { logger } from "../observability/logger";
 import { hashPassword, verifyPassword } from "../auth/password";
 import {
   generateRefreshToken,
@@ -151,25 +148,6 @@ async function register(p: {
     });
   } catch (err) {
     throw translateUniqueUsername(err, p.username);
-  }
-
-  // Post-commit (§0/§10.12): broadcast agent_joined. Un fallo del notifier no
-  // debe fallar el registro ya commiteado — se loguea y se sigue.
-  try {
-    await publishBroadcast({
-      type: "agent_joined",
-      occurred_at: new Date().toISOString(),
-      payload: {
-        agent_id: committed.agentRow.agentId,
-        username: committed.agentRow.username,
-        role: committed.agentRow.role,
-      },
-    });
-  } catch (err) {
-    logger.warn(
-      { err, agentId: committed.agentRow.agentId },
-      "register: fallo publicando broadcast agent_joined post-commit",
-    );
   }
 
   const access = signAccessToken({

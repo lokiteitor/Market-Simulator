@@ -112,7 +112,13 @@ export interface Recipe {
 // Agentes
 // ---------------------------------------------------------------------------
 
-export type AgentRole = "primary_producer" | "transformer" | "consumer" | "trader";
+export type AgentRole =
+  | "primary_producer"
+  | "transformer"
+  | "consumer"
+  | "trader"
+  // Rol de solo-monitoreo (panel admin): no participa en el mercado.
+  | "admin";
 
 export type AgentStatus = "active" | "bankrupt";
 
@@ -344,7 +350,6 @@ export type NotificationType =
   | "order_cancelled"
   | "transformation_completed"
   | "bankruptcy_notice"
-  | "agent_joined"
   | "agent_bankrupt";
 
 export interface Notification {
@@ -352,4 +357,93 @@ export interface Notification {
   occurred_at: string;
   /** Payload tipado por `type` en la capa de aplicación (libre aquí). */
   payload: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Panel de administración / monitoreo (rol admin) — /v1/admin/*
+// ---------------------------------------------------------------------------
+
+export interface AdminKpis {
+  active_agents: number;
+  bankrupt_agents: number;
+  total_capital_cents: number;
+  fees_collected_cents: number;
+  active_processes: number;
+  open_orders: number;
+  trade_volume_24h: number;
+  trades_24h: number;
+}
+
+export interface AdminAgentsByRole {
+  role: AgentRole;
+  active_agents: number;
+  bankrupt_agents: number;
+  total_capital_cents: number;
+}
+
+export interface AdminOverview {
+  kpis: AdminKpis;
+  by_role: AdminAgentsByRole[];
+}
+
+export interface AdminAgentItem {
+  agent_id: string;
+  username: string;
+  role: AgentRole;
+  status: AgentStatus;
+  capital_available_cents: number;
+  capital_reserved_cents: number;
+  registered_at: string;
+}
+
+export interface AdminAgentsPage {
+  items: AdminAgentItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminMarketProduct {
+  product_id: string;
+  name: string;
+  unit: string;
+  category: string;
+  best_bid_cents: number | null;
+  best_ask_cents: number | null;
+  bid_depth: number;
+  ask_depth: number;
+  total_inventory: number;
+  trade_volume_24h: number;
+  vwap_24h_cents: number | null;
+  trades_24h: number;
+}
+
+export interface AdminProductionRecipe {
+  recipe_id: string;
+  recipe_name: string;
+  output_product_id: string;
+  output_product_name: string;
+  active_processes: number;
+  planned_executions: number;
+  wage_paid_cents: number;
+}
+
+export interface AdminProducedProduct {
+  product_id: string;
+  name: string;
+  unit: string;
+  produced_units_24h: number;
+}
+
+export interface AdminProduction {
+  recipes: AdminProductionRecipe[];
+  produced: AdminProducedProduct[];
+}
+
+export interface AdminSnapshotPoint {
+  snapshot_id: string;
+  taken_at: string;
+  active_agents: number;
+  total_money_cents: number;
+  fees_collected_cents: number;
 }

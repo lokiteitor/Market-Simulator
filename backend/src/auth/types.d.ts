@@ -31,6 +31,12 @@ declare module "fastify" {
      * Lanza DomainError(invalid_token) → 401 vía el error handler global.
      */
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /**
+     * preHandler de autorización: exige que el agente autenticado tenga rol
+     * `admin`. Debe encadenarse DESPUÉS de `authenticate` (lee `agentRole`).
+     * Lanza DomainError(forbidden) → 403 vía el error handler global.
+     */
+    requireAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
 
