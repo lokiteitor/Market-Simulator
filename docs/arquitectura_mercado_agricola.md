@@ -72,7 +72,7 @@ Notas:
 
 | Contenedor | Tecnología | Responsabilidad |
 |-----------|------------|-----------------|
-| API Gateway | APISIX | TLS termination, ruteo, CORS, rate limiting, load balancing y proxy de WebSocket. Sin lógica de autenticación de dominio. |
+| API Gateway | Caddy | TLS termination, ruteo, CORS, load balancing y proxy de WebSocket. Sin lógica de autenticación de dominio. |
 | Servidor de Simulación (Core) | Bun + TypeScript + Fastify | Servidor autoritativo: API REST, autenticación JWT, matching engine, ciclo de vida de órdenes y procesos, validación de invariantes, emisión de notificaciones. En v1 corre como **una sola instancia**. |
 | Worker de Background Jobs | Bun + TypeScript + BullMQ | Sweeper de procesos de transformación vencidos, expirador de órdenes con TTL vencido, generador de snapshots agregados, limpieza periódica de refresh tokens expirados. |
 | Base de Datos | PostgreSQL 18+ | Única fuente de verdad: estado vivo + event log append-only + snapshots agregados. |
@@ -83,9 +83,9 @@ Notas:
 
 ```mermaid
 graph TB
-    Clientes[Agentes y humanos<br/>HTTP + WS] --> APISIX[APISIX<br/>Gateway]
-    APISIX -->|REST| Core[Servidor de Simulación<br/>Bun + Fastify]
-    APISIX -.->|WS proxy| Core
+    Clientes[Agentes y humanos<br/>HTTP + WS] --> Caddy[Caddy<br/>Gateway]
+    Caddy -->|REST| Core[Servidor de Simulación<br/>Bun + Fastify]
+    Caddy -.->|WS proxy| Core
     Core <--> PG[(PostgreSQL 18+<br/>estado + event log)]
     Core <--> Redis[(Redis<br/>db0: pub/sub<br/>db1: BullMQ)]
     Worker[Worker<br/>BullMQ] <--> PG
@@ -97,8 +97,8 @@ graph TB
 
 ### 4.3 Notas sobre cada contenedor
 
-**APISIX (gateway delgado).**
-APISIX es la única puerta de entrada externa. Termina TLS, aplica CORS, rate limiting por IP/usuario, balanceo (preparado para múltiples instancias del Core en v2) y rutea peticiones HTTP a Fastify. Adicionalmente sirve como proxy WebSocket transparente (`/v1/ws`), sin validar el JWT —la validación del handshake la hace Fastify. APISIX **no** valida JWT de la API REST: esa responsabilidad vive en Fastify, para mantener en un solo lugar la lógica de revocación (quiebra, cambio de contraseña). Esta elección está registrada en ADR-006.
+**Caddy (gateway delgado).**
+Caddy es la única puerta de entrada externa. Termina TLS, aplica CORS, balanceo (preparado para múltiples instancias del Core en v2) y rutea peticiones HTTP a Fastify. Adicionalmente sirve como proxy WebSocket transparente (`/v1/ws`), sin validar el JWT —la validación del handshake la hace Fastify. Caddy **no** valida JWT de la API REST: esa responsabilidad vive en Fastify, para mantener en un solo lugar la lógica de revocación (quiebra, cambio de contraseña). Esta elección está registrada en ADR-006.
 
 **Servidor de Simulación (Core).**
 Un proceso Bun ejecutando Fastify. Contiene todo lo crítico del dominio: matching engine, validación atómica de operaciones, emisión de notificaciones, gestión de tokens. En v1 corre como **una sola instancia** (ADR-004). El matching se serializa por producto mediante locks de aplicación in-process; al haber un único proceso, no se requiere coordinación distribuida.
@@ -120,14 +120,14 @@ Versión 18+ por `uuidv7()` nativo. Todas las decisiones de modelado y los índi
 Una sola instancia con dos bases lógicas (ADR-009): db `0` para el pub/sub de notificaciones WebSocket (canales `agent:{agent_id}` para mensajes personales y un canal global para broadcasts) y db `1` para BullMQ.
 
 **Prometheus + Grafana.**
-El Core y el Worker exponen `/metrics` en endpoints internos no proxeados por APISIX. Prometheus hace scraping. Grafana se conecta a Prometheus y queda accesible para el operador.
+El Core y el Worker exponen `/metrics` en endpoints internos no proxeados por Caddy. Prometheus hace scraping. Grafana se conecta a Prometheus y queda accesible para el operador.
 
 ### 4.4 Tabla resumen puertos
 
 | Servicio | Puerto interno | Expuesto externamente |
 |----------|---------------|----------------------|
-| APISIX | 9080 (HTTP), 9443 (HTTPS) | Sí (vía Docker) |
-| Core (Fastify) | 8000 | No (solo APISIX) |
+| Caddy | 9080 (HTTP), 9443 (HTTPS) | Sí (vía Docker) |
+| Core (Fastify) | 8000 | No (solo Caddy) |
 | Core métricas | 8001 | No |
 | Worker métricas | 8002 | No |
 | PostgreSQL | 5432 | No |
@@ -207,7 +207,7 @@ Las operaciones del Worker emiten los mismos eventos al `event_log` que las oper
 ```mermaid
 sequenceDiagram
     participant C as Cliente
-    participant A as APISIX
+    participant A as Caddy
     participant F as Fastify (Core)
     participant OS as OrderService
     participant ME as Matching Engine
@@ -291,7 +291,7 @@ Notas:
 - **Persistencia:** PostgreSQL 18+ (requerido por `uuidv7()` nativo, ver `documentacion_base_datos.md`).
 - **Cache / Cola / Pub/Sub:** Redis 8+ (una sola instancia, dos DBs lógicas).
 - **Background Jobs:** BullMQ.
-- **Gateway:** APISIX (configuración declarativa vía YAML o etcd, según preferencia operativa).
+- **Gateway:** Caddy (configuración declarativa vía Caddyfile).
 - **Cliente Redis:** `ioredis` (compatible con BullMQ y con pub/sub directo).
 - **WebSocket:** `@fastify/websocket`.
 - **JWT:** `@fastify/jwt` para emisión y verificación; `argon2` para hash de contraseñas.
@@ -361,7 +361,7 @@ mercado-agricola/
 │   └── arquitectura_mercado_agricola.md   # este documento
 ├── deploy/
 │   ├── docker-compose.yml
-│   ├── apisix/                      # configuración declarativa de rutas y plugins
+│   ├── caddy/                       # configuración de Caddyfile
 │   ├── prometheus/
 │   └── grafana/
 ├── .env.example
@@ -476,22 +476,17 @@ Los access tokens, al ser stateless, siguen válidos hasta su expiración natura
 
 ### 9.4 WebSocket
 
-El handshake del WS valida el access token JWT. APISIX hace proxy transparente al puerto del Core sin validar; Fastify valida en el upgrade. Si el token es inválido o expirado, el upgrade se rechaza. Durante la vida de la conexión no se re-valida el token; al expirar, el cliente debe reconectar con un token fresco.
+El handshake del WS valida el access token JWT. Caddy hace proxy transparente al puerto del Core sin validar; Fastify valida en el upgrade. Si el token es inválido o expirado, el upgrade se rechaza. Durante la vida de la conexión no se re-valida el token; al expirar, el cliente debe reconectar con un token fresco.
 
 ### 9.5 Principio de mínimo privilegio
 
 - El usuario de PostgreSQL del Core y del Worker solo tienen permisos sobre el schema `public` del proyecto. No tienen privilegios de superuser.
 - Redis no se expone fuera de la red Docker.
-- APISIX es el único contenedor con puertos publicados al host.
+- Caddy es el único contenedor con puertos publicados al host.
 
 ### 9.6 Rate limiting
 
-Aplicado en APISIX:
-
-- Endpoints de autenticación (`/v1/auth/login`, `/v1/auth/register`, `/v1/auth/refresh`): límite estricto por IP para mitigar fuerza bruta (ej. 10 req/min por IP).
-- Resto de endpoints autenticados: límite generoso por `agent_id` extraído del JWT (ej. 60 req/seg), suficiente para agentes de ML normales y para frenar bucles defectuosos.
-
-Los límites concretos son parámetros operativos y pueden recalibrarse con datos reales.
+En esta configuración de simulación local, Caddy se ejecuta libre de límites de tasa (rate limiting) en el gateway, facilitando la fluidez del tráfico de prueba.
 
 ---
 
@@ -508,7 +503,7 @@ Los límites concretos son parámetros operativos y pueden recalibrarse con dato
 | 404 | Not Found | Recurso inexistente. |
 | 409 | Conflict | Estado del recurso impide la operación (ej. cancelar un proceso ya terminal, username ya en uso). |
 | 422 | Unprocessable Entity | Sintaxis válida, semántica rechazada por dominio (capital insuficiente, inventario insuficiente, TTL fuera de rango, capacidad saturada, etc.). |
-| 429 | Too Many Requests | Rate limit excedido (emitido por APISIX). |
+| 429 | Too Many Requests | Rate limit excedido. |
 | 500 | Internal Server Error | Bug del servidor. Se loguea con stack y trace id; se devuelve un Problem+JSON sin detalles internos. |
 | 503 | Service Unavailable | Postgres o Redis no disponibles. |
 
@@ -558,7 +553,7 @@ Aplicados a este sistema en particular:
 | ADR-003 | 2026-05-26 | Aceptado | Drizzle + drizzle-kit como capa de acceso a datos y migraciones. |
 | ADR-004 | 2026-05-26 | Aceptado | Una sola instancia del Core en v1 (sin replicación ni sharding). |
 | ADR-005 | 2026-05-26 | Aceptado | Matching engine directo contra Postgres, serializado por producto con locks in-process. |
-| ADR-006 | 2026-05-26 | Aceptado | APISIX como gateway delgado: TLS, ruteo, CORS, rate limiting, load balancing y WS proxy sin autenticación. JWT lo valida Fastify. |
+| ADR-006 | 2026-05-26 | Aceptado | Caddy como gateway delgado: TLS, ruteo, CORS, load balancing y WS proxy sin autenticación. JWT lo valida Fastify. |
 | ADR-007 | 2026-05-26 | Aceptado | BullMQ para todos los jobs de fondo (sweeper, expirador, snapshot, limpieza). |
 | ADR-008 | 2026-05-26 | Aceptado | Worker como proceso separado del Core, compartiendo código de dominio en monorepo. |
 | ADR-009 | 2026-05-26 | Aceptado | Una sola instancia de Redis con DBs lógicas separadas (db 0 pub/sub, db 1 BullMQ). |
@@ -575,7 +570,7 @@ Aplicados a este sistema en particular:
 **ADR-004 — Una sola instancia del Core en v1**
 
 - *Contexto:* la simulación corre con ~100 agentes. La carga proyectada (~10K órdenes/día, ~5K trades/día) cabe holgadamente en un proceso Bun bien configurado. Múltiples instancias forzarían a resolver coordinación de matching (lock distribuido o sharding por producto).
-- *Decisión:* desplegar el Core como una sola instancia. APISIX se configura para balancing futuro, pero apunta a un único upstream.
+- *Decisión:* desplegar el Core como una sola instancia. Caddy se configura para balancing futuro, pero apunta a un único upstream.
 - *Consecuencias:*
   - (+) Matching trivialmente serializable con un mutex in-process por producto.
   - (+) Implementación, debugging y razonamiento mucho más simples.
@@ -593,10 +588,10 @@ Aplicados a este sistema en particular:
   - (−) Throughput menor que un libro in-memory. A la escala objetivo (~10K órdenes/día), está holgado.
   - (−) Sensible al rendimiento de Postgres. Los índices parciales del schema están diseñados precisamente para esto.
 
-**ADR-006 — APISIX gateway delgado**
+**ADR-006 — Caddy gateway delgado**
 
-- *Contexto:* APISIX puede asumir responsabilidades amplias (auth, validación de payloads, transformaciones) pero esto fragmenta la lógica de revocación de tokens y de detección de quiebra, que viven naturalmente en el Core.
-- *Decisión:* APISIX hace TLS, ruteo, CORS, rate limiting, balancing y WS proxy. **No** valida JWT. Fastify es el único punto que decide si una request está autorizada.
+- *Contexto:* Caddy puede asumir responsabilidades amplias pero esto fragmenta la lógica de revocación de tokens y de detección de quiebra, que viven naturalmente en el Core.
+- *Decisión:* Caddy hace TLS, ruteo, CORS, balancing y WS proxy. **No** valida JWT. Fastify es el único punto que decide si una request está autorizada.
 - *Consecuencias:*
   - (+) Una sola fuente de verdad para autorización.
   - (+) Revocación de tokens (por quiebra, cambio de password, logout) se aplica de inmediato sin sincronizar caches.

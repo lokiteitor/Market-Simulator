@@ -2,7 +2,7 @@
  * Suite E2E [M11] — Simulación de Mercado Agrícola (contrato §18).
  *
  * Ejecutar:  bun tests/e2e/run.ts          (cwd = backend/)
- * Contra:    APISIX (E2E_BASE_URL, default http://localhost:9080/v1);
+ * Contra:    Caddy (E2E_BASE_URL, default http://localhost:9080/v1);
  *            WS derivado: ws(s)://…/v1/ws?token=<access>.
  *
  * La suite verifica el CONTRATO (specs/openapi.yaml + CONTRATOS §5/§9/§10/§18),
@@ -14,11 +14,10 @@
  * Política de fallo: ABORTA AL PRIMER FALLO (pasos secuenciales dependientes),
  * imprime resumen y sale con exit code 1; si todo pasa, exit 0 (framework.ts).
  *
- * Presupuesto de auth: APISIX limita /v1/auth/* a 10 req/min por IP. La suite
+ * Presupuesto de auth: Aunque Caddy no tiene rate limit activo, la suite
  * registra SOLO 2 agentes y hace 6 llamadas de auth en total (2 register,
- * 1 login, 1 refresh, 1 logout, 1 refresh-revocado). Reutiliza tokens en todo
- * lo demás. Corridas consecutivas dentro del mismo minuto pueden chocar con el
- * límite: espera ~1 min entre corridas.
+ * 1 login, 1 refresh, 1 logout, 1 refresh-revocado) para controlar el presupuesto
+ * local de llamadas. Reutiliza tokens en todo lo demás.
  *
  * Precondiciones: stack de infra/docker-compose.yml arriba y seed [M9] aplicado
  * (el catálogo debe existir). El libro de `germinado` debe estar limpio; las
@@ -260,7 +259,7 @@ async function main(): Promise<void> {
 
   // ---- 2. Reachability -----------------------------------------------------
 
-  await step("2. API accesible (GET /catalog/products vía APISIX)", async () => {
+  await step("2. API accesible (GET /catalog/products vía Caddy)", async () => {
     await pollUntil(
       `${BASE_URL}/catalog/products responde 200`,
       async () => {
@@ -902,7 +901,7 @@ async function main(): Promise<void> {
     // original seguía en vuelo al llegar el duplicado). qty/limit distintivos
     // (60q @ 110c) para poder verificar unicidad vía GET /orders sin ambigüedad
     // con órdenes de pasos anteriores. Sin llamadas /auth/*: no afecta el
-    // presupuesto de rate limit de APISIX.
+    // presupuesto local de auth.
     const CONC_QTY = 60;
     const CONC_LIMIT = 110;
     const body: PlaceOrderBody = {

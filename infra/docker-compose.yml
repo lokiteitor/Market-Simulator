@@ -108,17 +108,12 @@ services:
         condition: service_healthy
     networks: [market]
 
-  apisix:
-    image: apache/apisix:3.13.0-debian
-    environment:
-      APISIX_STAND_ALONE: "true"
-    volumes:
-      # El entrypoint de la imagen solo genera estos ficheros si NO existen,
-      # así que es seguro montarlos read-only.
-      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+  caddy:
+    image: caddy:2.8.4-alpine
     ports:
       - "9080:9080"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       core:
         condition: service_healthy
@@ -133,7 +128,7 @@ services:
     ports:
       - "${FRONTEND_PORT:-8090}:80"
     depends_on:
-      - apisix
+      - caddy
     restart: unless-stopped
     networks: [market]
 

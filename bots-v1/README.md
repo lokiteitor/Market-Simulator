@@ -43,6 +43,6 @@ Las credenciales persistentes de estos agentes dinámicos se guardarán ordenada
 ## 🛠️ Personalización de Parámetros
 
 El archivo **[`config.yaml`](file:///home/ddelgado/git/lab/world/bots-v1/config.yaml)** te permite configurar:
-1. **`server`**: Los puntos de enlace HTTP y WebSocket del APISIX Gateway del simulador.
+1. **`server`**: Los puntos de enlace HTTP y WebSocket del Caddy Gateway del simulador.
 2. **`prices`**: El precio base estimado de cada producto (en centavos de capital) usado por las heurísticas para calcular márgenes o límites de compra/venta.
 3. **`bots`**: Una lista de agentes configurables manuales.

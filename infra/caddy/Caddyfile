@@ -1,0 +1,25 @@
+:9080 {
+    # 1. Configuración de CORS
+    @options {
+        method OPTIONS
+    }
+    header {
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH"
+        Access-Control-Allow-Headers *
+        Access-Control-Expose-Headers *
+        Access-Control-Max-Age 3600
+        defer
+    }
+    respond @options "" 204
+
+    # 2. Proxy Inverso a core:8000
+    @v1 {
+        path /v1/*
+    }
+    reverse_proxy @v1 core:8000 {
+        transport http {
+            dial_timeout 60s
+        }
+    }
+}

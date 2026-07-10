@@ -3,7 +3,7 @@
 Interfaz web (SPA) para participantes humanos de la **Simulación de Mercado Agrícola**.
 UX definida en [`docs/system_design.md`](../docs/system_design.md); consume la misma API que los
 agentes automatizados (contrato en [`specs/openapi.yaml`](../specs/openapi.yaml)) a través de
-APISIX: REST en `http://localhost:9080/v1` y WebSocket de notificaciones en
+Caddy: REST en `http://localhost:9080/v1` y WebSocket de notificaciones en
 `ws://localhost:9080/v1/ws?token=<access>` (la URL del WS se deriva de la base REST).
 
 **Stack:** Vite + React 19 + TypeScript strict, react-router v7 (declarativo),
@@ -46,7 +46,7 @@ bun run preview     # sirve dist/ localmente
 (SPA fallback a `index.html`, gzip y cache inmutable de `/assets/`).
 
 El servicio `frontend` está declarado en [`infra/docker-compose.yml`](../infra/docker-compose.yml)
-(context `../frontend`, puerto `${FRONTEND_PORT:-8090}:80`, `depends_on: apisix`, red `market`):
+(context `../frontend`, puerto `${FRONTEND_PORT:-8090}:80`, `depends_on: caddy`, red `market`):
 
 ```sh
 cd ../infra
@@ -56,7 +56,7 @@ FRONTEND_PORT=8091 docker compose up -d frontend
 ```
 
 La app queda en **http://localhost:8090** (la API sigue siendo `http://localhost:9080/v1`
-desde el navegador, vía APISIX). El puerto de host es configurable con `FRONTEND_PORT` (default 8090,
+desde el navegador, vía Caddy). El puerto de host es configurable con `FRONTEND_PORT` (default 8090,
 elegido para no chocar con el 8080, habitualmente ocupado). Si la API se expone en otra URL,
 reconstruir con `docker compose build --build-arg VITE_API_BASE_URL=<url> frontend`.
 

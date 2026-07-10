@@ -16,7 +16,7 @@ Monorepo de carpetas planas (sin workspaces):
 | `frontend/` | UI web para participantes humanos ([docs/system_design.md](docs/system_design.md)) |
 | `docs/`     | Documentación: diseño conceptual, arquitectura (C4/ADRs), base de datos, UI    |
 | `specs/`    | Contratos canónicos: [`openapi.yaml`](specs/openapi.yaml) (manda en la API) y [`schema.sql`](specs/schema.sql) (manda en la DB) |
-| `infra/`    | Docker Compose, Dockerfile, APISIX, Prometheus, Grafana, seed-config           |
+| `infra/`    | Docker Compose, Dockerfile, Caddy, Prometheus, Grafana, seed-config           |
 
 ## Stack
 
@@ -28,7 +28,7 @@ Monorepo de carpetas planas (sin workspaces):
 | Base de datos | PostgreSQL 18 vía `postgres` (postgres.js) + Drizzle ORM          |
 | Cache/PubSub  | Redis (ioredis) — pub/sub de notificaciones e idempotencia (db 0) |
 | Jobs          | BullMQ (Redis db 1) — sweeps de expiración/materialización, snapshots |
-| Gateway       | Apache APISIX (rate limiting, CORS, WebSocket passthrough)        |
+| Gateway       | Caddy (CORS, WebSocket passthrough)                              |
 | Observabilidad| pino (logs), prom-client (métricas), Prometheus + Grafana         |
 
 ## Levantar con Docker Compose
@@ -47,11 +47,11 @@ Puertos publicados:
 
 | Servicio   | URL                     | Notas                                              |
 | ---------- | ----------------------- | -------------------------------------------------- |
-| APISIX     | `http://localhost:9080` | Entrada única a la API (`/v1/...`, WS en `/v1/ws`) |
+| Caddy      | `http://localhost:9080` | Entrada única a la API (`/v1/...`, WS en `/v1/ws`) |
 | Grafana    | `http://localhost:3000` | admin / admin                                      |
 | Prometheus | `http://localhost:9090` | scrape de core (8001) y worker (8002)              |
 
-El Core (puerto 8000) no se publica al host: todo el tráfico de agentes pasa por APISIX.
+El Core (puerto 8000) no se publica al host: todo el tráfico de agentes pasa por Caddy.
 
 ## Desarrollo local (sin contenedores para la app)
 
@@ -78,7 +78,7 @@ bun run worker              # worker BullMQ en otra terminal
 | `bun run snapshot`    | `bun src/scripts/enqueue-snapshot.ts` | Encola un snapshot de mercado on-demand  |
 | `bun run typecheck`   | `tsc --noEmit`                        | Typecheck estricto                       |
 | `bun run test`        | `bun test tests/unit`                 | Tests unitarios puros (sin DB)           |
-| `bun run e2e`         | `bun tests/e2e/run.ts`                | Suite E2E contra APISIX (`E2E_BASE_URL`) |
+| `bun run e2e`         | `bun tests/e2e/run.ts`                | Suite E2E contra Caddy (`E2E_BASE_URL`) |
 
 Configuración por variables de entorno: ver [`backend/.env.example`](backend/.env.example)
 (defaults de desarrollo) e [`infra/.env.docker`](infra/.env.docker) (hosts de la red docker).
@@ -99,7 +99,7 @@ endurecerse antes de exponerla fuera de un entorno de laboratorio:
 ## Estado
 
 **Backend funcional y verificado.** Fundación, módulos de dominio, worker, seed e infra completos;
-`tsc` estricto limpio, 188 tests unitarios en verde y suite E2E contra el stack Docker (APISIX →
+`tsc` estricto limpio, 188 tests unitarios en verde y suite E2E contra el stack Docker (Caddy →
 Core → Postgres/Redis) pasando. El backend pasó una revisión adversarial multi-agente cuyos hallazgos
 confirmados están corregidos (idempotencia atómica de `client_order_id`, retry ante deadlock 40P01,
 materialización lazy antes de cancelar/listar procesos, guard de nocional sub-centavo, etc.).

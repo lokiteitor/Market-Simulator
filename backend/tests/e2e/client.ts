@@ -212,7 +212,7 @@ export interface RequestOpts {
   timeoutMs?: number;
 }
 
-/** APISIX limita /v1/auth/* a 10 req/min por IP: la suite cuenta sus llamadas. */
+/** Presupuesto de llamadas a /v1/auth/*: la suite cuenta sus llamadas localmente. */
 export let authCallCount = 0;
 
 export class ApiClient {
@@ -228,8 +228,8 @@ export class ApiClient {
     if (path.startsWith("/auth/")) {
       authCallCount += 1;
       if (authCallCount > 9) {
-        // Presupuesto del contrato: POCAS llamadas de auth (límite APISIX 10/min).
-        fail(`presupuesto de llamadas /auth/* excedido (${authCallCount}); la suite rompería el rate limit de APISIX`);
+        // Presupuesto del contrato: POCAS llamadas de auth (límite de control local de la suite).
+        fail(`presupuesto de llamadas /auth/* excedido (${authCallCount}) en la suite de pruebas`);
       }
     }
     const headers: Record<string, string> = {
@@ -255,10 +255,7 @@ export class ApiClient {
     }
 
     if (res.status === 429) {
-      fail(
-        `${method} ${url.pathname}: 429 rate limit de APISIX. ` +
-          `Espera ~1 min entre corridas de la suite (límite 10 req/min en /v1/auth/*).`,
-      );
+      fail(`${method} ${url.pathname}: 429 rate limit excedido en el Gateway.`);
     }
 
     const raw = await res.text();

@@ -6,12 +6,9 @@ FROM oven/bun:1 AS runtime
 
 WORKDIR /app
 
-# bun.lock puede no existir todavía (fase de integración): el glob bun.lock*
-# copia el lockfile si está, y el RUN condicional decide el modo de install.
-COPY backend/package.json backend/bun.lock* ./
-RUN if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi
-
-COPY backend/tsconfig.json ./
+# Copiar dependencias pre-instaladas del host y archivos del backend
+COPY backend/node_modules ./node_modules
+COPY backend/package.json backend/tsconfig.json ./
 COPY backend/src ./src
 COPY infra/seed-config.json ./infra/seed-config.json
 
