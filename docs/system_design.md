@@ -8,7 +8,7 @@
 - **Qué es:** Interfaz web cliente para operar dentro de una simulación autoritativa de mercado agrícola.
 - **Usuario final:** Humanos que actúan como agentes económicos (Productores Primarios, Transformadores, Consumidores, Traders).
 - **Principio rector:** El servidor es la única fuente de verdad. La UI es un reflejo reactivo del estado del servidor, envía comandos vía REST y recibe actualizaciones push vía WebSocket.
-- **Alcance v1:** No incluye dashboards administrativos, ni gestión de capital del sistema, ni configuración en tiempo real. Solo operaciones de agente y visibilidad de mercado.
+- **Alcance v1:** Operaciones de agente y visibilidad de mercado. **Actualización 2026-07:** el frontend ya incluye además un **panel de administración** para el operador (`frontend/src/pages/admin`, usuario creado por `seed-admin`), fuera del alcance original de este documento. La ventanilla del banco central (`GET /bank`, `POST /bank/convert`) es parte de la API pero aún no tiene pantalla dedicada en la UI de agente; los bots la consumen directamente.
 
 ---
 

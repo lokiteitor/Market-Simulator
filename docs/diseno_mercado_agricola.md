@@ -8,7 +8,7 @@ Este documento sintetiza las decisiones de diseño tomadas en la fase conceptual
 
 ## 1. Visión general del sistema
 
-Se construye un servidor autoritativo de estado que simula un mercado de productos agrícolas con aproximadamente 100 agentes participando simultáneamente (sin límite máximo). Los agentes son clientes externos que se conectan al sistema; el servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación e historial.
+Se construye un servidor autoritativo de estado que simula un mercado de productos agrícolas con desde ~100 hasta ~10.000 agentes participando simultáneamente (sin límite máximo). Los agentes son clientes externos que se conectan al sistema; el servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación e historial.
 
 **Roles de agentes:**
 - **Productores primarios:** generan materias primas desde cero (siembra, cosecha, ganadería).
@@ -315,8 +315,7 @@ El sistema soporta desconexión arbitraria de agentes sin pérdida de informaci�
 
 ### Destino de los fees
 
-- Los fees salen del circuito económico de los agentes (van al "sistema").
-- La masa monetaria total entre agentes decrece con el tiempo por efecto de los fees. No se reinyecta capital periódicamente.
+> **Actualizado (patrón oro, 2026-07):** los fees ya **no** salen del circuito. Se acreditan al capital del **banco central** en la misma transacción del matching, y el banco los recicla para financiar el capital semilla de los registros dinámicos antes de acuñar dinero nuevo. Ver sección 18.
 
 ---
 
@@ -347,8 +346,9 @@ El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total 
 
 **Inicialización del nuevo agente:**
 - Identidad fresca (nunca reciclada).
-- **Capital semilla = promedio actual del capital total de los agentes activos del mercado** al momento del registro. Esto mantiene a los recién llegados competitivos en un entorno donde la masa monetaria decrece por fees.
-- Capacidades instaladas según el rol y los parámetros configurados.
+- **Capital semilla objetivo = promedio actual del capital total de los agentes activos del mercado** al momento del registro. Esto mantiene a los recién llegados competitivos.
+- **Financiamiento del capital semilla (patrón oro, 2026-07):** el grant se cubre **primero con capital del banco central** (fees reciclados) y el resto se **acuña** solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro se rechaza con `insufficient_gold_backing`. Cada acuñación emite el evento `money_issued`. Ver sección 18.
+- Capacidades instaladas según el rol (todas las capacidades del rol definidas en `infra/seed-config.json`; las capacidades solicitadas por el cliente se ignoran).
 - Sin fee de entrada.
 
 **Notificación:**
@@ -450,6 +450,7 @@ Estos son los valores que deben quedar expuestos como configuración del sistema
 - Semilla maestra
 - Frecuencia del sweeper de procesos
 - Tamaño máximo del resumen de eventos en reconexión
+- Patrón oro: usuario del banco (`BANK_USERNAME`), producto patrón (`GOLD_PRODUCT_KEY`), rango del yacimiento (`GOLD_DEPOSIT_MIN/MAX_QTY_CENT`), ratio de cobertura (`GOLD_COVERAGE_RATIO_BPS`), spread de la ventanilla (`GOLD_WINDOW_SPREAD_BPS`), capital inicial del banco (`GOLD_BANK_INITIAL_CAPITAL_CENTS`)
 
 ---
 
@@ -466,5 +467,29 @@ Estos son los valores que deben quedar expuestos como configuración del sistema
 - Variantes de calidad de productos.
 - Subproductos en recetas.
 - Heterogeneidad de productores (campos de tamaños distintos).
-- Reinyección de capital al sistema para compensar deflación por fees.
+- ~~Reinyección de capital al sistema para compensar deflación por fees.~~ **Resuelto por el patrón oro** (sección 18): los fees se reciclan al banco y la masa monetaria se gobierna por acuñación/quema respaldadas.
 - Niveles de visibilidad de mercado configurables por agente.
+
+---
+
+## 18. Patrón oro y política monetaria (añadido 2026-07)
+
+La corrida opera bajo un **patrón oro** que gobierna la masa monetaria. Este apartado es el resumen conceptual; el detalle completo (fórmulas del seed, semántica de la ventanilla, emisión respaldada, concurrencia, configuración y auditoría) está en **`patron_oro_sistema_bancario.md`**. Implementación en `backend/src/services/bank-service.ts`, `agent-service.ts` y las tablas `gold_standard`, `gold_conversion`, `conversion_lot_consumption` y `resource_deposit` (ver `documentacion_base_datos.md`).
+
+### Componentes
+
+- **Banco central:** un agente especial (`central_bank`) creado por el seed con capital inicial configurable. No coloca órdenes; participa solo vía ventanilla y como receptor de fees.
+- **Yacimiento finito de oro:** el oro es un producto `raw_primary` cuyo total extraíble se sortea con la semilla maestra en un rango configurable (`resource_deposit`). La producción de oro se recorta a lo que queda en el yacimiento; al agotarse se emite `deposit_depleted` y no se puede minar más.
+- **Paridad y ventanilla:** el seed fija `parity = floor(M0 × coverage_bps / (100 × D))` (M0 = masa monetaria inicial, D = yacimiento). La **ventanilla acuñadora** compra oro a `window_bid` y lo vende a `window_ask` (paridad ± spread, ±5% por defecto), sin fees, vía `GET /bank` y `POST /bank/convert`.
+
+### Reglas monetarias
+
+1. **Vender oro al banco (`sell_gold`) acuña dinero:** el agente entrega oro (FIFO de sus lotes) y recibe dinero recién creado a `window_bid`. `money_issued` aumenta.
+2. **Comprar oro al banco (`buy_gold`) destruye dinero:** el agente paga a `window_ask` y ese dinero desaparece del circuito. `money_burned` aumenta.
+3. **Emisión respaldada:** la emisión neta (`issued − burned`) nunca supera `oro_del_banco × parity × coverage`. Aplica también al capital semilla de registros dinámicos.
+4. **Fees al banco:** los fees de trading se acreditan al banco central (no se evaporan) y financian los registros dinámicos antes de acuñar.
+5. **Masa monetaria actual** = `initial_money + money_issued − money_burned`, auditable contra el singleton `gold_standard`.
+
+### Efecto económico
+
+El precio de mercado del oro queda anclado a la banda `[window_bid, window_ask]` ("gold points"): si el mercado paga menos que el banco, conviene monetizar en ventanilla; si paga más, conviene comprar al banco y vender en mercado. Los bots productores y traders explotan exactamente este arbitraje (ver `funcionamiento_bots.md` §6). El yacimiento finito impone un techo duro a la expansión monetaria de la corrida.

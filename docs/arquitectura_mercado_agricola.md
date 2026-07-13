@@ -4,20 +4,22 @@
 
 **Proyecto:** Simulación de Mercado Agrícola
 
-**Versión del Documento:** 0.1.0 (draft inicial post-diseño conceptual)
+**Versión del Documento:** 0.2.0 (actualizado con patrón oro, frontend, panel de administración y escala 10K bots)
 
-**Fecha:** 2026-05-26
+**Fecha:** 2026-07-13 (original: 2026-05-26)
 
 **Responsables:** Equipo de Simulación de Mercado
 
 **Descripción General**
-Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con ~100 agentes concurrentes (productores primarios, transformadores, consumidores y traders) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, y trazabilidad FIFO por lotes de inventario. Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
+Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes concurrentes (productores primarios, transformadores, consumidores y traders) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada). Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
 
-Este documento se apoya en tres artefactos previos que se consideran fuente de verdad de sus respectivos dominios:
+Este documento se apoya en artefactos previos que se consideran fuente de verdad de sus respectivos dominios:
 
-- `diseno_mercado_agricola.md` — diseño conceptual del dominio (reglas de negocio, invariantes, ciclos de vida).
-- `schema.sql` — DDL canónico de PostgreSQL.
+- `diseno_mercado_agricola.md` — diseño conceptual del dominio (reglas de negocio, invariantes, ciclos de vida, patrón oro).
+- `specs/schema.sql` — DDL canónico de PostgreSQL (espejado en `backend/src/db/schema.ts`).
 - `openapi.yaml` — contrato REST + descripción del canal WebSocket.
+- `funcionamiento_bots.md` — arquitectura y estrategias de los agentes automatizados (`bots-v1` + `go-sdk`).
+- `patron_oro_sistema_bancario.md` — banco central, ventanilla acuñadora, emisión respaldada y yacimiento finito.
 
 ---
 
@@ -44,7 +46,9 @@ Fuera de alcance:
 
 ### 3.1 Descripción
 
-El sistema es un **servidor autoritativo único** que expone una API REST y un canal WebSocket. Sus usuarios son **agentes** —procesos cliente que pueden ser bots con reglas simples, agentes de ML o clientes humanos a través de algún UI— que se conectan al servidor y operan en el mercado simulado. El servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación e historial.
+El sistema es un **servidor autoritativo único** que expone una API REST y un canal WebSocket. Sus usuarios son **agentes** —procesos cliente que pueden ser bots con reglas simples, agentes de ML o clientes humanos a través de algún UI— que se conectan al servidor y operan en el mercado simulado. El servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación, conversiones de oro e historial.
+
+En la práctica los clientes actuales son: el **enjambre de bots heurísticos** (`bots-v1`, un binario Go que lanza hasta 10.000 agentes en goroutines; ver `funcionamiento_bots.md`) y el **frontend web** (`frontend/`, React servido por nginx) que incluye un **panel de administración** para el operador.
 
 No hay sistemas externos en el sentido tradicional: el sistema es cerrado y autocontenido. Los únicos actores son los agentes que se conectan a la API y un eventual operador humano que arranca la corrida, dispara snapshots manuales y consulta dashboards de observabilidad.
 
@@ -73,11 +77,15 @@ Notas:
 | Contenedor | Tecnología | Responsabilidad |
 |-----------|------------|-----------------|
 | API Gateway | Caddy | TLS termination, ruteo, CORS, load balancing y proxy de WebSocket. Sin lógica de autenticación de dominio. |
-| Servidor de Simulación (Core) | Bun + TypeScript + Fastify | Servidor autoritativo: API REST, autenticación JWT, matching engine, ciclo de vida de órdenes y procesos, validación de invariantes, emisión de notificaciones. En v1 corre como **una sola instancia**. |
+| Servidor de Simulación (Core) | Bun + TypeScript + Fastify | Servidor autoritativo: API REST, autenticación JWT, matching engine, ciclo de vida de órdenes y procesos, ventanilla del banco central (patrón oro), validación de invariantes, emisión de notificaciones. En v1 corre como **una sola instancia**. |
 | Worker de Background Jobs | Bun + TypeScript + BullMQ | Sweeper de procesos de transformación vencidos, expirador de órdenes con TTL vencido, generador de snapshots agregados, limpieza periódica de refresh tokens expirados. |
+| Seed | Bun + TypeScript (`seed.ts`, `seed-admin.ts`) | Contenedores one-shot: siembran catálogo/recetas/capacidades desde `infra/seed-config.json`, crean el banco central, sortean el yacimiento de oro y fijan la paridad; `seed-admin` crea el usuario del panel de administración. |
+| Frontend Web | React + nginx | UI humana (dashboard, mercado, órdenes, transformaciones, historial) y **panel de administración** del operador. Consume la misma API que los bots. |
 | Base de Datos | PostgreSQL 18+ | Única fuente de verdad: estado vivo + event log append-only + snapshots agregados. |
 | Redis (instancia única, DBs lógicas separadas) | Redis 8+ | DB `0`: pub/sub para notificaciones push WebSocket. DB `1`: cola de jobs y delayed jobs de BullMQ. |
 | Stack de Observabilidad | Prometheus + Grafana | Recolección de métricas del Core y del Worker; dashboards de operación. |
+
+Los **bots** (`bots-v1`) no son un contenedor: se compilan y corren en el host como un único binario Go con una goroutine por bot, contra el gateway (`make run-bots` para los bots del YAML, `make run-swarm` para el enjambre de 10.000 con jitter de arranque). Ver `funcionamiento_bots.md`.
 
 ### 4.2 Diagrama de Contenedores
 
@@ -147,7 +155,7 @@ El Core sigue una arquitectura por capas estricta. Cada capa solo conoce a la in
 |------|----------------|-------------------|
 | Routes | Definición declarativa de rutas Fastify, validación de schemas de entrada/salida con Zod. | Cada ruta del `openapi.yaml` corresponde a un handler. |
 | Controllers | Orquestación: extraer parámetros del request, llamar al Service apropiado, mapear el resultado al schema de respuesta, mapear errores de dominio a Problem+JSON RFC 7807. | Sin lógica de negocio. |
-| Services | Lógica de dominio: validación de invariantes, transacciones atómicas, llamadas al matching engine, emisión de eventos al `event_log` y de notificaciones al Notifier. | Cada operación del diseño conceptual tiene su Service: `OrderService`, `TransformationService`, `AgentService`, `AuthService`, `MarketService`, `CatalogService`, `HistoryService`. |
+| Services | Lógica de dominio: validación de invariantes, transacciones atómicas, llamadas al matching engine, emisión de eventos al `event_log` y de notificaciones al Notifier. | Cada operación del diseño conceptual tiene su Service: `OrderService`, `TransformationService`, `AgentService`, `AuthService`, `MarketService`, `CatalogService`, `HistoryService`, `BankService` (ventanilla del patrón oro: `GET /bank`, `POST /bank/convert`; serializada con `gold_standard FOR UPDATE`). |
 | Matching Engine | Componente especializado del dominio que recibe una orden recién insertada y ejecuta el algoritmo de casado precio-tiempo contra el libro vigente. Aplicado como subcomponente de `OrderService`. | Serializado por producto mediante locks in-process (ADR-005). |
 | Repositories | Acceso a datos vía Drizzle. Queries tipadas, transacciones, locking explícito (`FOR UPDATE`) donde sea necesario. | Sin lógica de negocio; solo persistencia. |
 | Notifier | Publica mensajes en Redis pub/sub para que el componente WebSocket los entregue a los clientes conectados. | Único punto donde se construye el envelope de notificación. |
@@ -166,6 +174,7 @@ graph TD
     Controllers --> MarketSvc[MarketService]
     Controllers --> CatSvc[CatalogService]
     Controllers --> HistSvc[HistoryService]
+    Controllers --> BankSvc[BankService<br/>ventanilla patrón oro]
 
     OrderSvc --> MatchEngine[Matching Engine<br/>serializado por producto]
     OrderSvc --> Repos
@@ -176,10 +185,12 @@ graph TD
     CatSvc --> Repos
     HistSvc --> Repos
 
+    BankSvc --> Repos
     MatchEngine --> Repos
     OrderSvc --> Notifier
     XformSvc --> Notifier
     AgentSvc --> Notifier
+    BankSvc --> Notifier
 
     Repos[Repositories<br/>Drizzle] --> PG[(PostgreSQL)]
     Notifier --> Redis[(Redis pub/sub)]
@@ -244,6 +255,7 @@ Notas críticas:
 - La transacción de base de datos abarca **toda** la operación: validación, reservas, inserción de la orden, matching completo, registro en `event_log`. Si algo falla, todo revierte.
 - Las notificaciones se publican en Redis **después** del commit. Si la transacción falla, no se notifica nada falso.
 - Las contrapartes notificadas pueden estar desconectadas; el mensaje se publica igual, y al reconectarse el agente verá el estado actualizado en `GET /agents/me`.
+- **Patrón oro:** dentro de la misma transacción del matching, los fees de los trades ejecutados se **acreditan al banco central** (no se evaporan). Es la única escritura concurrente sobre el capital del banco fuera del mutex de `gold_standard`.
 
 ### 5.5 Flujo crítico: materialización lazy + sweeper
 
@@ -287,7 +299,7 @@ Notas:
 - **Framework HTTP:** Fastify.
 - **Validación de schemas:** Zod. Los schemas Zod son la fuente única en TypeScript para validación de entrada/salida en Fastify y para derivar tipos del dominio expuestos por la API. El mantenimiento del `openapi.yaml` se hace **a mano**: cualquier cambio en un endpoint requiere actualizar tanto el schema Zod (runtime) como el OpenAPI (contrato documental). Se recomienda un test de CI que valide que los ejemplos del OpenAPI pasan por los schemas Zod equivalentes.
 - **Acceso a Base de Datos:** Drizzle ORM (query builder tipado).
-- **Migraciones:** `drizzle-kit`. El esquema canónico en TypeScript debe reproducir exactamente lo declarado en `schema.sql`; ambos se mantienen como fuentes paralelas, con `schema.sql` como referencia humana y el schema de Drizzle como referencia ejecutable.
+- **Migraciones:** no se usan (ADR-018). El esquema canónico vive en `specs/schema.sql` y el schema Drizzle (`backend/src/db/schema.ts`) lo reproduce exactamente; los cambios de esquema recrean la BD desde cero (`make clean-docker` + re-seed).
 - **Persistencia:** PostgreSQL 18+ (requerido por `uuidv7()` nativo, ver `documentacion_base_datos.md`).
 - **Cache / Cola / Pub/Sub:** Redis 8+ (una sola instancia, dos DBs lógicas).
 - **Background Jobs:** BullMQ.
@@ -322,54 +334,43 @@ Como guía mínima para Prometheus:
 
 ## 7. Estructura del Proyecto
 
-Monorepo único con el Core y el Worker compartiendo código de dominio.
+Monorepo único; el Core y el Worker comparten código de dominio dentro de `backend/`.
 
 ```
-mercado-agricola/
-├── src/
-│   ├── routes/                      # rutas Fastify, una por recurso (auth, orders, transformations, ...)
-│   ├── controllers/                 # handlers que orquestan y mapean a Problem+JSON
-│   ├── services/                    # lógica de dominio (OrderService, TransformationService, ...)
-│   │   └── matching/                # matching engine y locks por producto
-│   ├── repositories/                # capa Drizzle: queries tipadas, transacciones
-│   ├── db/
-│   │   ├── schema.ts                # schema Drizzle (espejo de schema.sql)
-│   │   └── migrations/              # generadas por drizzle-kit
-│   ├── notifier/                    # publicación a Redis pub/sub
-│   ├── websocket/                   # handshake JWT, suscripción a Redis, fanout a clientes
-│   ├── workers/                     # entrypoints y handlers de BullMQ
-│   │   ├── transformation-sweeper.ts
-│   │   ├── order-expiry-sweeper.ts
-│   │   ├── snapshot-runner.ts
-│   │   └── refresh-token-cleaner.ts
-│   ├── auth/                        # emisión y verificación de JWT, hashing de password
-│   ├── schemas/                     # schemas Zod, tipos derivados del dominio
-│   ├── types/                       # tipos compartidos del dominio
-│   ├── config/                      # carga y validación de .env con Zod
-│   ├── observability/               # prom-client setup, logger pino
-│   ├── app.ts                       # arranque del Core (Fastify)
-│   └── worker.ts                    # arranque del Worker (BullMQ)
-├── tests/
-│   ├── unit/
-│   ├── integration/                 # con testcontainers
-│   └── e2e/                         # contra el stack completo en Docker Compose
-├── docs/
-│   ├── diseno_mercado_agricola.md
-│   ├── schema.sql
-│   ├── documentacion_base_datos.md
-│   ├── openapi.yaml                 # contrato mantenido a mano; fuente de verdad del API
-│   └── arquitectura_mercado_agricola.md   # este documento
-├── deploy/
-│   ├── docker-compose.yml
-│   ├── caddy/                       # configuración de Caddyfile
-│   ├── prometheus/
-│   └── grafana/
-├── .env.example
-├── .eslintrc.cjs
-├── .prettierrc
-├── drizzle.config.ts
-├── package.json
-└── tsconfig.json
+Market-Simulator/
+├── backend/                         # Core + Worker (Bun + TypeScript)
+│   ├── src/
+│   │   ├── routes/                  # rutas Fastify, una por recurso (auth, orders, bank, ...)
+│   │   ├── controllers/             # handlers que orquestan y mapean a Problem+JSON
+│   │   ├── services/                # lógica de dominio (OrderService, BankService, ...)
+│   │   ├── repositories/            # capa Drizzle: queries tipadas, transacciones
+│   │   ├── db/
+│   │   │   └── schema.ts            # schema Drizzle (espejo de specs/schema.sql; sin migraciones)
+│   │   ├── notifier/                # publicación a Redis pub/sub
+│   │   ├── websocket/               # handshake JWT, suscripción a Redis, fanout a clientes
+│   │   ├── workers/                 # handlers de BullMQ (sweepers, snapshots, limpieza)
+│   │   ├── auth/                    # emisión y verificación de JWT, hashing de password
+│   │   ├── schemas/                 # schemas Zod, tipos derivados del dominio
+│   │   ├── config/                  # carga y validación de .env con Zod
+│   │   ├── observability/           # prom-client setup, logger pino
+│   │   ├── seed.ts                  # seed de catálogo, banco central y yacimiento
+│   │   ├── seed-admin.ts            # usuario del panel de administración
+│   │   ├── app.ts / server.ts       # arranque del Core (Fastify)
+│   │   └── worker.ts                # arranque del Worker (BullMQ)
+│   └── tests/
+├── frontend/                        # UI web React (dashboard, mercado, admin) servida por nginx
+├── bots-v1/                         # bots heurísticos en Go (ver funcionamiento_bots.md)
+├── go-sdk/                          # SDK Go reutilizable para agentes (engine, auth, client, ws)
+├── market-client/                   # cliente Python auxiliar
+├── infra/
+│   ├── docker-compose.yml           # postgres, redis, core, worker, seed, seed-admin, caddy, frontend, prometheus, grafana
+│   ├── seed-config.json             # catálogo: productos, recetas y capacidades por rol
+│   ├── caddy/ prometheus/ grafana/
+│   └── Dockerfile
+├── specs/
+│   └── schema.sql                   # DDL canónico de PostgreSQL
+├── docs/                            # este documento y el resto de la documentación
+└── Makefile                         # build, run, seed, build-bots, run-bots, run-swarm, clean-docker
 ```
 
 Convenciones de archivos:
@@ -390,7 +391,7 @@ El prefijo de versión es **`/v1`** (ver `openapi.yaml`).
 /v1/{recurso}/{id?}
 ```
 
-Los recursos y sub-recursos siguen la jerarquía definida en el OpenAPI: `/v1/auth/*`, `/v1/catalog/*`, `/v1/agents/*`, `/v1/orders/*`, `/v1/transformations/*`, `/v1/market/*`, `/v1/history/*`, `/v1/ws`.
+Los recursos y sub-recursos siguen la jerarquía definida en el OpenAPI: `/v1/auth/*`, `/v1/catalog/*`, `/v1/agents/*`, `/v1/orders/*`, `/v1/transformations/*`, `/v1/market/*`, `/v1/bank` + `/v1/bank/convert` (ventanilla del patrón oro), `/v1/history/*`, `/v1/ws`.
 
 Reglas adicionales:
 
@@ -564,6 +565,8 @@ Aplicados a este sistema en particular:
 | ADR-014 | 2026-05-26 | Aceptado | Prometheus + Grafana para observabilidad; pino para logs estructurados. |
 | ADR-015 | 2026-05-26 | Aceptado | `openapi.yaml` se mantiene a mano como contrato; no se genera desde código ni se sirve Swagger UI. |
 | ADR-016 | 2026-05-26 | Aceptado | Zod como única librería de validación de schemas (rutas, configuración de `.env`, tests). |
+| ADR-017 | 2026-07-13 | Aceptado | Patrón oro: banco central con ventanilla acuñadora, fees reciclados al banco, emisión de capital respaldada por oro, yacimiento finito por semilla. |
+| ADR-018 | 2026-07-13 | Aceptado | Sin migraciones incrementales: `specs/schema.sql` + `schema.ts` (Drizzle) como fuentes espejo; cambios de esquema recrean la BD (`clean-docker` + re-seed). |
 
 ### 12.3 Detalle de ADRs clave
 
@@ -635,6 +638,26 @@ Aplicados a este sistema en particular:
   - (+) Una sola librería que aprender y mantener.
   - (+) Tipos inferidos por Zod alimentan directamente Controllers y Services.
   - (−) Zod no produce JSON Schema nativo idéntico al que Fastify espera por defecto; se usa el adaptador estándar (`fastify-type-provider-zod` o equivalente) para integrarlos.
+
+**ADR-017 — Patrón oro como política monetaria**
+
+- *Contexto:* el diseño original evaporaba los fees, produciendo deflación estructural, y acuñaba el capital semilla de los registros dinámicos sin contrapartida — insostenible al pasar de ~100 a ~10.000 agentes registrándose dinámicamente.
+- *Decisión:* implementar un patrón oro: agente banco central con ventanilla acuñadora (compra oro a `window_bid` acuñando dinero; vende a `window_ask` destruyéndolo), fees de trading acreditados al banco, capital semilla de registros financiado primero con capital del banco y después con emisión respaldada por el oro del banco al ratio de cobertura, y yacimiento finito de oro sorteado con la semilla maestra. Ver `diseno_mercado_agricola.md` §18.
+- *Consecuencias:*
+  - (+) Masa monetaria gobernada y auditable (`initial + issued − burned` en `gold_standard`).
+  - (+) El precio del oro queda anclado a la banda de la ventanilla (gold points), dando a los bots un arbitraje estabilizador.
+  - (+) Los registros masivos dejan de inflar la economía sin respaldo.
+  - (−) El singleton `gold_standard FOR UPDATE` serializa toda la emisión y la ventanilla (aceptable: son operaciones poco frecuentes comparadas con el matching).
+  - (−) Si el yacimiento y el capital del banco son insuficientes, los registros fallan con `insufficient_gold_backing`; hay que dimensionar `GOLD_*` para la población objetivo (13 M$ y yacimiento 700K–1.3M kg para 10.000 agentes).
+
+**ADR-018 — Sin migraciones: `schema.sql` manda**
+
+- *Contexto:* cada corrida de la simulación es efímera y arranca desde cero; mantener migraciones incrementales de Drizzle no aporta valor y duplica trabajo.
+- *Decisión:* `specs/schema.sql` es el DDL canónico y `backend/src/db/schema.ts` su espejo Drizzle; se modifican juntos. Los cambios de esquema se aplican recreando la base (`make clean-docker` + re-seed), nunca con migraciones.
+- *Consecuencias:*
+  - (+) Un solo flujo de cambio de esquema, sin drift entre migraciones y estado final.
+  - (+) Los bots sobreviven al reset: se re-registran solos (`auto_register` + re-login).
+  - (−) Todo cambio de esquema descarta la corrida en curso. Aceptable mientras no haya corridas largas que preservar.
 
 ---
 

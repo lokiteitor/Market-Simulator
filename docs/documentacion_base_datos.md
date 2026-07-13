@@ -1,6 +1,6 @@
 # 📚 Documentación Base de Datos — Simulación de Mercado Agrícola
 
-## Servidor autoritativo de estado que simula un mercado de productos agrícolas con ~100 agentes (productores primarios, transformadores, consumidores y traders) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, y trazabilidad FIFO por lotes de inventario.
+## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (productores primarios, transformadores, consumidores y traders) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora, yacimiento finito de oro y emisión respaldada).
 
 ---
 
@@ -39,7 +39,7 @@ La arquitectura de datos del sistema se compone de:
 #### Redis
 
 - **Motor**: Redis (versión por definir en despliegue)
-- **Uso**: transporte de mensajes para notificaciones push WebSocket hacia los agentes (`order_executed`, `order_expired`, `order_cancelled`, `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`). No persiste estado de dominio.
+- **Uso**: transporte de mensajes para notificaciones push WebSocket hacia los agentes (`order_executed`, `order_expired`, `order_cancelled`, `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`, `trade_printed`, `gold_converted`). No persiste estado de dominio.
 - **Colecciones / Índices clave**:
   - Canales pub/sub por agente para notificaciones personales
   - Canal pub/sub global para broadcasts
@@ -57,6 +57,7 @@ El modelo cubre los siguientes dominios:
 - ✅ **Transacciones (trades)**: registro inmutable de ejecuciones con fees, identidades de ambas contrapartes y producto.
 - ✅ **Procesos de transformación**: ciclo de vida de producción con ejecuciones secuenciales, salario upfront, y materialización lazy + sweeper.
 - ✅ **Inventario por lotes (FIFO)**: trazabilidad de costo por lote, COGS por trade, costo de producción por proceso.
+- ✅ **Patrón oro**: política monetaria de la corrida (`gold_standard`), conversiones de ventanilla (`gold_conversion` + `conversion_lot_consumption`) y yacimientos finitos (`resource_deposit`).
 - ✅ **Event log append-only**: registro inmutable de toda mutación de estado para auditoría y derivación de estado.
 - ✅ **Snapshots agregados**: materialización periódica de métricas globales (masa monetaria, inventario total, bid/ask).
 - ✅ **Configuración de corrida**: semilla maestra y parámetros para reproducibilidad del setup inicial.
@@ -66,10 +67,10 @@ El modelo cubre los siguientes dominios:
 ## 📊 Estadísticas Generales
 
 ```
-Total de Tablas: 17
-Total de Enums: 7
-Total de Índices: 17 (excluyendo PKs y UNIQUE de columnas)
-Total de Relaciones (FK): 23
+Total de Tablas: 21
+Total de Enums: 8
+Total de Índices: 19 (excluyendo PKs y UNIQUE de columnas)
+Total de Relaciones (FK): 31
 ```
 
 Desglose por dominio:
@@ -78,7 +79,8 @@ Desglose por dominio:
 - Agentes y auth: 4 tablas (`agent`, `agent_credentials`, `agent_refresh_token`, `agent_capacity`)
 - Órdenes y trades: 2 tablas (`market_order`, `trade`)
 - Procesos: 1 tabla (`transformation_process`)
-- Inventario y trazabilidad: 3 tablas (`inventory_lot`, `trade_lot_consumption`, `transformation_lot_consumption`)
+- Inventario y trazabilidad: 4 tablas (`inventory_lot`, `trade_lot_consumption`, `transformation_lot_consumption`, `conversion_lot_consumption`)
+- Patrón oro: 3 tablas (`gold_standard`, `gold_conversion`, `resource_deposit`)
 - Event log: 1 tabla (`event_log`)
 - Snapshots: 3 tablas (`market_snapshot`, `market_snapshot_agent_capital`, `market_snapshot_product`)
 - Configuración: ninguna en BD — cargada desde `.env` al arranque del proceso.
@@ -89,10 +91,10 @@ Desglose por dominio:
 
 ### Fuente de Verdad del Esquema
 
-- **ORM / DDL**: `schema.sql` (DDL canónico en el repositorio del proyecto)
-- **Migraciones**: por definir (se recomienda Flyway, sqlx-migrate o alembic según stack de aplicación)
-- **Seeds**: por definir; el setup inicial se ejecuta a partir de la semilla maestra leída desde la variable de entorno correspondiente al arranque.
-- **Configuración**: archivo `.env` cargado al arrancar el proceso. Incluye semilla maestra, parámetros de fees, factor de tiempo, rangos de capital por rol y demás parámetros operativos. La configuración es estática durante la corrida.
+- **DDL canónico**: `specs/schema.sql`. El schema Drizzle (`backend/src/db/schema.ts`) es su espejo ejecutable; ambos se modifican en el mismo commit.
+- **Migraciones**: **no se usan migraciones incrementales.** `schema.sql` manda: cualquier cambio de esquema se aplica recreando la base desde cero (`clean-docker` + re-seed). Es viable porque cada corrida es efímera y se arranca desde cero.
+- **Seeds**: `backend/src/seed.ts` con el catálogo de `infra/seed-config.json` (productos, recetas, capacidades por rol) y la semilla maestra (`MASTER_SEED`). El seed también crea el banco central, sortea el yacimiento de oro y fija la paridad del patrón oro.
+- **Configuración**: archivo `.env` (`infra/.env.docker`) cargado al arrancar el proceso. Incluye semilla maestra, parámetros de fees, factor de tiempo, rangos de capital por rol y parámetros del patrón oro (`BANK_USERNAME`, `GOLD_PRODUCT_KEY`, `GOLD_COVERAGE_RATIO_BPS`, `GOLD_WINDOW_SPREAD_BPS`, `GOLD_DEPOSIT_MIN/MAX_QTY_CENT`, `GOLD_BANK_INITIAL_CAPITAL_CENTS`). La configuración es estática durante la corrida.
 
 ---
 
@@ -263,7 +265,9 @@ CREATE TYPE agent_role AS ENUM (
     'primary_producer',
     'transformer',
     'consumer',
-    'trader'
+    'trader',
+    'admin',    -- solo-monitoreo (panel admin); no registrable, no opera el mercado
+    'bank'      -- banco central del patrón oro; agente único del seed, sin credenciales
 );
 
 CREATE TYPE agent_status AS ENUM (
@@ -307,6 +311,8 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 | `transformer`      | Transformador: compra materias primas, las procesa y vende productos de mayor valor.         |
 | `consumer`         | Consumidor final: compra productos para consumir, retirándolos del sistema.                  |
 | `trader`           | Trader/intermediario: compra y revende buscando arbitraje, sin transformar.                  |
+| `admin`            | Rol de solo-monitoreo para el panel de administración. No registrable vía `/auth/register`; no participa en el mercado. Creado por `seed-admin`. |
+| `bank`             | Banco central del patrón oro. Agente único del seed, **sin credenciales** (no logueable), sin capacidades. Opera la ventanilla y recibe los fees. Excluido de los agregados de mercado (`NON_MARKET_ROLES`). |
 
 ##### agent_status
 
@@ -332,7 +338,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 #### Reglas de Negocio
 
 - **Invariantes de capital**: `capital_available >= 0` y `capital_reserved >= 0`. La suma de `capital_reserved` debe coincidir con la suma de `qty_pending × limit_price_cents` de las órdenes de compra activas del agente.
-- **Capital semilla en registro dinámico**: igual al promedio actual del capital total de agentes activos al momento del registro.
+- **Capital semilla en registro dinámico (emisión respaldada)**: el grant objetivo es el promedio actual del capital total de agentes activos (o `DEFAULT_SEED_CAPITAL_CENTS` si no hay ninguno). Con patrón oro activo, ese grant se financia **primero con capital del banco central** (fees reciclados) y el resto se **acuña** (`money_issued`) solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro falla con `insufficient_gold_backing`. Todo bajo el mutex `gold_standard FOR UPDATE`.
 - **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (productores primarios: bajo-medio; transformadores: medio-alto; consumidores: medio; traders: alto). Determinístico a partir de la semilla maestra.
 - **Detección de quiebra**: reactiva. Se evalúa cuando se cancela la última orden, vence la última orden o se completa el último proceso sin recuperar capital. Se requiere: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas.
 - **Acciones al quebrar**: cancelar órdenes activas, marcar `status='bankrupt'`, registrar `bankrupt_at`, congelar inventario residual, emitir `bankruptcy_notice` y broadcast `agent_bankrupt`.
@@ -642,7 +648,7 @@ ALTER TABLE trade ADD CONSTRAINT trade_product_fk FOREIGN KEY (product_id) REFER
 
 - **Inmutabilidad**: una vez insertado, un trade nunca se actualiza ni se borra.
 - **Fee mixto**: componente fijo + componente proporcional al monto (`qty_executed × price_cents`). Parámetros configurables.
-- **Salida de fees del circuito**: los fees no se reinyectan; la masa monetaria total entre agentes decrece con el tiempo.
+- **Destino de los fees (patrón oro)**: los fees **no se evaporan**: se acreditan al capital del banco central en la misma transacción del matching. El banco los recicla para financiar el capital semilla de registros dinámicos antes de acuñar dinero nuevo.
 - **Atomicidad de la transacción casada**: la creación del `trade`, la actualización de `qty_pending` y estado de ambas órdenes, los movimientos de capital e inventario, y el registro en `trade_lot_consumption` ocurren en una sola transacción de base de datos.
 - **Visibilidad pública**: los trades son consultables por todos los agentes (con identidades visibles) en el historial reciente.
 
@@ -748,27 +754,30 @@ ALTER TABLE transformation_process ADD CONSTRAINT process_recipe_fk FOREIGN KEY 
 CREATE TYPE inventory_lot_origin AS ENUM (
     'initial',
     'production',
-    'purchase'
+    'purchase',
+    'conversion'
 );
 
 -- Tabla
 CREATE TABLE inventory_lot (
-    lot_id              UUID                    PRIMARY KEY DEFAULT uuidv7(),
-    agent_id            UUID                    NOT NULL REFERENCES agent(agent_id),
-    product_id          UUID                    NOT NULL REFERENCES product(product_id),
-    origin              inventory_lot_origin    NOT NULL,
-    qty_original        BIGINT                  NOT NULL CHECK (qty_original > 0),
-    qty_available       BIGINT                  NOT NULL CHECK (qty_available >= 0),
-    qty_reserved        BIGINT                  NOT NULL DEFAULT 0 CHECK (qty_reserved >= 0),
-    unit_cost_cents     BIGINT                  NOT NULL CHECK (unit_cost_cents >= 0),
-    acquired_at         TIMESTAMPTZ             NOT NULL DEFAULT now(),
-    source_trade_id     UUID                    REFERENCES trade(trade_id),
-    source_process_id   UUID                    REFERENCES transformation_process(process_id),
+    lot_id                UUID                    PRIMARY KEY DEFAULT uuidv7(),
+    agent_id              UUID                    NOT NULL REFERENCES agent(agent_id),
+    product_id            UUID                    NOT NULL REFERENCES product(product_id),
+    origin                inventory_lot_origin    NOT NULL,
+    qty_original          BIGINT                  NOT NULL CHECK (qty_original > 0),
+    qty_available         BIGINT                  NOT NULL CHECK (qty_available >= 0),
+    qty_reserved          BIGINT                  NOT NULL DEFAULT 0 CHECK (qty_reserved >= 0),
+    unit_cost_cents       BIGINT                  NOT NULL CHECK (unit_cost_cents >= 0),
+    acquired_at           TIMESTAMPTZ             NOT NULL DEFAULT now(),
+    source_trade_id       UUID                    REFERENCES trade(trade_id),
+    source_process_id     UUID                    REFERENCES transformation_process(process_id),
+    source_conversion_id  UUID                    REFERENCES gold_conversion(conversion_id),
     CHECK (qty_available + qty_reserved <= qty_original),
     CHECK (
-        (origin = 'purchase'   AND source_trade_id   IS NOT NULL AND source_process_id IS NULL) OR
-        (origin = 'production' AND source_process_id IS NOT NULL AND source_trade_id   IS NULL) OR
-        (origin = 'initial'    AND source_trade_id   IS NULL     AND source_process_id IS NULL)
+        (origin = 'purchase'   AND source_trade_id      IS NOT NULL AND source_process_id IS NULL AND source_conversion_id IS NULL) OR
+        (origin = 'production' AND source_process_id    IS NOT NULL AND source_trade_id   IS NULL AND source_conversion_id IS NULL) OR
+        (origin = 'conversion' AND source_conversion_id IS NOT NULL AND source_trade_id   IS NULL AND source_process_id    IS NULL) OR
+        (origin = 'initial'    AND source_trade_id      IS NULL     AND source_process_id IS NULL AND source_conversion_id IS NULL)
     )
 );
 ```
@@ -781,8 +790,9 @@ CREATE INDEX idx_lot_fifo
     ON inventory_lot (agent_id, product_id, acquired_at, lot_id)
     WHERE qty_available > 0 OR qty_reserved > 0;
 
-CREATE INDEX idx_lot_source_trade   ON inventory_lot(source_trade_id)   WHERE source_trade_id   IS NOT NULL;
-CREATE INDEX idx_lot_source_process ON inventory_lot(source_process_id) WHERE source_process_id IS NOT NULL;
+CREATE INDEX idx_lot_source_trade      ON inventory_lot(source_trade_id)      WHERE source_trade_id      IS NOT NULL;
+CREATE INDEX idx_lot_source_process    ON inventory_lot(source_process_id)    WHERE source_process_id    IS NOT NULL;
+CREATE INDEX idx_lot_source_conversion ON inventory_lot(source_conversion_id) WHERE source_conversion_id IS NOT NULL;
 
 -- Constraints
 ALTER TABLE inventory_lot ADD CONSTRAINT lot_qty_original_positive CHECK (qty_original > 0);
@@ -806,6 +816,7 @@ ALTER TABLE inventory_lot ADD CONSTRAINT lot_origin_source_consistency CHECK (
 | `initial`    | Lote creado en el setup inicial de la corrida. No tiene trade ni proceso fuente.                             |
 | `production` | Lote materializado al completar un `transformation_process`. `source_process_id` apunta al proceso.          |
 | `purchase`   | Lote adquirido vía trade. `source_trade_id` apunta al trade que originó la adquisición.                      |
+| `conversion` | Lote de oro adquirido en la ventanilla del banco (`buy_gold`). `source_conversion_id` apunta a la conversión. |
 
 #### Diccionario de Campos
 
@@ -822,6 +833,7 @@ ALTER TABLE inventory_lot ADD CONSTRAINT lot_origin_source_consistency CHECK (
 | `acquired_at`       | `TIMESTAMPTZ`          | Timestamp de adquisición/producción. Base para el ordenamiento FIFO.                                                                                         |
 | `source_trade_id`   | `UUID`                 | Trade que originó este lote (solo si `origin='purchase'`). `NULL` en otros casos.                                                                            |
 | `source_process_id` | `UUID`                 | Proceso que originó este lote (solo si `origin='production'`). `NULL` en otros casos.                                                                        |
+| `source_conversion_id` | `UUID`              | Conversión de ventanilla que originó este lote (solo si `origin='conversion'`). `NULL` en otros casos.                                                       |
 
 ##### Cálculo de `unit_cost_cents`
 
@@ -829,6 +841,7 @@ ALTER TABLE inventory_lot ADD CONSTRAINT lot_origin_source_consistency CHECK (
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `purchase`   | `(price_cents × qty + fee_buyer prorrateado) / qty`                                                                                |
 | `production` | `(Σ unit_cost_de_insumos_consumidos × qty_consumida + salario_pagado) / qty_producida`                                             |
+| `conversion` | `window_ask_cents` de la ventanilla al momento de la compra de oro (sin fees)                                                      |
 | `initial`    | `0` o costo nominal de setup                                                                                                       |
 
 #### Reglas de Negocio
@@ -934,9 +947,132 @@ ALTER TABLE transformation_lot_consumption ADD CONSTRAINT tflc_product_fk FOREIG
 
 ---
 
+### 14. conversion_lot_consumption
+
+**Descripción**: trazabilidad lote → conversión de ventanilla. Cuando un agente vende oro al banco (`sell_gold`), los lotes de oro se descuentan FIFO y aquí se registra qué lotes y cuánto de cada uno se consumió, con snapshot del costo unitario. Simétrico a `trade_lot_consumption` pero para la ventanilla.
+
+```sql
+-- Tabla
+CREATE TABLE conversion_lot_consumption (
+    conversion_id       UUID    NOT NULL REFERENCES gold_conversion(conversion_id) ON DELETE CASCADE,
+    lot_id              UUID    NOT NULL REFERENCES inventory_lot(lot_id),
+    qty_consumed        BIGINT  NOT NULL CHECK (qty_consumed > 0),
+    unit_cost_cents     BIGINT  NOT NULL CHECK (unit_cost_cents >= 0),
+    PRIMARY KEY (conversion_id, lot_id)
+);
+```
+
+#### Reglas de Negocio
+
+- La suma de `qty_consumed` por `conversion_id` debe igualar `gold_conversion.qty_cent` (regla de aplicación).
+- Permite calcular la "ganancia de monetización" del agente: `window_bid × qty − Σ (qty_consumed × unit_cost_cents)`.
+
+---
+
+## 🏦 Patrón Oro (Banco Central)
+
+El sistema monetario de la corrida es un **patrón oro**: existe un agente banco central (`BANK_USERNAME`, por defecto `central_bank`) con una **ventanilla acuñadora** que compra y vende oro a una banda fija alrededor de la paridad. Vender oro al banco **acuña** dinero nuevo; comprarle oro **destruye** el dinero pagado. El oro proviene de un **yacimiento finito** sorteado con la semilla maestra. Los fees de trading se acreditan al banco (no se evaporan) y financian, junto con la emisión respaldada, el capital semilla de los registros dinámicos.
+
+> Documento dedicado con las fórmulas, flujos, errores y reglas de concurrencia: **`patron_oro_sistema_bancario.md`**.
+
+### 15. gold_standard
+
+**Descripción**: singleton con la política monetaria de la corrida. La escribe el seed; en runtime solo mutan los contadores `money_issued_cents` / `money_burned_cents`. Su fila bajo `FOR UPDATE` actúa como **mutex global** de la ventanilla y de la emisión de capital en registros; el matching nunca la toca.
+
+```sql
+-- Tabla
+CREATE TABLE gold_standard (
+    singleton               BOOLEAN     PRIMARY KEY DEFAULT true CHECK (singleton),
+    bank_agent_id           UUID        NOT NULL REFERENCES agent(agent_id),
+    product_id              UUID        NOT NULL REFERENCES product(product_id),  -- el oro
+    parity_cents_per_unit   BIGINT      NOT NULL CHECK (parity_cents_per_unit > 0),
+    window_bid_cents        BIGINT      NOT NULL CHECK (window_bid_cents > 0),
+    window_ask_cents        BIGINT      NOT NULL,
+    coverage_ratio_bps      BIGINT      NOT NULL CHECK (coverage_ratio_bps > 0),
+    initial_money_cents     BIGINT      NOT NULL CHECK (initial_money_cents >= 0),
+    money_issued_cents      BIGINT      NOT NULL DEFAULT 0 CHECK (money_issued_cents >= 0),
+    money_burned_cents      BIGINT      NOT NULL DEFAULT 0 CHECK (money_burned_cents >= 0),
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Diccionario de Campos
+
+| Campo | Descripción |
+| ----- | ----------- |
+| `bank_agent_id` | Agente banco central (creado por el seed con `GOLD_BANK_INITIAL_CAPITAL_CENTS`). |
+| `product_id` | Producto oro (`GOLD_PRODUCT_KEY`). |
+| `parity_cents_per_unit` | Paridad dinero/oro. Derivada en el seed: `parity = floor(M0 × coverage_bps / (100 × D))`, con `D` = tamaño del yacimiento sorteado. |
+| `window_bid_cents` / `window_ask_cents` | Banda de la ventanilla: `parity ∓ GOLD_WINDOW_SPREAD_BPS` (±5% por defecto). El banco compra a bid y vende a ask. |
+| `coverage_ratio_bps` | Ratio de cobertura de la emisión (10000 = 100%: cada centavo acuñado respaldado por oro del banco a paridad). |
+| `initial_money_cents` | Masa monetaria M0 sembrada en el setup. |
+| `money_issued_cents` / `money_burned_cents` | Contadores acumulados de acuñación y destrucción. Masa monetaria actual = `initial + issued − burned`. |
+
+#### Reglas de Negocio
+
+- **Capacidad de emisión**: `capacity = oro_del_banco × parity × coverage`; la emisión neta (`issued − burned`) nunca puede superarla. Aplica tanto a `sell_gold` como al capital semilla de registros dinámicos.
+- **Orden global de locks**: toda operación monetaria toma `gold_standard FOR UPDATE` antes de cualquier lock de agente.
+
+---
+
+### 16. gold_conversion
+
+**Descripción**: registro inmutable de cada operación de ventanilla. `sell_gold`: el agente entrega oro (FIFO de sus lotes, registrado en `conversion_lot_consumption`) y recibe dinero **recién acuñado** a `window_bid`. `buy_gold`: el agente paga a `window_ask`, ese dinero se **destruye** y recibe un lote de oro (`origin='conversion'`) proveniente de los lotes del banco. Sin fees.
+
+```sql
+-- Enums
+CREATE TYPE conversion_direction AS ENUM (
+    'buy_gold',     -- el agente compra oro al banco (paga window_ask; el dinero se DESTRUYE)
+    'sell_gold'     -- el agente vende oro al banco (cobra window_bid; el dinero se ACUÑA)
+);
+
+-- Tabla
+CREATE TABLE gold_conversion (
+    conversion_id           UUID                    PRIMARY KEY DEFAULT uuidv7(),
+    agent_id                UUID                    NOT NULL REFERENCES agent(agent_id),
+    direction               conversion_direction    NOT NULL,
+    product_id              UUID                    NOT NULL REFERENCES product(product_id),
+    qty_cent                BIGINT                  NOT NULL CHECK (qty_cent > 0),
+    price_cents_per_unit    BIGINT                  NOT NULL CHECK (price_cents_per_unit > 0),
+    total_cents             BIGINT                  NOT NULL CHECK (total_cents >= 0),
+    executed_at             TIMESTAMPTZ             NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_gold_conversion_agent_time ON gold_conversion (agent_id, executed_at DESC);
+```
+
+#### Reglas de Negocio
+
+- Expuesta vía `GET /bank` (info de la ventanilla) y `POST /bank/convert` (ejecución síncrona).
+- Cada conversión emite el evento `gold_converted` y actualiza los contadores de `gold_standard` en la misma transacción.
+
+---
+
+### 17. resource_deposit
+
+**Descripción**: yacimiento finito de un recurso. Actualmente solo el oro tiene yacimiento: su tamaño se sortea en `[GOLD_DEPOSIT_MIN_QTY_CENT, GOLD_DEPOSIT_MAX_QTY_CENT]` con la semilla maestra. La materialización de procesos que producen un recurso con yacimiento se **clampea** a lo que queda: `producido = min(remaining, output_qty × ejecuciones)`.
+
+```sql
+-- Tabla
+CREATE TABLE resource_deposit (
+    product_id          UUID        PRIMARY KEY REFERENCES product(product_id),
+    qty_initial_cent    BIGINT      NOT NULL CHECK (qty_initial_cent >= 0),
+    qty_remaining_cent  BIGINT      NOT NULL CHECK (qty_remaining_cent >= 0),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (qty_remaining_cent <= qty_initial_cent)
+);
+```
+
+#### Reglas de Negocio
+
+- Cuando `qty_remaining_cent` llega a 0 se emite el evento `deposit_depleted`; a partir de ahí las recetas de ese recurso materializan 0 unidades.
+- El yacimiento finito acota la masa monetaria máxima alcanzable vía acuñación (patrón oro estricto).
+
+---
+
 ## 📜 Event Log
 
-### 14. event_log
+### 18. event_log
 
 **Descripción**: log append-only de toda mutación de estado relevante. Cada evento se persiste **antes** de aplicarse al estado vivo. El estado actual es derivable reproduciendo eventos. Sirve a agentes de ML para entrenamiento histórico y al investigador para análisis post-mortem. **No particionado en v1**; se evaluará cuando crezca.
 
@@ -952,7 +1088,10 @@ CREATE TYPE event_type AS ENUM (
     'process_started',
     'process_completed',
     'process_cancelled',
-    'snapshot_taken'
+    'snapshot_taken',
+    'gold_converted',
+    'money_issued',
+    'deposit_depleted'
 );
 
 -- Tabla
@@ -999,6 +1138,9 @@ ALTER TABLE event_log ADD CONSTRAINT event_log_agent_fk FOREIGN KEY (agent_id) R
 | `process_completed` | Un proceso fue materializado (vencido y procesado).                                               |
 | `process_cancelled` | Un proceso fue cancelado por su agente.                                                           |
 | `snapshot_taken`    | Se disparó un snapshot agregado.                                                                  |
+| `gold_converted`    | Conversión ejecutada en la ventanilla del banco (`buy_gold` / `sell_gold`).                       |
+| `money_issued`      | Acuñación de capital semilla en un registro dinámico (emisión respaldada).                        |
+| `deposit_depleted`  | Un `resource_deposit` llegó a 0 (yacimiento agotado).                                             |
 
 #### Diccionario de Campos
 
@@ -1021,7 +1163,7 @@ ALTER TABLE event_log ADD CONSTRAINT event_log_agent_fk FOREIGN KEY (agent_id) R
 
 ## 📸 Snapshots Agregados
 
-### 15. market_snapshot
+### 19. market_snapshot
 
 **Descripción**: foto agregada del estado global del mercado en un instante. Snapshots disparados manualmente (no se modela frecuencia automática en v1). Sirven para evitar reconstrucción costosa desde `event_log` en análisis.
 
@@ -1062,11 +1204,11 @@ ALTER TABLE market_snapshot ADD CONSTRAINT market_snapshot_taken_at_unique UNIQU
 #### Reglas de Negocio
 
 - Los snapshots **no se borran**. Forman parte del historial analítico permanente.
-- La masa monetaria total debe decrecer monótonamente entre snapshots (efecto de los fees), salvo registros de nuevos agentes que aportan capital semilla.
+- Con patrón oro la masa monetaria **no decrece monótonamente**: los fees se reciclan al banco (siguen dentro del circuito), la acuñación (`sell_gold`, emisión de registros) la aumenta y la quema (`buy_gold`) la reduce. El invariante auditable es `masa = initial_money + money_issued − money_burned` contra `gold_standard`.
 
 ---
 
-### 16. market_snapshot_agent_capital
+### 20. market_snapshot_agent_capital
 
 **Descripción**: detalle por agente del capital total al momento del snapshot. Tabla hija de `market_snapshot`.
 
@@ -1105,7 +1247,7 @@ ALTER TABLE market_snapshot_agent_capital ADD CONSTRAINT msac_agent_fk FOREIGN K
 
 ---
 
-### 17. market_snapshot_product
+### 21. market_snapshot_product
 
 **Descripción**: detalle por producto del inventario total y mejor bid/ask al momento del snapshot.
 
@@ -1183,6 +1325,15 @@ erDiagram
     inventory_lot      ||--o{ transformation_lot_consumption : "es consumido"
     product            ||--o{ transformation_lot_consumption : "tipo de insumo"
 
+    agent              ||--o{ gold_conversion : "convierte"
+    product            ||--o{ gold_conversion : "oro"
+    gold_conversion    ||--o{ conversion_lot_consumption : "consume lotes"
+    inventory_lot      ||--o{ conversion_lot_consumption : "es consumido"
+    gold_conversion    ||--o{ inventory_lot : "source_conversion"
+    agent              ||--|| gold_standard : "banco central"
+    product            ||--|| gold_standard : "oro patrón"
+    product            ||--o| resource_deposit : "yacimiento"
+
     agent              ||--o{ event_log : "protagoniza"
     market_snapshot    ||--o{ market_snapshot_agent_capital : "detalle por agente"
     market_snapshot    ||--o{ market_snapshot_product : "detalle por producto"
@@ -1194,7 +1345,7 @@ erDiagram
 
 ## 📈 Métricas y Crecimiento
 
-Estimaciones preliminares para una corrida con ~100 agentes activos a velocidad típica. Estos números son una guía inicial; deberán recalibrarse con datos reales de la corrida v1.
+Estimaciones preliminares para una corrida con ~100 agentes activos a velocidad típica. Estos números son una guía inicial y quedan **muy cortos para el modo enjambre (~10.000 bots)**, donde órdenes, trades y eventos escalan aproximadamente ×100; deberán recalibrarse con datos reales de una corrida de enjambre.
 
 | Tabla                            | Registros/día (simulado) | Retención        | Tamaño estimado por registro | Crecimiento anual estimado |
 | -------------------------------- | ------------------------ | ---------------- | ---------------------------- | -------------------------- |
@@ -1222,10 +1373,9 @@ Estimaciones preliminares para una corrida con ~100 agentes activos a velocidad 
 
 ### Migraciones
 
-- **Estrategia**: migraciones versionadas con herramienta a elegir según stack (Flyway, sqlx-migrate, alembic, etc.).
-- `schema.sql` representa el estado actual; cada cambio futuro debe generar un script de migración independiente.
-- Cambios destructivos (drop column, drop table) requieren ventana de mantenimiento; el sistema no tiene replicación en v1.
-- Los enums (`product_category`, `agent_role`, etc.) se extienden con `ALTER TYPE ... ADD VALUE` sin downtime, pero remover valores requiere migración compleja.
+- **Estrategia**: **sin migraciones incrementales**. `specs/schema.sql` es el DDL canónico y `backend/src/db/schema.ts` (Drizzle) su espejo; ambos cambian en el mismo commit.
+- Cualquier cambio de esquema se aplica **recreando la base desde cero** (`clean-docker` + re-seed). Cada corrida de simulación es efímera y arranca de cero, así que no hay datos que preservar.
+- Consecuencia: los cambios de esquema descartan la corrida en curso; los bots se re-registran solos gracias a su `auto_register`.
 
 ### Retención / Limpieza
 
