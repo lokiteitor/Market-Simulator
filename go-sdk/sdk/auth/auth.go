@@ -43,6 +43,7 @@ type AuthManager struct {
 
 	persistPath string
 	refresher   func(ctx context.Context, refreshToken string) (*models.TokenPair, error)
+	loginHelper LoginHelper
 }
 
 func NewAuthManager(username, password string, role models.AgentRole, persistPath string) *AuthManager {
@@ -58,6 +59,14 @@ func (a *AuthManager) SetRefresher(refresher func(ctx context.Context, refreshTo
 	a.Lock()
 	defer a.Unlock()
 	a.refresher = refresher
+}
+
+// SetLoginHelper configures the client used to re-authenticate from scratch when a
+// refresh token is rejected (rotated by another process, revoked or expired).
+func (a *AuthManager) SetLoginHelper(client LoginHelper) {
+	a.Lock()
+	defer a.Unlock()
+	a.loginHelper = client
 }
 
 func (a *AuthManager) GetAgentID() string {
@@ -88,28 +97,66 @@ func (a *AuthManager) GetAccessToken(ctx context.Context) (string, error) {
 
 	// Check if access token is expired or close to expiration (30 seconds buffer)
 	if time.Now().Add(30 * time.Second).After(a.accessExp) {
-		if a.refreshToken == "" {
-			return "", errors.New("access token expired and no refresh token available")
-		}
-		if a.refresher == nil {
-			return "", errors.New("token refresher function is not configured")
+		refreshErr := a.refreshLocked(ctx)
+		if refreshErr == nil {
+			return a.accessToken, nil
 		}
 
-		// Perform refresh
-		tokens, err := a.refresher(ctx, a.refreshToken)
-		if err != nil {
-			return "", fmt.Errorf("failed to auto-refresh access token: %w", err)
+		// The refresh token is single-use: the server rotates and revokes it on every
+		// refresh, so it can be rejected for good (e.g. another process using the same
+		// session file rotated it first). Falling back to a full login is the only way
+		// out; without it the agent would fail every request until restarted.
+		if err := a.loginLocked(ctx); err != nil {
+			return "", fmt.Errorf("failed to auto-refresh access token: %w (re-login failed: %v)", refreshErr, err)
 		}
-
-		a.accessToken = tokens.AccessToken
-		a.refreshToken = tokens.RefreshToken
-		a.accessExp = tokens.AccessExpiresAt
-		a.refreshExp = tokens.RefreshExpiresAt
-
-		_ = a.saveSessionLocked()
 	}
 
 	return a.accessToken, nil
+}
+
+// refreshLocked exchanges the current refresh token for a new token pair.
+// The caller must hold the write lock.
+func (a *AuthManager) refreshLocked(ctx context.Context) error {
+	if a.refreshToken == "" {
+		return errors.New("no refresh token available")
+	}
+	if a.refresher == nil {
+		return errors.New("token refresher function is not configured")
+	}
+
+	tokens, err := a.refresher(ctx, a.refreshToken)
+	if err != nil {
+		return err
+	}
+	a.storeTokensLocked(tokens.AccessToken, tokens.RefreshToken, tokens.AccessExpiresAt, tokens.RefreshExpiresAt)
+	return nil
+}
+
+// loginLocked re-authenticates with the stored credentials, discarding the current
+// tokens. The caller must hold the write lock; LoginHelper.Login is unauthenticated,
+// so it does not re-enter GetAccessToken.
+func (a *AuthManager) loginLocked(ctx context.Context) error {
+	if a.loginHelper == nil {
+		return errors.New("login helper is not configured")
+	}
+
+	tokens, err := a.loginHelper.Login(ctx, models.LoginRequest{
+		Username: a.username,
+		Password: a.password,
+	})
+	if err != nil {
+		return err
+	}
+	a.storeTokensLocked(tokens.AccessToken, tokens.RefreshToken, tokens.AccessExpiresAt, tokens.RefreshExpiresAt)
+	return nil
+}
+
+func (a *AuthManager) storeTokensLocked(accessToken, refreshToken string, accessExp, refreshExp time.Time) {
+	a.accessToken = accessToken
+	a.refreshToken = refreshToken
+	a.accessExp = accessExp
+	a.refreshExp = refreshExp
+	_ = a.saveSessionLocked()
 }
 
 // PerformAuth handles the authentication flow: loading from disk, attempting refresh, login or register.
@@ -117,21 +164,16 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 	a.Lock()
 	defer a.Unlock()
 
+	// Keep the helper around so GetAccessToken can re-login on its own when a
+	// refresh token is rejected mid-run.
+	a.loginHelper = client
+
 	// 1. Try to load from persistence
 	loaded := a.loadSessionLocked()
 	if loaded && a.refreshToken != "" && time.Now().Before(a.refreshExp) {
-		// Attempt refresh
-		if a.refresher != nil {
-			tokens, err := a.refresher(ctx, a.refreshToken)
-			if err == nil {
-				a.accessToken = tokens.AccessToken
-				a.refreshToken = tokens.RefreshToken
-				a.accessExp = tokens.AccessExpiresAt
-				a.refreshExp = tokens.RefreshExpiresAt
-				_ = a.saveSessionLocked()
-				return nil
-			}
-			// Refresh failed; fall through to login/register
+		// Attempt refresh; if it fails, fall through to login/register
+		if err := a.refreshLocked(ctx); err == nil {
+			return nil
 		}
 	}
 

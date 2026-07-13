@@ -80,6 +80,7 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 	authMgr.SetRefresher(func(ctx context.Context, refreshToken string) (*models.TokenPair, error) {
 		return restClient.Refresh(ctx, models.RefreshRequest{RefreshToken: refreshToken})
 	})
+	authMgr.SetLoginHelper(restClient)
 
 	wsClient := websocket.NewClient(cfg.Server.WSURL, authMgr, logger)
 	stateMgr := state.NewStateManager()
