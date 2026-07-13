@@ -6,7 +6,7 @@
  * precio-tiempo, apoyándose en los índices parciales idx_orderbook_buy /
  * idx_orderbook_sell del schema (producto, precio DESC|ASC, created_at ASC).
  */
-import { and, asc, desc, eq, gt, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import type { Tx } from "../db";
 import { marketOrder, trade, type MarketOrderRow, type TradeRow } from "../db/schema";
 
@@ -43,21 +43,44 @@ export const marketRepository = {
     return rows[0];
   },
 
+  /** Trade por id (para resolver el cursor `before`). */
+  async tradeById(tx: Tx, tradeId: string): Promise<TradeRow | undefined> {
+    const rows = await tx.select().from(trade).where(eq(trade.tradeId, tradeId)).limit(1);
+    return rows[0];
+  },
+
   /**
-   * Trades públicos recientes del producto con `executed_at >= since`,
-   * más recientes primero (usa idx_trade_product_time).
+   * Trades públicos recientes del producto, más recientes primero (usa
+   * idx_trade_product_time). Filtros opcionales: `since`/`until` acotan por
+   * `executed_at`; `before` es keyset exacto sobre (executed_at, trade_id) —
+   * estrictamente anteriores al trade cursor — para backfill sin huecos ni
+   * duplicados aun con timestamps empatados.
    */
   async recentTradesForProduct(
     tx: Tx,
     productId: string,
-    since: Date,
-    limit: number,
+    q: {
+      since?: Date;
+      until?: Date;
+      before?: { executedAt: Date; tradeId: string };
+      limit: number;
+    },
   ): Promise<TradeRow[]> {
+    const conditions: SQL[] = [eq(trade.productId, productId)];
+    if (q.since !== undefined) conditions.push(gte(trade.executedAt, q.since));
+    if (q.until !== undefined) conditions.push(lte(trade.executedAt, q.until));
+    if (q.before !== undefined) {
+      const keyset = or(
+        lt(trade.executedAt, q.before.executedAt),
+        and(eq(trade.executedAt, q.before.executedAt), lt(trade.tradeId, q.before.tradeId)),
+      );
+      if (keyset !== undefined) conditions.push(keyset);
+    }
     return tx
       .select()
       .from(trade)
-      .where(and(eq(trade.productId, productId), gte(trade.executedAt, since)))
+      .where(and(...conditions))
       .orderBy(desc(trade.executedAt), desc(trade.tradeId))
-      .limit(limit);
+      .limit(q.limit);
   },
 };

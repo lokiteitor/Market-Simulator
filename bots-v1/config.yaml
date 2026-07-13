@@ -17,6 +17,22 @@ retry:
 # Los bots multiplican por este factor para estimar el costo laboral correctamente.
 sim_time_factor: 5
 
+# Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.
+market:
+  # Peso del ultimo trade en la EMA del valor justo (0-1).
+  ema_alpha: 0.25
+  # Banda del fair value alrededor del precio base: evita fugas de precio por
+  # retroalimentacion bot-a-bot. fair queda en [base*lo, base*hi].
+  fair_band_lo: 0.4
+  fair_band_hi: 2.5
+  # Frescura del cache de top-of-book (segundos) antes de refetchear.
+  top_ttl_seconds: 12
+  # Llamadas REST de top-of-book permitidas por bot por tick. Con enjambres
+  # grandes (-scale) este numero es lo que protege al servidor.
+  rest_budget_per_tick: 4
+  # Ventana (segundos) para considerar que un producto tiene mercado "vivo".
+  recent_window_seconds: 600
+
 # Precios base (cents/unidad) para evaluar trades y margenes.
 # Generados por propagacion de costo desde infra/seed-config.json:
 #   costo_unit = (wage_rate*duration_sim + sum(insumos)) * 100 / output_qty_cent

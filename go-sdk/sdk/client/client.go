@@ -16,6 +16,15 @@ type TokenProvider interface {
 	GetAccessToken(ctx context.Context) (string, error)
 }
 
+// TokenInvalidator is implemented by token providers that can discard a
+// cached access token the server no longer accepts (revoked session, rotated
+// JWT secret, clock skew past the proactive-refresh buffer). Without it a
+// locally-valid but server-rejected token would fail every request until the
+// local expiry finally triggers a refresh.
+type TokenInvalidator interface {
+	InvalidateAccessToken()
+}
+
 type APIError struct {
 	StatusCode int
 	Problem    models.Problem
@@ -56,36 +65,32 @@ func NewClient(baseURL string, httpClient *http.Client, tokenProvider TokenProvi
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body interface{}, res interface{}, authRequired bool) error {
-	var bodyReader io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	resp, err := c.send(ctx, method, path, bodyBytes, authRequired)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return err
 	}
 
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	if authRequired && c.tokenProvider != nil {
-		token, err := c.tokenProvider.GetAccessToken(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get access token: %w", err)
+	// A 401 on an authenticated call means the server rejected a token that
+	// still looks valid locally. Discard it and retry once with a token
+	// obtained fresh (refresh or re-login inside GetAccessToken).
+	if resp.StatusCode == http.StatusUnauthorized && authRequired && c.tokenProvider != nil {
+		if inv, ok := c.tokenProvider.(TokenInvalidator); ok {
+			resp.Body.Close()
+			inv.InvalidateAccessToken()
+			resp, err = c.send(ctx, method, path, bodyBytes, authRequired)
+			if err != nil {
+				return err
+			}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -112,6 +117,39 @@ func (c *Client) do(ctx context.Context, method, path string, body interface{}, 
 	}
 
 	return nil
+}
+
+// send builds and executes one HTTP attempt. It takes the marshalled body so
+// the caller can replay the request after invalidating a rejected token.
+func (c *Client) send(ctx context.Context, method, path string, bodyBytes []byte, authRequired bool) (*http.Response, error) {
+	var bodyReader io.Reader
+	if bodyBytes != nil {
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	url := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if bodyBytes != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	if authRequired && c.tokenProvider != nil {
+		token, err := c.tokenProvider.GetAccessToken(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get access token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	return resp, nil
 }
 
 type errWrapper string

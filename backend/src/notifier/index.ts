@@ -19,7 +19,14 @@ export type NotificationType =
   | "order_cancelled"
   | "transformation_completed"
   | "agent_bankrupt"
-  | "bankruptcy_notice";
+  | "bankruptcy_notice"
+  // Broadcast por cada trade ejecutado (payload = objeto Trade del openapi).
+  // Los trades ya son públicos vía GET /market/{id}/trades; esto es el tape
+  // en tiempo real para clientes event-driven.
+  | "trade_printed"
+  // Personal: conversión ejecutada en la ventanilla del banco (patrón oro).
+  // Payload = objeto GoldConversion del openapi.
+  | "gold_converted";
 
 export interface Notification {
   type: NotificationType;

@@ -18,7 +18,7 @@ info:
       e inicio/cancelación de procesos de transformación.
     - **WebSocket** (`/v1/ws`) para notificaciones push del servidor al agente
       (`order_executed`, `order_expired`, `transformation_completed`,
-      `bankruptcy_notice`, `agent_bankrupt`). El canal WS no
+      `bankruptcy_notice`, `agent_bankrupt`, `trade_printed`). El canal WS no
       acepta comandos: es unidireccional servidor→cliente más heartbeats.
       Su esquema se documenta como complemento al final (sección
       `x-websocket-channel`); está fuera del modelo formal de OpenAPI 3.1.
@@ -84,6 +84,8 @@ tags:
     description: "Procesos de transformación: inicio, cancelación, consulta."
   - name: history
     description: Historial propio del agente (trades, órdenes, procesos).
+  - name: bank
+    description: Banco central del patrón oro (ventanilla de convertibilidad dinero↔oro).
   - name: websocket
     description: Canal de notificaciones push (documentado, fuera del modelo REST).
 
@@ -104,9 +106,12 @@ paths:
       description: |
         Crea un agente nuevo en la simulación con un rol y capacidades solicitadas.
         El servidor asigna **capital semilla = promedio del capital total de
-        agentes activos** al momento del registro (registros dinámicos). La
-        identidad asignada es fresca y nunca se recicla. Emite el evento
-        de auditoría `agent_registered`.
+        agentes de mercado activos**, financiado primero con capital del banco
+        central (fees reciclados) y acuñando el resto solo si las reservas de
+        oro del banco lo respaldan al ratio de cobertura (patrón oro). Si el
+        máximo respaldable queda por debajo del mínimo configurado, responde
+        422 `insufficient_gold_backing`. La identidad asignada es fresca y
+        nunca se recicla. Emite los eventos `agent_registered` y `money_issued`.
 
         Endpoint público (no requiere autenticación).
       security: []
@@ -129,7 +134,14 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+        '422':
+          description: |
+            Validación de dominio falló. Causas vía `errors[*].code`: las de
+            validación estándar, o `insufficient_gold_backing` (el banco no
+            puede financiar ni respaldar el capital semilla mínimo).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /auth/login:
     post:
@@ -447,10 +459,27 @@ paths:
         - in: query
           name: since
           description: |
-            Devolver únicamente trades con `executed_at >= since`. Si se omite,
-            se aplica una ventana por defecto (último día simulado).
+            Devolver únicamente trades con `executed_at >= since`. Si no se
+            pasa NINGÚN filtro temporal (`since`, `until` ni `before`), se
+            aplica una ventana por defecto (último día simulado).
           required: false
           schema: { type: string, format: date-time }
+        - in: query
+          name: until
+          description: Devolver únicamente trades con `executed_at <= until`.
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: before
+          description: |
+            Cursor keyset para paginar hacia atrás (backfill): devuelve trades
+            estrictamente anteriores — por `(executed_at, trade_id)` — al trade
+            indicado. Debe ser un `trade_id` existente del mismo producto
+            (`invalid_cursor` 400 si no). Para recorrer el histórico: pedir la
+            primera página y repetir con `before` = `trade_id` del último
+            elemento hasta recibir menos de `limit`.
+          required: false
+          schema: { type: string, format: uuid }
         - in: query
           name: limit
           required: false
@@ -463,6 +492,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Trade' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
@@ -682,7 +712,9 @@ paths:
           description: |
             Validación de dominio falló. Causas posibles vía `errors[*].code`:
             `insufficient_capacity`, `insufficient_inventory`,
-            `insufficient_capital`, `unknown_recipe`, `agent_bankrupt`.
+            `insufficient_capital`, `unknown_recipe`, `agent_bankrupt`,
+            `resource_depleted` (el yacimiento del producto de salida está
+            agotado; ver resource_deposit del patrón oro).
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -847,6 +879,73 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  # ---- Banco central (patrón oro) ------------------------------------------
+
+  /bank:
+    get:
+      tags: [bank]
+      summary: Política monetaria y estado del banco central
+      description: |
+        Paridad fija de la corrida, banda bid/ask de la ventanilla, reservas de
+        oro y capital del banco, contadores de emisión/destrucción y remanente
+        del yacimiento. Público para cualquier agente autenticado (los bots la
+        usan para arbitrar contra la ventanilla).
+      responses:
+        '200':
+          description: Estado del banco central.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: La corrida no tiene patrón oro sembrado (`no_gold_standard`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /bank/convert:
+    post:
+      tags: [bank]
+      summary: Convertir dinero↔oro en la ventanilla (acuñadora)
+      description: |
+        `sell_gold`: el agente entrega oro y recibe dinero **recién acuñado** a
+        `window_bid_cents` (la masa monetaria crece). `buy_gold`: el agente
+        paga a `window_ask_cents` y ese dinero se **destruye** (la masa se
+        contrae); recibe oro de las reservas del banco. Sin fees. Total =
+        floor(qty_cent × precio / 100).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConvertRequest' }
+      responses:
+        '201':
+          description: Conversión ejecutada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoldConversion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Rol `bank`/`admin`, o agente en quiebra.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: La corrida no tiene patrón oro sembrado (`no_gold_standard`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            Validación de dominio falló. Causas vía `errors[*].code`:
+            `insufficient_capital` (buy_gold sin fondos), `insufficient_inventory`
+            (sell_gold sin oro), `bank_insufficient_gold` (buy_gold: reserva del
+            banco insuficiente), `conversion_below_minimum` (nocional redondea a 0).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
 # ============================================================================
 # COMPONENTES
 # ============================================================================
@@ -1002,7 +1101,7 @@ components:
           maxLength: 256
           writeOnly: true
         role:
-          $ref: '#/components/schemas/AgentRole'
+          $ref: '#/components/schemas/RegisterableRole'
         requested_capacities:
           type: array
           description: |
@@ -1062,9 +1161,16 @@ components:
 
     Product:
       type: object
-      required: [product_id, name, unit, category, created_at]
+      required: [product_id, key, name, unit, category, created_at]
       properties:
         product_id: { type: string, format: uuid }
+        key:
+          type: string
+          description: |
+            Identificador estable del catálogo (ej. `trigo`, `harina`). A
+            diferencia de `product_id` (UUID generado en cada seed), `key` es
+            constante entre despliegues; los clientes pueden anclar su
+            configuración (precios base, universos) a este valor.
         name: { type: string }
         unit:
           type: string
@@ -1122,6 +1228,14 @@ components:
 
     AgentRole:
       type: string
+      description: |
+        Rol de un agente. `admin` (solo-monitoreo) y `bank` (banco central del
+        patrón oro) NO son registrables vía /auth/register; ver RegisterableRole.
+      enum: [primary_producer, transformer, consumer, trader, admin, bank]
+
+    RegisterableRole:
+      type: string
+      description: Roles admitidos por POST /auth/register (roles de mercado).
       enum: [primary_producer, transformer, consumer, trader]
 
     AgentStatus:
@@ -1228,7 +1342,7 @@ components:
 
     InventoryLotOrigin:
       type: string
-      enum: [initial, production, purchase]
+      enum: [initial, production, purchase, conversion]
 
     InventoryLot:
       type: object
@@ -1568,6 +1682,9 @@ components:
         - process_completed
         - process_cancelled
         - snapshot_taken
+        - gold_converted
+        - money_issued
+        - deposit_depleted
 
     Event:
       type: object
@@ -1598,6 +1715,83 @@ components:
         next_cursor:
           type: string
           nullable: true
+
+    # ---- Banco central (patrón oro) --------------------------------------
+
+    ConversionDirection:
+      type: string
+      description: |
+        Dirección desde la perspectiva del agente. `sell_gold` acuña dinero
+        nuevo (el agente cobra `window_bid_cents`); `buy_gold` destruye el
+        dinero pagado (`window_ask_cents`).
+      enum: [buy_gold, sell_gold]
+
+    BankInfo:
+      type: object
+      required:
+        [bank_agent_id, product_id, parity_cents_per_unit, window_bid_cents,
+         window_ask_cents, coverage_ratio_bps, initial_money_cents,
+         money_issued_cents, money_burned_cents, issuance_capacity_cents,
+         bank_gold_available_cent, bank_capital_available_cents,
+         deposit_remaining_cent]
+      properties:
+        bank_agent_id: { type: string, format: uuid }
+        product_id:
+          type: string
+          format: uuid
+          description: Producto-respaldo (oro).
+        parity_cents_per_unit: { type: integer, minimum: 1 }
+        window_bid_cents:
+          type: integer
+          minimum: 1
+          description: Precio al que el banco COMPRA oro (acuña).
+        window_ask_cents:
+          type: integer
+          minimum: 1
+          description: Precio al que el banco VENDE oro (destruye).
+        coverage_ratio_bps: { type: integer, minimum: 1 }
+        initial_money_cents: { type: integer, minimum: 0 }
+        money_issued_cents: { type: integer, minimum: 0 }
+        money_burned_cents: { type: integer, minimum: 0 }
+        issuance_capacity_cents:
+          type: integer
+          minimum: 0
+          description: Capacidad TOTAL de emisión respaldada por el oro actual del banco.
+        bank_gold_available_cent: { type: integer, minimum: 0 }
+        bank_capital_available_cents: { type: integer, minimum: 0 }
+        deposit_remaining_cent:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Yacimiento minable restante; `null` si el producto no tiene depósito.
+
+    ConvertRequest:
+      type: object
+      required: [direction, qty_cent]
+      properties:
+        direction: { $ref: '#/components/schemas/ConversionDirection' }
+        qty_cent:
+          type: integer
+          minimum: 1
+          description: Centésimas de unidad de oro a convertir.
+
+    GoldConversion:
+      type: object
+      required:
+        [conversion_id, agent_id, direction, product_id, qty_cent,
+         price_cents_per_unit, total_cents, executed_at]
+      properties:
+        conversion_id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        direction: { $ref: '#/components/schemas/ConversionDirection' }
+        product_id: { type: string, format: uuid }
+        qty_cent: { type: integer, minimum: 1 }
+        price_cents_per_unit: { type: integer, minimum: 1 }
+        total_cents:
+          type: integer
+          minimum: 0
+          description: floor(qty_cent × price_cents_per_unit / 100). Sin fees.
+        executed_at: { type: string, format: date-time }
 
 # ============================================================================
 # SEGURIDAD GLOBAL
@@ -1637,6 +1831,8 @@ x-websocket-channel:
           - transformation_completed  # personal
           - bankruptcy_notice    # personal
           - agent_bankrupt       # broadcast
+          - trade_printed        # broadcast: cada trade ejecutado (payload = Trade)
+          - gold_converted       # personal: conversión en la ventanilla del banco (payload = GoldConversion)
       occurred_at: { type: string, format: date-time }
       payload:
         type: object

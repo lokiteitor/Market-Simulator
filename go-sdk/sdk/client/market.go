@@ -20,10 +20,9 @@ func (c *Client) GetTopOfBook(ctx context.Context, productID string) (*models.To
 	return &resp, nil
 }
 
-type MarketTradesFilter struct {
-	Since string
-	Limit int
-}
+// MarketTradesFilter se mantiene como alias del tipo compartido en models
+// (lo usa también strategy.MarketData sin depender del paquete client).
+type MarketTradesFilter = models.TradesQuery
 
 // GetRecentTrades retrieves the recent trades for a product.
 func (c *Client) GetRecentTrades(ctx context.Context, productID string, filter MarketTradesFilter) ([]models.Trade, error) {
@@ -34,6 +33,12 @@ func (c *Client) GetRecentTrades(ctx context.Context, productID string, filter M
 	q := u.Query()
 	if filter.Since != "" {
 		q.Set("since", filter.Since)
+	}
+	if filter.Until != "" {
+		q.Set("until", filter.Until)
+	}
+	if filter.Before != "" {
+		q.Set("before", filter.Before)
 	}
 	if filter.Limit > 0 {
 		q.Set("limit", strconv.Itoa(filter.Limit))

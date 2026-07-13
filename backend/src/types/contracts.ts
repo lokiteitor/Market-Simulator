@@ -33,6 +33,15 @@ export const MARKET_ROLES = [
 
 export type MarketRole = (typeof MARKET_ROLES)[number];
 
+/**
+ * Roles que NO participan del mercado y deben excluirse de las agregaciones
+ * (masa monetaria de mercado, promedio de capital para el seed de registro,
+ * active_agents): `admin` (solo-monitoreo) y `bank` (banco central del patrón
+ * oro; su capital son reservas, no capital de mercado). Fuente única para los
+ * filtros `role NOT IN (...)`.
+ */
+export const NON_MARKET_ROLES = ["admin", "bank"] as const satisfies readonly AgentRole[];
+
 // ---------------------------------------------------------------------------
 // Inventario (implementa [M5 inventory])
 // ---------------------------------------------------------------------------
@@ -53,11 +62,12 @@ export interface InventoryService {
     p: {
       agentId: string;
       productId: string;
-      origin: "initial" | "production" | "purchase";
+      origin: "initial" | "production" | "purchase" | "conversion";
       qtyCent: number;
       unitCostCents: number;
       sourceTradeId?: string;
       sourceProcessId?: string;
+      sourceConversionId?: string;
     },
   ): Promise<string>;
 

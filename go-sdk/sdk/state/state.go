@@ -24,6 +24,7 @@ type StateManager struct {
 	runningProcesses map[string]models.TransformationProcess
 	capacities       map[string]models.CapacityStatus
 	products         map[string]models.Product
+	productsByKey    map[string]models.Product
 	recipes          map[string]models.Recipe
 	publicAgents     map[string]models.AgentPublic
 
@@ -51,6 +52,7 @@ func NewStateManager() *StateManager {
 		runningProcesses: make(map[string]models.TransformationProcess),
 		capacities:       make(map[string]models.CapacityStatus),
 		products:         make(map[string]models.Product),
+		productsByKey:    make(map[string]models.Product),
 		recipes:          make(map[string]models.Recipe),
 		publicAgents:     make(map[string]models.AgentPublic),
 		inventoryDirty:        true,
@@ -109,8 +111,12 @@ func (s *StateManager) SetCatalog(products []models.Product, recipes []models.Re
 	defer s.Unlock()
 
 	s.products = make(map[string]models.Product)
+	s.productsByKey = make(map[string]models.Product)
 	for _, p := range products {
 		s.products[p.ProductID] = p
+		if p.Key != "" {
+			s.productsByKey[p.Key] = p
+		}
 	}
 
 	s.recipes = make(map[string]models.Recipe)
@@ -119,6 +125,13 @@ func (s *StateManager) SetCatalog(products []models.Product, recipes []models.Re
 	}
 	s.productsDirty = true
 	s.recipesDirty = true
+}
+
+// notionalCents replica el redondeo del backend: el capital que reserva/mueve
+// una orden es floor(qty_cent * price_cents / 100) — qty va en centi-unidades
+// y el precio en centavos POR UNIDAD.
+func notionalCents(qtyCent, priceCents int64) int64 {
+	return qtyCent * priceCents / 100
 }
 
 // AddOrder manually registers a new order in the local state.
@@ -131,7 +144,7 @@ func (s *StateManager) AddOrder(order models.Order) {
 
 	// Optimistically adjust reservations in the local cache
 	if order.Side == models.SideBuy {
-		cost := order.QtyOriginalCent * order.LimitPriceCents
+		cost := notionalCents(order.QtyOriginalCent, order.LimitPriceCents)
 		s.capitalAvailableCents -= cost
 		s.capitalReservedCents += cost
 	} else {
@@ -204,8 +217,8 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			if order.Side == models.SideBuy {
 				// Buy order execution
 				// Refund any difference between limit price and execution price
-				limitCost := e.QtyExecutedCent * order.LimitPriceCents
-				actualCost := e.QtyExecutedCent * e.PriceCents
+				limitCost := notionalCents(e.QtyExecutedCent, order.LimitPriceCents)
+				actualCost := notionalCents(e.QtyExecutedCent, e.PriceCents)
 				diff := limitCost - actualCost
 
 				s.capitalReservedCents -= limitCost
@@ -218,7 +231,7 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 				s.inventory[order.ProductID] = inv
 			} else {
 				// Sell order execution
-				s.capitalAvailableCents += e.QtyExecutedCent * e.PriceCents
+				s.capitalAvailableCents += notionalCents(e.QtyExecutedCent, e.PriceCents)
 
 				// Deduct from reserved inventory
 				inv := s.inventory[order.ProductID]
@@ -236,7 +249,7 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			delete(s.activeOrders, e.OrderID)
 			// Return reservations to available
 			if order.Side == models.SideBuy {
-				cost := order.QtyPendingCent * order.LimitPriceCents
+				cost := notionalCents(order.QtyPendingCent, order.LimitPriceCents)
 				s.capitalReservedCents -= cost
 				s.capitalAvailableCents += cost
 			} else {
@@ -255,7 +268,7 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			delete(s.activeOrders, e.OrderID)
 			// Return reservations to available
 			if order.Side == models.SideBuy {
-				cost := order.QtyPendingCent * order.LimitPriceCents
+				cost := notionalCents(order.QtyPendingCent, order.LimitPriceCents)
 				s.capitalReservedCents -= cost
 				s.capitalAvailableCents += cost
 			} else {
@@ -295,6 +308,26 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 				s.inventory[recipe.OutputProductID] = inv
 			}
 		}
+
+	case events.GoldConverted:
+		// Conversión propia en la ventanilla del banco (patrón oro): sin fees.
+		s.inventoryDirty = true
+		inv := s.inventory[e.ProductID]
+		inv.ProductID = e.ProductID
+		if e.Direction == string(models.SellGold) {
+			inv.QtyAvailableCent -= e.QtyCent
+			if inv.QtyAvailableCent < 0 {
+				inv.QtyAvailableCent = 0
+			}
+			s.capitalAvailableCents += e.TotalCents
+		} else {
+			inv.QtyAvailableCent += e.QtyCent
+			s.capitalAvailableCents -= e.TotalCents
+			if s.capitalAvailableCents < 0 {
+				s.capitalAvailableCents = 0
+			}
+		}
+		s.inventory[e.ProductID] = inv
 
 	case events.BankruptcyNotice:
 		if e.AgentID == s.agentID {
@@ -432,6 +465,15 @@ func (s *StateManager) Product(productID string) (models.Product, bool) {
 	s.RLock()
 	defer s.RUnlock()
 	p, ok := s.products[productID]
+	return p, ok
+}
+
+// ProductByKey resuelve un producto por su key estable del catálogo (ej.
+// "trigo"), el ancla natural para configuración externa como precios base.
+func (s *StateManager) ProductByKey(key string) (models.Product, bool) {
+	s.RLock()
+	defer s.RUnlock()
+	p, ok := s.productsByKey[key]
 	return p, ok
 }
 

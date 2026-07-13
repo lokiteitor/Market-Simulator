@@ -16,6 +16,7 @@ export const ProductCategorySchema = z.enum(productCategory.enumValues);
 
 export const ProductSchema = z.object({
   product_id: z.uuid(),
+  key: z.string(),
   name: z.string(),
   unit: z.string(),
   category: ProductCategorySchema,

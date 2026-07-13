@@ -10,7 +10,11 @@
  * dispara todos los collect() casi a la vez y comparten una única consulta.
  */
 import { Gauge } from "prom-client";
-import { withTransaction } from "../db";
+import { sql } from "drizzle-orm";
+import { withTransaction, type Tx } from "../db";
+import { agent, transformationProcess } from "../db/schema";
+import { bankRepository } from "../repositories/bank-repository";
+import { depositRepository } from "../repositories/deposit-repository";
 import {
   monitoringRepository,
   type AgentsByRoleView,
@@ -22,10 +26,59 @@ import { register } from "./metrics";
 
 const log = logger.child({ component: "business-metrics" });
 
+/** Estado del patrón oro para gauges (null si la corrida no lo tiene sembrado). */
+interface GoldView {
+  parityCentsPerUnit: number;
+  windowBidCents: number;
+  windowAskCents: number;
+  bankCapitalCents: number;
+  bankGoldQtyCent: number;
+  depositRemainingCent: number | null;
+  moneyIssuedCents: number;
+  moneyBurnedCents: number;
+  /** Σ capital TODOS + Σ salarios − inicial − emitido + destruido (debe ser 0). */
+  conservationDeltaCents: number;
+}
+
+async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
+  const gs = await bankRepository.getGoldStandard(tx);
+  if (gs === undefined) return null;
+  const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
+  const bankGoldQtyCent = await bankRepository.getGoldAvailable(tx, gs.bankAgentId, gs.productId);
+  const depositRemainingCent = (await depositRepository.getRemaining(tx, gs.productId)) ?? null;
+  const moneyRows = await tx
+    .select({
+      allMoney: sql<
+        string | number
+      >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
+    })
+    .from(agent);
+  const wageRows = await tx
+    .select({
+      wages: sql<string | number>`coalesce(sum(${transformationProcess.wagePaidCents}), 0)`,
+    })
+    .from(transformationProcess);
+  const allMoney = Number(moneyRows[0]?.allMoney ?? 0);
+  const wages = Number(wageRows[0]?.wages ?? 0);
+  return {
+    parityCentsPerUnit: gs.parityCentsPerUnit,
+    windowBidCents: gs.windowBidCents,
+    windowAskCents: gs.windowAskCents,
+    bankCapitalCents: (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0),
+    bankGoldQtyCent,
+    depositRemainingCent,
+    moneyIssuedCents: gs.moneyIssuedCents,
+    moneyBurnedCents: gs.moneyBurnedCents,
+    conservationDeltaCents:
+      allMoney + wages - gs.initialMoneyCents - gs.moneyIssuedCents + gs.moneyBurnedCents,
+  };
+}
+
 interface BusinessSnapshot {
   overview: OverviewView;
   byRole: AgentsByRoleView[];
   market: MarketProductView[];
+  gold: GoldView | null;
 }
 
 const CACHE_TTL_MS = 2_000;
@@ -44,6 +97,7 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
           overview: await monitoringRepository.overview(tx),
           byRole: await monitoringRepository.agentsByRole(tx),
           market: await monitoringRepository.marketByProduct(tx),
+          gold: await fetchGoldView(tx),
         }),
         { isolationLevel: "repeatable read" },
       );
@@ -176,6 +230,92 @@ new Gauge({
     if (s === null) return;
     this.reset();
     for (const p of s.market) this.set(productLabels(p), p.totalInventory);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Patrón oro: banco central, yacimiento e invariante de conservación.
+// Gauges sin series cuando la corrida no tiene gold_standard sembrado.
+// ---------------------------------------------------------------------------
+
+new Gauge({
+  name: "market_gold_parity_cents",
+  help: "Paridad de la ventanilla por lado (bid/parity/ask), en cents por unidad de oro",
+  labelNames: ["kind"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.reset();
+    this.set({ kind: "bid" }, s.gold.windowBidCents);
+    this.set({ kind: "parity" }, s.gold.parityCentsPerUnit);
+    this.set({ kind: "ask" }, s.gold.windowAskCents);
+  },
+});
+
+new Gauge({
+  name: "market_bank_capital_cents",
+  help: "Capital del banco central (fees acumulados menos emisión financiada)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.set(s.gold.bankCapitalCents);
+  },
+});
+
+new Gauge({
+  name: "market_bank_gold_cent",
+  help: "Reserva de oro del banco central (centésimas de unidad disponibles)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.set(s.gold.bankGoldQtyCent);
+  },
+});
+
+new Gauge({
+  name: "market_gold_deposit_remaining_cent",
+  help: "Yacimiento de oro minable restante (centésimas de unidad)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null || s.gold.depositRemainingCent === null) return;
+    this.set(s.gold.depositRemainingCent);
+  },
+});
+
+new Gauge({
+  name: "market_money_issued_cents",
+  help: "Dinero acuñado post-seed (sell_gold + emisión de registros)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.set(s.gold.moneyIssuedCents);
+  },
+});
+
+new Gauge({
+  name: "market_money_burned_cents",
+  help: "Dinero destruido post-seed (buy_gold)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.set(s.gold.moneyBurnedCents);
+  },
+});
+
+new Gauge({
+  name: "market_conservation_delta_cents",
+  help: "Invariante de conservación de la masa monetaria (debe ser 0 constante)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null || s.gold === null) return;
+    this.set(s.gold.conservationDeltaCents);
   },
 });
 

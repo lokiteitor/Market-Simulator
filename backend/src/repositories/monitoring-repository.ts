@@ -6,12 +6,12 @@
  *  - Todas las funciones reciben `tx: Tx` como primer parámetro; las
  *    transacciones se abren SOLO en services (contrato §0). Como son lecturas,
  *    el service las corre en una tx de solo-lectura.
- *  - Los agregados de MERCADO excluyen el rol `admin` (solo-monitoreo, capital
- *    0): usan `ne(agent.role, 'admin')`. Reutiliza el mismo criterio que
+ *  - Los agregados de MERCADO excluyen los roles no-mercado (`admin` y `bank`,
+ *    ver NON_MARKET_ROLES en types/contracts). Mismo criterio que
  *    snapshot-runner.ts y agent-repository.averageActiveTotalCapitalCents.
  *  - postgres.js devuelve BIGINT/numeric como string: se normaliza con num().
  */
-import { and, asc, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
@@ -23,6 +23,7 @@ import {
   trade,
   transformationProcess,
 } from "../db/schema";
+import { NON_MARKET_ROLES } from "../types/contracts";
 
 // ---------------------------------------------------------------------------
 // Normalización de agregados (BIGINT string → number)
@@ -126,7 +127,9 @@ export interface SnapshotPointView {
 // Repositorio
 // ---------------------------------------------------------------------------
 
-const NOT_ADMIN = ne(agent.role, "admin");
+// Excluye roles no-mercado: admin (solo-monitoreo) y bank (banco central del
+// patrón oro; sus reservas se reportan aparte). Fuente: NON_MARKET_ROLES.
+const NOT_ADMIN = notInArray(agent.role, [...NON_MARKET_ROLES]);
 const OPEN_ORDER_STATUSES = ["active", "partial"] as const;
 
 export const monitoringRepository = {

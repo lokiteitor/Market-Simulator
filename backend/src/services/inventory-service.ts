@@ -173,27 +173,32 @@ async function moveFifo(
 
 /**
  * Espejo en aplicación del CHECK `inventory_lot_check1` del DDL:
- *   purchase   ⇒ source_trade_id NOT NULL y source_process_id NULL
- *   production ⇒ source_process_id NOT NULL y source_trade_id NULL
- *   initial    ⇒ ambos NULL
+ *   purchase   ⇒ source_trade_id NOT NULL y los demás sources NULL
+ *   production ⇒ source_process_id NOT NULL y los demás NULL
+ *   conversion ⇒ source_conversion_id NOT NULL y los demás NULL
+ *   initial    ⇒ todos NULL
  * Una violación es un bug del caller (no un error de dominio del cliente):
  * se lanza Error plano para que el handler global lo trate como 500.
  */
 function assertOriginSourceCoherence(p: {
-  origin: "initial" | "production" | "purchase";
+  origin: "initial" | "production" | "purchase" | "conversion";
   sourceTradeId?: string;
   sourceProcessId?: string;
+  sourceConversionId?: string;
 }): void {
   const hasTrade = p.sourceTradeId !== undefined;
   const hasProcess = p.sourceProcessId !== undefined;
+  const hasConversion = p.sourceConversionId !== undefined;
   const valid =
-    (p.origin === "purchase" && hasTrade && !hasProcess) ||
-    (p.origin === "production" && hasProcess && !hasTrade) ||
-    (p.origin === "initial" && !hasTrade && !hasProcess);
+    (p.origin === "purchase" && hasTrade && !hasProcess && !hasConversion) ||
+    (p.origin === "production" && hasProcess && !hasTrade && !hasConversion) ||
+    (p.origin === "conversion" && hasConversion && !hasTrade && !hasProcess) ||
+    (p.origin === "initial" && !hasTrade && !hasProcess && !hasConversion);
   if (!valid) {
     throw new Error(
       `createLot: origen '${p.origin}' incoherente con sources ` +
-        `(sourceTradeId=${p.sourceTradeId ?? "null"}, sourceProcessId=${p.sourceProcessId ?? "null"})`,
+        `(sourceTradeId=${p.sourceTradeId ?? "null"}, sourceProcessId=${p.sourceProcessId ?? "null"}, ` +
+        `sourceConversionId=${p.sourceConversionId ?? "null"})`,
     );
   }
 }
@@ -208,11 +213,12 @@ export const inventoryService: InventoryService = {
     p: {
       agentId: string;
       productId: string;
-      origin: "initial" | "production" | "purchase";
+      origin: "initial" | "production" | "purchase" | "conversion";
       qtyCent: number;
       unitCostCents: number;
       sourceTradeId?: string;
       sourceProcessId?: string;
+      sourceConversionId?: string;
     },
   ): Promise<string> {
     assertOriginSourceCoherence(p);
@@ -234,6 +240,7 @@ export const inventoryService: InventoryService = {
       unitCostCents: p.unitCostCents,
       sourceTradeId: p.sourceTradeId ?? null,
       sourceProcessId: p.sourceProcessId ?? null,
+      sourceConversionId: p.sourceConversionId ?? null,
     });
   },
 

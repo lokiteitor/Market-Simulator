@@ -75,21 +75,44 @@ export const marketService = {
   },
 
   /**
-   * Trades recientes del producto. Sin `since`, aplica la ventana por defecto
-   * del último día simulado (86 400 s sim → reales vía factor de simulación).
+   * Trades recientes del producto. La ventana por defecto del último día
+   * simulado solo aplica sin NINGÚN filtro temporal: con `until` o `before`
+   * (backfill hacia atrás) un piso implícito cortaría la paginación.
    *
-   * @throws DomainError unknown_product (404)
+   * `before` (cursor keyset) se resuelve a su (executed_at, trade_id); debe
+   * existir y pertenecer al mismo producto.
+   *
+   * @throws DomainError unknown_product (404), invalid_cursor (400)
    */
   async getRecentTrades(
     productId: string,
-    q: { since?: Date; limit: number },
+    q: { since?: Date; until?: Date; before?: string; limit: number },
   ): Promise<TradeRow[]> {
-    const since =
-      q.since ??
-      new Date(Date.now() - simSecondsToRealMs(DEFAULT_TRADES_WINDOW_SIM_SECONDS));
+    const noTimeFilter =
+      q.since === undefined && q.until === undefined && q.before === undefined;
+    const since = noTimeFilter
+      ? new Date(Date.now() - simSecondsToRealMs(DEFAULT_TRADES_WINDOW_SIM_SECONDS))
+      : q.since;
     return withTransaction(async (tx) => {
       await assertProductExists(tx, productId);
-      return marketRepository.recentTradesForProduct(tx, productId, since, q.limit);
+      let before: { executedAt: Date; tradeId: string } | undefined;
+      if (q.before !== undefined) {
+        const cursorTrade = await marketRepository.tradeById(tx, q.before);
+        if (cursorTrade === undefined || cursorTrade.productId !== productId) {
+          throw domainError(
+            "invalid_cursor",
+            `El trade ${q.before} no existe para el producto ${productId}.`,
+            { field: "before" },
+          );
+        }
+        before = { executedAt: cursorTrade.executedAt, tradeId: cursorTrade.tradeId };
+      }
+      return marketRepository.recentTradesForProduct(tx, productId, {
+        ...(since !== undefined ? { since } : {}),
+        ...(q.until !== undefined ? { until: q.until } : {}),
+        ...(before !== undefined ? { before } : {}),
+        limit: q.limit,
+      });
     });
   },
 };

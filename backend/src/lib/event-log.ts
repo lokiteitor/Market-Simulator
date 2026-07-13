@@ -101,8 +101,13 @@ export interface ProcessCompletedPayload {
   agent_id: string;
   recipe_id: string;
   output_product_id: string;
+  /**
+   * Puede ser MENOR que output_qty × executions (clamp del yacimiento,
+   * resource_deposit), incluso 0 si el yacimiento se agotó antes de
+   * materializar: en ese caso output_lot_id es null (no se crea lote).
+   */
   qty_produced_cent: number;
-  output_lot_id: string;
+  output_lot_id: string | null;
 }
 
 export interface ProcessCancelledPayload {
@@ -113,6 +118,36 @@ export interface ProcessCancelledPayload {
 export interface SnapshotTakenPayload {
   snapshot_id: string;
   note: string;
+}
+
+/** Conversión ejecutada en la ventanilla del banco (patrón oro). */
+export interface GoldConvertedPayload {
+  conversion_id: string;
+  agent_id: string;
+  direction: "buy_gold" | "sell_gold";
+  product_id: string;
+  qty_cent: number;
+  price_cents_per_unit: number;
+  total_cents: number;
+}
+
+/** Acuñación de capital semilla en un registro dinámico (emisión respaldada). */
+export interface MoneyIssuedPayload {
+  agent_id: string;
+  /** Total otorgado al agente nuevo. */
+  grant_cents: number;
+  /** Parte pagada con capital del banco (fees reciclados). */
+  from_bank_capital_cents: number;
+  /** Parte acuñada (suma a money_issued_cents). */
+  minted_cents: number;
+}
+
+/** Un resource_deposit llegó a 0 (yacimiento agotado). Evento del sistema. */
+export interface DepositDepletedPayload {
+  product_id: string;
+  qty_initial_cent: number;
+  /** Proceso cuya materialización agotó el yacimiento. */
+  process_id: string;
 }
 
 /** Mapa tipo de evento → payload, para uso genérico por los módulos. */
@@ -127,4 +162,7 @@ export interface EventPayloads {
   process_completed: ProcessCompletedPayload;
   process_cancelled: ProcessCancelledPayload;
   snapshot_taken: SnapshotTakenPayload;
+  gold_converted: GoldConvertedPayload;
+  money_issued: MoneyIssuedPayload;
+  deposit_depleted: DepositDepletedPayload;
 }

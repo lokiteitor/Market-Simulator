@@ -45,6 +45,16 @@ const EnvSchema = z
     SEED_CAPITAL_TRADER_MAX_CENTS: posIntFromEnv(400000),
     SEED_AGENT_PASSWORD: z.string().min(1).default("dev-password-123"),
     SEED_CONFIG_PATH: z.string().min(1).default("../infra/seed-config.json"),
+    // Patrón oro (§banco central). El banco NO es registrable ni logueable.
+    BANK_USERNAME: z.string().min(3).max(64).default("central_bank"),
+    GOLD_PRODUCT_KEY: z.string().min(1).default("oro"),
+    GOLD_DEPOSIT_MIN_QTY_CENT: posIntFromEnv(80000),
+    GOLD_DEPOSIT_MAX_QTY_CENT: posIntFromEnv(150000),
+    GOLD_COVERAGE_RATIO_BPS: posIntFromEnv(10000),
+    GOLD_WINDOW_SPREAD_BPS: nonNegIntFromEnv(500),
+    GOLD_BANK_INITIAL_RESERVE_BPS: nonNegIntFromEnv(2000),
+    GOLD_BANK_INITIAL_CAPITAL_CENTS: nonNegIntFromEnv(500000),
+    GOLD_MIN_REGISTRATION_CAPITAL_CENTS: posIntFromEnv(10000),
     // Bootstrap del agente admin (solo-monitoreo). Se crea con
     // `bun src/seed-admin.ts`; NO es registrable por /auth/register.
     ADMIN_USERNAME: z.string().min(3).max(64).default("admin"),
@@ -76,6 +86,18 @@ const EnvSchema = z
   .refine((e) => e.SEED_CAPITAL_TRADER_MIN_CENTS <= e.SEED_CAPITAL_TRADER_MAX_CENTS, {
     message: "SEED_CAPITAL_TRADER_MIN_CENTS debe ser <= MAX",
     path: ["SEED_CAPITAL_TRADER_MIN_CENTS"],
+  })
+  .refine((e) => e.GOLD_DEPOSIT_MIN_QTY_CENT <= e.GOLD_DEPOSIT_MAX_QTY_CENT, {
+    message: "GOLD_DEPOSIT_MIN_QTY_CENT debe ser <= MAX",
+    path: ["GOLD_DEPOSIT_MIN_QTY_CENT"],
+  })
+  .refine((e) => e.GOLD_WINDOW_SPREAD_BPS < 10000, {
+    message: "GOLD_WINDOW_SPREAD_BPS debe ser < 10000 (el bid quedaría en 0)",
+    path: ["GOLD_WINDOW_SPREAD_BPS"],
+  })
+  .refine((e) => e.GOLD_BANK_INITIAL_RESERVE_BPS <= 10000, {
+    message: "GOLD_BANK_INITIAL_RESERVE_BPS debe ser <= 10000 (fracción del yacimiento)",
+    path: ["GOLD_BANK_INITIAL_RESERVE_BPS"],
   });
 
 /** Roles de agente (claves de `seedCapitalRanges`, snake_case como en la DB). */
@@ -113,6 +135,18 @@ export interface Config {
   seedCapitalRanges: Record<AgentRoleKey, SeedCapitalRange>;
   seedAgentPassword: string;
   seedConfigPath: string;
+  /** Parámetros del patrón oro (banco central + yacimiento finito). */
+  gold: {
+    bankUsername: string;
+    productKey: string;
+    depositMinQtyCent: number;
+    depositMaxQtyCent: number;
+    coverageRatioBps: number;
+    windowSpreadBps: number;
+    bankInitialReserveBps: number;
+    bankInitialCapitalCents: number;
+    minRegistrationCapitalCents: number;
+  };
   /** Credenciales del agente admin (solo-monitoreo); ver src/seed-admin.ts. */
   adminUsername: string;
   adminPassword: string;
@@ -189,6 +223,17 @@ function loadConfig(): Config {
     },
     seedAgentPassword: e.SEED_AGENT_PASSWORD,
     seedConfigPath: e.SEED_CONFIG_PATH,
+    gold: {
+      bankUsername: e.BANK_USERNAME,
+      productKey: e.GOLD_PRODUCT_KEY,
+      depositMinQtyCent: e.GOLD_DEPOSIT_MIN_QTY_CENT,
+      depositMaxQtyCent: e.GOLD_DEPOSIT_MAX_QTY_CENT,
+      coverageRatioBps: e.GOLD_COVERAGE_RATIO_BPS,
+      windowSpreadBps: e.GOLD_WINDOW_SPREAD_BPS,
+      bankInitialReserveBps: e.GOLD_BANK_INITIAL_RESERVE_BPS,
+      bankInitialCapitalCents: e.GOLD_BANK_INITIAL_CAPITAL_CENTS,
+      minRegistrationCapitalCents: e.GOLD_MIN_REGISTRATION_CAPITAL_CENTS,
+    },
     adminUsername: e.ADMIN_USERNAME,
     adminPassword: e.ADMIN_PASSWORD,
     sweeps: {

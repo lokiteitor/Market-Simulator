@@ -113,6 +113,10 @@ CREATE TYPE product_category AS ENUM (
 -- Tabla
 CREATE TABLE product (
     product_id      UUID                PRIMARY KEY DEFAULT uuidv7(),
+    -- Identificador estable del catálogo (seed-config `key`, ej. 'trigo');
+    -- constante entre seeds, a diferencia del UUID. Lo expone la API para que
+    -- los clientes anclen su configuración sin depender del product_id.
+    key             TEXT                NOT NULL UNIQUE,
     name            TEXT                NOT NULL UNIQUE,
     unit            TEXT                NOT NULL,
     category        product_category    NOT NULL,
@@ -123,7 +127,7 @@ CREATE TABLE product (
 #### DDL de Índices y Constraints
 
 ```sql
--- Índices automáticos: PK sobre product_id, UNIQUE sobre name.
+-- Índices automáticos: PK sobre product_id, UNIQUE sobre key y sobre name.
 -- No se definen índices adicionales: el catálogo es pequeño y las búsquedas
 -- por nombre y por id están cubiertas por los índices implícitos.
 ```

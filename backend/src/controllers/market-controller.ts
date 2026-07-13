@@ -46,7 +46,7 @@ export const marketController = {
 
   async getRecentTrades(
     productId: string,
-    q: { since?: Date; limit: number },
+    q: { since?: Date; until?: Date; before?: string; limit: number },
   ): Promise<TradeDto[]> {
     const rows = await marketService.getRecentTrades(productId, q);
     return rows.map(toTradeDto);

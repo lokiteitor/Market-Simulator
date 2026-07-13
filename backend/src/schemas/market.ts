@@ -52,11 +52,16 @@ export type TradeDto = z.infer<typeof TradeSchema>;
 
 /**
  * Query de GET /market/{product_id}/trades (openapi: limit 1..1000, default
- * 100; `since` opcional — si se omite, el service aplica la ventana por
- * defecto de un día SIMULADO).
+ * 100). La ventana por defecto de un día SIMULADO solo aplica cuando no se
+ * pasa NINGÚN filtro temporal (ni `since`, ni `until`, ni `before`):
+ *   - `since`/`until`: acotan por `executed_at` (>= / <=).
+ *   - `before`: cursor keyset exacto para backfill — trades estrictamente
+ *     anteriores (executed_at, trade_id) al trade indicado.
  */
 export const MarketTradesQuerySchema = z.object({
   since: z.coerce.date().optional(),
+  until: z.coerce.date().optional(),
+  before: z.uuid().optional(),
   limit: clampedLimit(100, 1000),
 });
 

@@ -1,16 +1,43 @@
 package main
 
 import (
+	"math/rand/v2"
+	"sync"
+
 	"github.com/lokiteitor/market-simulator/sdk/actions"
 	"github.com/lokiteitor/market-simulator/sdk/events"
 	"github.com/lokiteitor/market-simulator/sdk/models"
 	"github.com/lokiteitor/market-simulator/sdk/strategy"
 )
 
+// PrimaryProducerStrategy ejecuta recetas sin insumos y vende lo producido.
+// Dos comportamientos de mercado real:
+//   - Oferta elastica: solo produce cuando el valor justo cubre el coste
+//     salarial con margen minimo. Si un producto se abarata, los productores
+//     paran, el inventario se agota y el precio se recupera.
+//   - Venta a mercado: undercut del mejor ask con suelo de coste, en tranches
+//     en vez de volcar todo el inventario, con cancel/replace de asks viejos.
 type PrimaryProducerStrategy struct {
+	mu                sync.Mutex
+	rnd               *rand.Rand
+	view              *MarketView
+	bank              *bankWindow
 	basePrices        map[string]int64
 	simTimeFactor     float64
 	maxRecipesPerTick int
+	p                 producerParams
+}
+
+type producerParams struct {
+	minMargin     float64 // margen minimo sobre coste: gate de produccion y suelo de venta
+	targetMargin  float64 // margen objetivo cuando no hay ask que mejorar
+	undercut      float64 // rebaja relativa sobre el mejor ask
+	tranche       float64 // fraccion del inventario listada por tick
+	requoteThresh float64 // desviacion que dispara cancel/replace
+	actProb       float64
+	skipTickProb  float64
+	liqCap        float64 // techo del suelo relativo al fair (modo liquidacion)
+	restBudget    int
 }
 
 func NewPrimaryProducerStrategy() *PrimaryProducerStrategy {
@@ -23,101 +50,132 @@ func NewPrimaryProducerStrategy() *PrimaryProducerStrategy {
 
 func (s *PrimaryProducerStrategy) Initialize(ctx *strategy.Context) error {
 	ctx.Logger.Info("PrimaryProducerStrategy initializing...")
-	if pricesRaw, ok := ctx.Config["prices"]; ok {
-		if pricesMap, ok := pricesRaw.(map[string]interface{}); ok {
-			for k, v := range pricesMap {
-				switch val := v.(type) {
-				case int:
-					s.basePrices[k] = int64(val)
-				case int64:
-					s.basePrices[k] = val
-				case float64:
-					s.basePrices[k] = int64(val)
-				}
-			}
-		}
-	}
+	s.rnd = newStrategyRand(ctx)
+	s.basePrices = resolveBasePrices(ctx)
+	s.view = newMarketView(ctx, s.basePrices)
+	s.bank = loadBankWindow(ctx)
 	s.simTimeFactor = configFloat(ctx.Config, "sim_time_factor", s.simTimeFactor)
 	s.maxRecipesPerTick = configInt(ctx.Config, "max_recipes_per_tick", s.maxRecipesPerTick)
-	ctx.Logger.Info("PrimaryProducerStrategy initialized", "prices", s.basePrices, "sim_time_factor", s.simTimeFactor, "max_recipes_per_tick", s.maxRecipesPerTick)
+	s.p = producerParams{
+		minMargin:     sampleRange(s.rnd, 0.05, 0.15),
+		targetMargin:  sampleRange(s.rnd, 0.25, 0.6),
+		undercut:      sampleRange(s.rnd, 0.01, 0.03),
+		tranche:       sampleRange(s.rnd, 0.3, 0.7),
+		requoteThresh: sampleRange(s.rnd, 0.02, 0.05),
+		actProb:       sampleRange(s.rnd, 0.75, 1.0),
+		skipTickProb:  sampleRange(s.rnd, 0.05, 0.2),
+		liqCap:        sampleRange(s.rnd, 1.2, 1.5),
+		restBudget:    int(marketCfgFloat(ctx.Config, "rest_budget_per_tick", 4)),
+	}
+	ctx.Logger.Info("PrimaryProducerStrategy initialized",
+		"priced_products", len(s.basePrices),
+		"sim_time_factor", s.simTimeFactor,
+		"max_recipes_per_tick", s.maxRecipesPerTick,
+		"target_margin", s.p.targetMargin,
+	)
 	return nil
 }
 
+// unitCostCents estima el coste salarial por UNIDAD (cents/unidad) de una
+// receta: el servidor cobra wage_rate * segundos SIMULADOS por ejecucion, y
+// el output viene en cent-units (100 = 1 unidad).
+func (s *PrimaryProducerStrategy) unitCostCents(recipe models.Recipe) int64 {
+	if recipe.OutputQtyCent <= 0 {
+		return 0
+	}
+	wagePerExec := float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor
+	return int64(wagePerExec*100/float64(recipe.OutputQtyCent) + 0.5)
+}
+
 func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, _, _, status := ctx.State.GetAgentInfo(); status == models.StatusBankrupt {
+		return nil
+	}
+	if chance(s.rnd, s.p.skipTickProb) {
+		return nil
+	}
+	s.view.BeginTick(s.p.restBudget)
+
 	var acts []actions.Action
-	ctx.Logger.Info("PrimaryProducerStrategy tick starting...")
-
-	// 1. Check capacity and start transformations for recipes with no inputs.
-	// Cap por tick: seed-config asigna las 35 recetas primarias a cada productor;
-	// iniciar transformaciones de todas cada tick satura al agente y al servidor.
 	capacities := ctx.State.Capacities()
+
+	// 1. Produccion condicionada a margen (oferta elastica). Orden aleatorio:
+	// con el cap por tick, un orden fijo mataria de hambre a las recetas del
+	// final de la lista.
 	recipesActed := 0
-	for _, capStatus := range capacities {
-		if capStatus.AvailableSlots > 0 {
-			recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
-			if ok && len(recipe.Inputs) == 0 {
-				if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
-					break
-				}
-				recipesActed++
-				ctx.Logger.Info("Starting production transformation", "recipe_id", recipe.RecipeID, "slots", capStatus.AvailableSlots)
-				acts = append(acts, actions.StartTransformation{
-					RecipeID:          recipe.RecipeID,
-					ExecutionsPlanned: capStatus.AvailableSlots,
-				})
-			}
+	recipeByOutput := make(map[string]models.Recipe)
+	for _, idx := range s.rnd.Perm(len(capacities)) {
+		capStatus := capacities[idx]
+		recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
+		if !ok || len(recipe.Inputs) != 0 {
+			continue
 		}
+		recipeByOutput[recipe.OutputProductID] = recipe
+		if capStatus.AvailableSlots <= 0 {
+			continue
+		}
+		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
+			continue
+		}
+		if !chance(s.rnd, s.p.actProb) {
+			continue
+		}
+		costPU := s.unitCostCents(recipe)
+		fair, hasFair := s.view.Fair(recipe.OutputProductID)
+		// Patrón oro: la ventanilla del banco garantiza window_bid por el oro,
+		// así que el precio efectivo para el gate de producción nunca es menor
+		// (aunque el mercado libre esté deprimido, minar y monetizar renta).
+		if s.bank.enabled && recipe.OutputProductID == s.bank.goldProductID &&
+			(!hasFair || fair < s.bank.windowBid) {
+			fair, hasFair = s.bank.windowBid, true
+		}
+		if hasFair && costPU > 0 && float64(fair) < float64(costPU)*(1+s.p.minMargin) {
+			ctx.Logger.Debug("produccion pausada: fair no cubre coste+margen",
+				"recipe_id", recipe.RecipeID, "fair", fair, "unit_cost", costPU)
+			continue
+		}
+		recipesActed++
+		// No siempre a plena capacidad: los operadores humanos dosifican.
+		execs := capStatus.AvailableSlots
+		if execs > 1 && chance(s.rnd, 0.5) {
+			execs = 1 + s.rnd.IntN(execs)
+		}
+		acts = append(acts, actions.StartTransformation{
+			RecipeID:          recipe.RecipeID,
+			ExecutionsPlanned: execs,
+		})
 	}
 
-	// 2. Sell produced goods currently in inventory
-	inventory := ctx.State.Inventory()
-	activeOrders := ctx.State.ActiveOrders()
-
-	// Map to keep track of active sell orders by product
-	activeSellQty := make(map[string]int64)
-	for _, order := range activeOrders {
-		if order.Side == models.SideSell {
-			activeSellQty[order.ProductID] += order.QtyPendingCent
+	// 2. Venta del inventario a precio de mercado con suelo de coste.
+	for _, pos := range ctx.State.Inventory() {
+		if !chance(s.rnd, s.p.actProb) {
+			continue
 		}
-	}
-
-	for _, pos := range inventory {
-		// Only sell if we have available quantity that is not already listed in active orders
-		unlistedQty := pos.QtyAvailableCent - activeSellQty[pos.ProductID]
-		if unlistedQty > 0 {
-			price := int64(100) // Default price: 1.00 cent per unit
-			if bp, ok := s.basePrices[pos.ProductID]; ok {
-				price = bp
-			} else {
-				// Fallback: estimate from recipe wage rate + duration + 50% markup
-				for _, capStatus := range capacities {
-					recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
-					if ok && recipe.OutputProductID == pos.ProductID {
-						if recipe.OutputQtyCent > 0 {
-							// wage_rate es por segundo SIMULADO; DurationSeconds llega
-							// en segundos reales, reconvertimos con el factor de simulacion.
-							wageCost := int64(float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor)
-							costPerUnit := wageCost / recipe.OutputQtyCent
-							if costPerUnit > 0 {
-								price = int64(float64(costPerUnit) * 1.5)
-							}
-						}
-						break
-					}
-				}
-			}
-
-			if price > 0 {
-				ctx.Logger.Info("Placing sell order", "product_id", pos.ProductID, "qty_cent", unlistedQty, "price_cents", price)
-				acts = append(acts, actions.PlaceOrder{
-					ProductID:       pos.ProductID,
-					Side:            models.SideSell,
-					QtyCent:         unlistedQty,
-					LimitPriceCents: price,
-					TTLSeconds:      300, // 5 minutes
-				})
+		// Oro minado: si la ventanilla del banco paga mejor que el mercado, se
+		// monetiza ahí (dinero acuñado) en vez de listar asks. goldArbActions
+		// con budget 0 solo ejecuta esa pata (no arriesga capital).
+		if s.bank.enabled && pos.ProductID == s.bank.goldProductID {
+			if arb := goldArbActions(ctx, s.rnd, s.view, s.bank, s.p.minMargin, 0); len(arb) > 0 {
+				acts = append(acts, arb...)
+				continue
 			}
 		}
+		recipe, isOwnOutput := recipeByOutput[pos.ProductID]
+		var costPU int64
+		if isOwnOutput {
+			costPU = s.unitCostCents(recipe)
+		}
+		acts = append(acts, sellAtMarket(ctx, s.rnd, s.view, pos, costPU, sellParams{
+			minMargin:     s.p.minMargin,
+			targetMargin:  s.p.targetMargin,
+			undercut:      s.p.undercut,
+			tranche:       s.p.tranche,
+			requoteThresh: s.p.requoteThresh,
+			liqCap:        s.p.liqCap,
+		})...)
 	}
 
 	return acts
@@ -125,10 +183,14 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 
 func (s *PrimaryProducerStrategy) HandleEvent(ctx *strategy.Context, e events.Event) []actions.Action {
 	switch ev := e.(type) {
+	case events.TradePrinted:
+		s.mu.Lock()
+		s.view.OnTrade(ev)
+		s.mu.Unlock()
 	case events.OrderExecuted:
-		ctx.Logger.Info("Producer order executed", "order_id", ev.OrderID, "product_id", ev.ProductID, "qty", ev.QtyExecutedCent, "price", ev.PriceCents)
+		ctx.Logger.Debug("Producer order executed", "order_id", ev.OrderID, "product_id", ev.ProductID, "qty", ev.QtyExecutedCent, "price", ev.PriceCents)
 	case events.TransformationCompleted:
-		ctx.Logger.Info("Producer transformation completed", "process_id", ev.ProcessID, "recipe_id", ev.RecipeID)
+		ctx.Logger.Debug("Producer transformation completed", "process_id", ev.ProcessID, "recipe_id", ev.RecipeID)
 	case events.BankruptcyNotice:
 		ctx.Logger.Warn("Producer bankruptcy notice received!", "agent_id", ev.AgentID)
 	}

@@ -5,12 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/lokiteitor/market-simulator/sdk/models"
+)
+
+// The access token is refreshed proactively when it is within this buffer of
+// expiring. The buffer must absorb moderate clock skew between the bot and the
+// server; a per-manager random jitter spreads the refreshes of many bots
+// running in the same process so they don't all hit /auth/refresh at once.
+const (
+	refreshBufferBase   = 60 * time.Second
+	refreshBufferJitter = 30 * time.Second
 )
 
 type LoginHelper interface {
@@ -40,18 +50,21 @@ type AuthManager struct {
 	refreshToken string
 	accessExp    time.Time
 	refreshExp   time.Time
+	tokenTTL     time.Duration
 
-	persistPath string
-	refresher   func(ctx context.Context, refreshToken string) (*models.TokenPair, error)
-	loginHelper LoginHelper
+	persistPath   string
+	refreshBuffer time.Duration
+	refresher     func(ctx context.Context, refreshToken string) (*models.TokenPair, error)
+	loginHelper   LoginHelper
 }
 
 func NewAuthManager(username, password string, role models.AgentRole, persistPath string) *AuthManager {
 	return &AuthManager{
-		username:    username,
-		password:    password,
-		role:        role,
-		persistPath: persistPath,
+		username:      username,
+		password:      password,
+		role:          role,
+		persistPath:   persistPath,
+		refreshBuffer: refreshBufferBase + rand.N(refreshBufferJitter),
 	}
 }
 
@@ -95,8 +108,8 @@ func (a *AuthManager) GetAccessToken(ctx context.Context) (string, error) {
 		return "", errors.New("no access token available, authentication required")
 	}
 
-	// Check if access token is expired or close to expiration (30 seconds buffer)
-	if time.Now().Add(30 * time.Second).After(a.accessExp) {
+	// Check if access token is expired or close to expiration
+	if time.Now().Add(a.bufferLocked()).After(a.accessExp) {
 		refreshErr := a.refreshLocked(ctx)
 		if refreshErr == nil {
 			return a.accessToken, nil
@@ -112,6 +125,26 @@ func (a *AuthManager) GetAccessToken(ctx context.Context) (string, error) {
 	}
 
 	return a.accessToken, nil
+}
+
+// bufferLocked returns the proactive-refresh buffer for the current token,
+// clamped to a third of the token's TTL so short-lived tokens don't trigger a
+// refresh (and a refresh-token rotation) on every single request.
+func (a *AuthManager) bufferLocked() time.Duration {
+	if a.tokenTTL > 0 && a.tokenTTL/3 < a.refreshBuffer {
+		return a.tokenTTL / 3
+	}
+	return a.refreshBuffer
+}
+
+// InvalidateAccessToken discards the cached access token so the next
+// GetAccessToken call obtains a fresh one (refresh or re-login). Callers use
+// it when the server rejects the token with a 401 even though it has not
+// expired locally (revoked session, rotated JWT secret, clock skew).
+func (a *AuthManager) InvalidateAccessToken() {
+	a.Lock()
+	defer a.Unlock()
+	a.accessExp = time.Time{}
 }
 
 // refreshLocked exchanges the current refresh token for a new token pair.
@@ -156,6 +189,7 @@ func (a *AuthManager) storeTokensLocked(accessToken, refreshToken string, access
 	a.refreshToken = refreshToken
 	a.accessExp = accessExp
 	a.refreshExp = refreshExp
+	a.tokenTTL = time.Until(accessExp)
 	_ = a.saveSessionLocked()
 }
 
@@ -185,10 +219,7 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 
 	tokens, err := client.Login(ctx, loginReq)
 	if err == nil {
-		a.accessToken = tokens.AccessToken
-		a.refreshToken = tokens.RefreshToken
-		a.accessExp = tokens.AccessExpiresAt
-		a.refreshExp = tokens.RefreshExpiresAt
+		a.storeTokensLocked(tokens.AccessToken, tokens.RefreshToken, tokens.AccessExpiresAt, tokens.RefreshExpiresAt)
 
 		// Need to get agent snapshot to obtain agent ID and role
 		// temporarily unlock to make the API call because client calls will trigger GetAccessToken which needs the read/write lock.
@@ -223,14 +254,9 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 			return fmt.Errorf("auto-registration failed: %w", err)
 		}
 
-		a.accessToken = regResp.AccessToken
-		a.refreshToken = regResp.RefreshToken
-		a.accessExp = regResp.AccessExpiresAt
-		a.refreshExp = regResp.RefreshExpiresAt
 		a.agentID = regResp.Agent.Agent.AgentID
 		a.role = regResp.Agent.Agent.Role
-
-		_ = a.saveSessionLocked()
+		a.storeTokensLocked(regResp.AccessToken, regResp.RefreshToken, regResp.AccessExpiresAt, regResp.RefreshExpiresAt)
 		return nil
 	}
 
@@ -264,6 +290,7 @@ func (a *AuthManager) loadSessionLocked() bool {
 	a.refreshToken = data.RefreshToken
 	a.accessExp = data.AccessExpiresAt
 	a.refreshExp = data.RefreshExpiresAt
+	a.tokenTTL = time.Until(data.AccessExpiresAt)
 	return true
 }
 
@@ -319,6 +346,7 @@ func (a *AuthManager) ClearSession() error {
 	a.refreshToken = ""
 	a.accessExp = time.Time{}
 	a.refreshExp = time.Time{}
+	a.tokenTTL = 0
 	if a.persistPath != "" {
 		return os.Remove(a.persistPath)
 	}

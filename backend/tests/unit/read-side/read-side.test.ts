@@ -97,6 +97,7 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
     expect(
       toProductDto({
         productId: UUID_A,
+        key: "trigo",
         name: "Trigo",
         unit: "kg",
         category: "raw_primary",
@@ -104,6 +105,7 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
       }),
     ).toEqual({
       product_id: UUID_A,
+      key: "trigo",
       name: "Trigo",
       unit: "kg",
       category: "raw_primary",

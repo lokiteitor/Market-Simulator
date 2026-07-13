@@ -6,10 +6,14 @@ Este es el sistema de agentes y bots autónomos (versión 1) escrito en Go. Util
 
 * **[`main.go`](file:///home/ddelgado/git/lab/world/bots-v1/main.go)**: Orquestador y CLI que lee el archivo `config.yaml` y lanza los agentes de forma paralela en goroutines.
 * **[`config.yaml`](file:///home/ddelgado/git/lab/world/bots-v1/config.yaml)**: Configuración global del servidor, precios base del catálogo y credenciales/capacidades individuales de cada agente.
-* **[`primary_producer.go`](file:///home/ddelgado/git/lab/world/bots-v1/primary_producer.go)**: Comportamiento del agente productor. Cultiva/ordena insumos primarios y los vende con un margen de ganancia.
-* **[`transformer.go`](file:///home/ddelgado/git/lab/world/bots-v1/transformer.go)**: Comportamiento del agente transformador. Compra insumos intermedios o primarios, ejecuta la receta de procesamiento (ej. Harina $\rightarrow$ Pan) y vende el resultado final.
-* **[`consumer.go`](file:///home/ddelgado/git/lab/world/bots-v1/consumer.go)**: Comportamiento del consumidor final. Compra bienes listos para el consumo (categoría `final_consumption`) retirándolos de circulación para simular la demanda real.
-* **[`trader.go`](file:///home/ddelgado/git/lab/world/bots-v1/trader.go)**: Comportamiento del agente especulador/trader. Compra barato (descuento del 15% bajo el precio promedio/base) y vende caro (15% de markup).
+* **[`market_view.go`](file:///home/ddelgado/git/lab/world/bots-v1/market_view.go)**: Vista de mercado compartida: EMA del "valor justo" por producto alimentada por el tape (`trade_printed`, WebSocket), acotada a una banda alrededor del precio base, más caché de top-of-book con presupuesto de llamadas REST por tick.
+* **[`humanize.go`](file:///home/ddelgado/git/lab/world/bots-v1/humanize.go)** / **[`selling.go`](file:///home/ddelgado/git/lab/world/bots-v1/selling.go)**: Helpers de humanización (precios "bonitos", cantidades perturbadas, TTLs variados, cancel/replace) y venta a mercado con suelo de coste.
+* **[`primary_producer.go`](file:///home/ddelgado/git/lab/world/bots-v1/primary_producer.go)**: Productor primario. Solo produce si el valor justo cubre el coste salarial con margen (oferta elástica) y vende en tranches con undercut del mejor ask y suelo de coste.
+* **[`transformer.go`](file:///home/ddelgado/git/lab/world/bots-v1/transformer.go)**: Transformador. Arranca recetas solo con margen positivo a precios de mercado, compra insumos cruzando el spread cuando el margen lo permite, y vende outputs como el productor.
+* **[`consumer.go`](file:///home/ddelgado/git/lab/world/bots-v1/consumer.go)**: Consumidor final. Precio de reserva por bot (base × tolerancia), levanta el mejor ask cuando cabe en la reserva (imprime trades) o deja bids de descanso; gasta a una tasa por tick.
+* **[`trader.go`](file:///home/ddelgado/git/lab/world/bots-v1/trader.go)**: Market maker. Cotiza bid/ask alrededor del valor justo sobre un universo acotado de productos, con sesgo por inventario, cancel/replace de cotizaciones viejas y re-cotización debounced cuando el tape imprime.
+
+Todos los parámetros de comportamiento (spread, márgenes, tolerancia, agresividad, probabilidad de actuar) se muestrean **por bot** en `Initialize`: la población tiene distribución de comportamientos en vez de clones, que es lo que la hace parecer humana.
 
 ---
 

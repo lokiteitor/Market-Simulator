@@ -37,6 +37,9 @@ const (
 
 type Product struct {
 	ProductID string          `json:"product_id"`
+	// Key es el identificador estable del catálogo (ej. "trigo"); a diferencia
+	// de ProductID (UUID regenerado en cada seed) es constante entre despliegues.
+	Key       string          `json:"key"`
 	Name      string          `json:"name"`
 	Unit      string          `json:"unit"`
 	Category  ProductCategory `json:"category"`
@@ -146,6 +149,16 @@ type Trade struct {
 type TradePage struct {
 	Items      []Trade `json:"items"`
 	NextCursor *string `json:"next_cursor"`
+}
+
+// TradesQuery filtra GET /market/{id}/trades. Since/Until acotan executed_at
+// (RFC 3339); Before es un trade_id cursor para paginar hacia atrás (devuelve
+// trades estrictamente anteriores a ese trade). Limit máximo del servidor: 1000.
+type TradesQuery struct {
+	Since  string
+	Until  string
+	Before string
+	Limit  int
 }
 
 type TopOfBookSide struct {
@@ -314,4 +327,49 @@ type Problem struct {
 	Detail   string        `json:"detail,omitempty"`
 	Instance string        `json:"instance,omitempty"`
 	Errors   []ErrorDetail `json:"errors,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Banco central (patrón oro): GET /bank y POST /bank/convert
+// ---------------------------------------------------------------------------
+
+type ConversionDirection string
+
+const (
+	// BuyGold: el agente compra oro al banco a window_ask (el dinero pagado se destruye).
+	BuyGold ConversionDirection = "buy_gold"
+	// SellGold: el agente vende oro al banco a window_bid (cobra dinero recién acuñado).
+	SellGold ConversionDirection = "sell_gold"
+)
+
+type BankInfo struct {
+	BankAgentID               string `json:"bank_agent_id"`
+	ProductID                 string `json:"product_id"`
+	ParityCentsPerUnit        int64  `json:"parity_cents_per_unit"`
+	WindowBidCents            int64  `json:"window_bid_cents"`
+	WindowAskCents            int64  `json:"window_ask_cents"`
+	CoverageRatioBps          int64  `json:"coverage_ratio_bps"`
+	InitialMoneyCents         int64  `json:"initial_money_cents"`
+	MoneyIssuedCents          int64  `json:"money_issued_cents"`
+	MoneyBurnedCents          int64  `json:"money_burned_cents"`
+	IssuanceCapacityCents     int64  `json:"issuance_capacity_cents"`
+	BankGoldAvailableCent     int64  `json:"bank_gold_available_cent"`
+	BankCapitalAvailableCents int64  `json:"bank_capital_available_cents"`
+	DepositRemainingCent      *int64 `json:"deposit_remaining_cent"`
+}
+
+type ConvertGoldRequest struct {
+	Direction ConversionDirection `json:"direction"`
+	QtyCent   int64               `json:"qty_cent"`
+}
+
+type GoldConversion struct {
+	ConversionID      string              `json:"conversion_id"`
+	AgentID           string              `json:"agent_id"`
+	Direction         ConversionDirection `json:"direction"`
+	ProductID         string              `json:"product_id"`
+	QtyCent           int64               `json:"qty_cent"`
+	PriceCentsPerUnit int64               `json:"price_cents_per_unit"`
+	TotalCents        int64               `json:"total_cents"`
+	ExecutedAt        time.Time           `json:"executed_at"`
 }

@@ -69,6 +69,7 @@ const ROLE_LABEL: Record<AgentRole, string> = {
   consumer: "Consumidor",
   trader: "Trader",
   admin: "Administrador",
+  bank: "Banco central",
 };
 
 const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {

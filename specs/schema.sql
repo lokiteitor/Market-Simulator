@@ -44,7 +44,14 @@ CREATE TYPE agent_role AS ENUM (
     -- capacidades) y NO es registrable vía POST /auth/register. Se crea con el
     -- bootstrap de admin (bun src/seed-admin.ts). Las agregaciones de mercado
     -- lo excluyen (role <> 'admin').
-    'admin'
+    'admin',
+    -- Banco central del patrón oro: agente ÚNICO creado por el seed, sin
+    -- credenciales (no logueable) y NO registrable. No coloca órdenes; opera
+    -- la ventanilla de convertibilidad (/bank/convert), recibe los fees de
+    -- trading y respalda la emisión de capital semilla con sus reservas de
+    -- oro (lotes de inventory_lot). Las agregaciones de mercado lo excluyen
+    -- igual que a admin (role NOT IN ('admin','bank')).
+    'bank'
 );
 
 CREATE TYPE agent_status AS ENUM (
@@ -74,7 +81,8 @@ CREATE TYPE process_status AS ENUM (
 CREATE TYPE inventory_lot_origin AS ENUM (
     'initial',       -- carga inicial del setup
     'production',    -- producido por transformación
-    'purchase'       -- adquirido vía trade
+    'purchase',      -- adquirido vía trade
+    'conversion'     -- adquirido vía ventanilla del banco (gold_conversion)
 );
 
 CREATE TYPE event_type AS ENUM (
@@ -87,7 +95,19 @@ CREATE TYPE event_type AS ENUM (
     'process_started',
     'process_completed',
     'process_cancelled',
-    'snapshot_taken'
+    'snapshot_taken',
+    'gold_converted',    -- conversión ejecutada en la ventanilla del banco
+    'money_issued',      -- acuñación de capital semilla en un registro dinámico
+    'deposit_depleted'   -- un resource_deposit llegó a 0 (yacimiento agotado)
+);
+
+-- Dirección de una conversión en la ventanilla, desde la perspectiva del
+-- agente: buy_gold = el agente compra oro al banco (paga window_ask, el
+-- dinero se DESTRUYE); sell_gold = el agente vende oro al banco (cobra
+-- window_bid, el dinero se ACUÑA).
+CREATE TYPE conversion_direction AS ENUM (
+    'buy_gold',
+    'sell_gold'
 );
 
 
@@ -97,6 +117,9 @@ CREATE TYPE event_type AS ENUM (
 
 CREATE TABLE product (
     product_id      UUID                PRIMARY KEY DEFAULT uuidv7(),
+    -- Identificador estable del catálogo (seed-config `key`, ej. 'trigo');
+    -- permite a los clientes mapear su configuración sin depender del UUID.
+    key             TEXT                NOT NULL UNIQUE,
     name            TEXT                NOT NULL UNIQUE,
     unit            TEXT                NOT NULL,
     category        product_category    NOT NULL,
@@ -229,6 +252,24 @@ CREATE INDEX idx_trade_seller       ON trade (seller_agent_id, executed_at DESC)
 CREATE INDEX idx_trade_buy_order    ON trade (buy_order_id);
 CREATE INDEX idx_trade_sell_order   ON trade (sell_order_id);
 
+-- Conversión ejecutada en la ventanilla del banco central (patrón oro).
+-- Sin fees. price_cents_per_unit es el bid o el ask de gold_standard según
+-- la dirección; total_cents = floor(qty_cent × price / 100) (notionalCents).
+-- Declarada aquí (antes de inventory_lot) para resolver la FK
+-- inventory_lot.source_conversion_id.
+CREATE TABLE gold_conversion (
+    conversion_id        UUID                    PRIMARY KEY DEFAULT uuidv7(),
+    agent_id             UUID                    NOT NULL REFERENCES agent(agent_id),
+    direction            conversion_direction    NOT NULL,
+    product_id           UUID                    NOT NULL REFERENCES product(product_id),
+    qty_cent             BIGINT                  NOT NULL CHECK (qty_cent > 0),
+    price_cents_per_unit BIGINT                  NOT NULL CHECK (price_cents_per_unit > 0),
+    total_cents          BIGINT                  NOT NULL CHECK (total_cents >= 0),
+    executed_at          TIMESTAMPTZ             NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_gold_conversion_agent_time ON gold_conversion (agent_id, executed_at DESC);
+
 
 -- =============================================================================
 -- 4. PROCESOS DE TRANSFORMACIÓN
@@ -287,11 +328,13 @@ CREATE TABLE inventory_lot (
     acquired_at         TIMESTAMPTZ             NOT NULL DEFAULT now(),
     source_trade_id     UUID                    REFERENCES trade(trade_id),
     source_process_id   UUID                    REFERENCES transformation_process(process_id),
+    source_conversion_id UUID                   REFERENCES gold_conversion(conversion_id),
     CHECK (qty_available + qty_reserved <= qty_original),
     CHECK (
-        (origin = 'purchase'   AND source_trade_id   IS NOT NULL AND source_process_id IS NULL) OR
-        (origin = 'production' AND source_process_id IS NOT NULL AND source_trade_id   IS NULL) OR
-        (origin = 'initial'    AND source_trade_id   IS NULL     AND source_process_id IS NULL)
+        (origin = 'purchase'   AND source_trade_id      IS NOT NULL AND source_process_id IS NULL     AND source_conversion_id IS NULL) OR
+        (origin = 'production' AND source_process_id    IS NOT NULL AND source_trade_id   IS NULL     AND source_conversion_id IS NULL) OR
+        (origin = 'conversion' AND source_conversion_id IS NOT NULL AND source_trade_id   IS NULL     AND source_process_id    IS NULL) OR
+        (origin = 'initial'    AND source_trade_id      IS NULL     AND source_process_id IS NULL     AND source_conversion_id IS NULL)
     )
 );
 
@@ -301,8 +344,9 @@ CREATE INDEX idx_lot_fifo
     ON inventory_lot (agent_id, product_id, acquired_at, lot_id)
     WHERE qty_available > 0 OR qty_reserved > 0;
 
-CREATE INDEX idx_lot_source_trade   ON inventory_lot(source_trade_id)   WHERE source_trade_id   IS NOT NULL;
-CREATE INDEX idx_lot_source_process ON inventory_lot(source_process_id) WHERE source_process_id IS NOT NULL;
+CREATE INDEX idx_lot_source_trade      ON inventory_lot(source_trade_id)      WHERE source_trade_id      IS NOT NULL;
+CREATE INDEX idx_lot_source_process    ON inventory_lot(source_process_id)    WHERE source_process_id    IS NOT NULL;
+CREATE INDEX idx_lot_source_conversion ON inventory_lot(source_conversion_id) WHERE source_conversion_id IS NOT NULL;
 
 
 -- =============================================================================
@@ -329,6 +373,17 @@ CREATE TABLE transformation_lot_consumption (
     qty_consumed        BIGINT  NOT NULL CHECK (qty_consumed > 0),
     unit_cost_cents     BIGINT  NOT NULL CHECK (unit_cost_cents >= 0),
     PRIMARY KEY (process_id, lot_id)
+);
+
+-- Lotes consumidos por una conversión de la ventanilla (FIFO del lado que
+-- entrega el oro: el agente en sell_gold, el banco en buy_gold). Espejo de
+-- trade_lot_consumption para COGS/auditoría.
+CREATE TABLE conversion_lot_consumption (
+    conversion_id       UUID    NOT NULL REFERENCES gold_conversion(conversion_id) ON DELETE CASCADE,
+    lot_id              UUID    NOT NULL REFERENCES inventory_lot(lot_id),
+    qty_consumed        BIGINT  NOT NULL CHECK (qty_consumed > 0),
+    unit_cost_cents     BIGINT  NOT NULL CHECK (unit_cost_cents >= 0),
+    PRIMARY KEY (conversion_id, lot_id)
 );
 
 
@@ -365,6 +420,18 @@ CREATE TABLE market_snapshot (
     active_agents           INT             NOT NULL,
     total_money_cents       BIGINT          NOT NULL,
     fees_collected_cents    BIGINT          NOT NULL,
+    -- Patrón oro: estado del banco central y del yacimiento al momento del
+    -- snapshot. NULL si la corrida no tiene gold_standard sembrado.
+    bank_money_cents        BIGINT,                     -- capital total del banco
+    bank_gold_qty_cent      BIGINT,                     -- oro disponible del banco
+    deposit_remaining_cent  BIGINT,                     -- yacimiento minable restante
+    money_issued_cents      BIGINT,                     -- acuñado post-seed acumulado
+    money_burned_cents      BIGINT,                     -- destruido post-seed acumulado
+    wages_paid_cents        BIGINT,                     -- Σ salarios (único sumidero)
+    -- Invariante de conservación (debe ser 0):
+    --   Σ capital de TODOS los agentes + wages_paid
+    --   − initial_money − money_issued + money_burned
+    conservation_delta_cents BIGINT,
     note                    TEXT,                       -- por qué se disparó este snapshot
     UNIQUE (taken_at)
 );
@@ -387,7 +454,52 @@ CREATE TABLE market_snapshot_product (
 
 
 -- =============================================================================
--- 9. CONFIGURACIÓN DE CORRIDA
+-- 9. PATRÓN ORO: YACIMIENTO FINITO Y BANCO CENTRAL
+-- =============================================================================
+--
+-- resource_deposit: stock global FINITO de un recurso primario. La receta que
+-- produce ese producto agota el depósito al materializarse (clamp: se produce
+-- min(remaining, producido); al llegar a 0 el producto deja de ser minable).
+-- El tamaño inicial se sortea en el seed con rngFor(MASTER_SEED, ...).
+-- Genérica por product_id para admitir otros recursos finitos en el futuro;
+-- en v1 solo se siembra para el oro (GOLD_PRODUCT_KEY).
+CREATE TABLE resource_deposit (
+    product_id          UUID            PRIMARY KEY REFERENCES product(product_id),
+    -- >= 0: con GOLD_BANK_INITIAL_RESERVE_BPS=10000 todo el sorteo va al banco
+    -- y el yacimiento minable arranca en 0 (producto no minable desde el inicio).
+    qty_initial_cent    BIGINT          NOT NULL CHECK (qty_initial_cent >= 0),
+    qty_remaining_cent  BIGINT          NOT NULL CHECK (qty_remaining_cent >= 0),
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
+    CHECK (qty_remaining_cent <= qty_initial_cent)
+);
+
+-- gold_standard: singleton con la política monetaria de la corrida, escrita
+-- por el seed y FIJA en runtime salvo los contadores de emisión/destrucción.
+--   * parity: cents por unidad entera de oro; ventanilla en [bid, ask].
+--   * initial_money_cents: masa sembrada (agentes de mercado + banco).
+--   * money_issued_cents: acuñado post-seed (sell_gold + registros).
+--   * money_burned_cents: destruido post-seed (buy_gold).
+-- Invariante de respaldo: (issued − burned) ≤ capacidad(oro del banco,
+-- parity, coverage). La fila se toma FOR UPDATE como mutex de la política
+-- (ventanilla y emisión de registro); el matching NUNCA la toca.
+CREATE TABLE gold_standard (
+    singleton               BOOLEAN         PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    bank_agent_id           UUID            NOT NULL REFERENCES agent(agent_id),
+    product_id              UUID            NOT NULL REFERENCES product(product_id),
+    parity_cents_per_unit   BIGINT          NOT NULL CHECK (parity_cents_per_unit > 0),
+    window_bid_cents        BIGINT          NOT NULL CHECK (window_bid_cents > 0),
+    window_ask_cents        BIGINT          NOT NULL,
+    coverage_ratio_bps      BIGINT          NOT NULL CHECK (coverage_ratio_bps > 0),
+    initial_money_cents     BIGINT          NOT NULL CHECK (initial_money_cents >= 0),
+    money_issued_cents      BIGINT          NOT NULL DEFAULT 0 CHECK (money_issued_cents >= 0),
+    money_burned_cents      BIGINT          NOT NULL DEFAULT 0 CHECK (money_burned_cents >= 0),
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT now(),
+    CHECK (window_ask_cents >= window_bid_cents)
+);
+
+
+-- =============================================================================
+-- 10. CONFIGURACIÓN DE CORRIDA
 -- =============================================================================
 -- La configuración de la simulación (semilla maestra, parámetros de fees,
 -- factor de tiempo, rangos de capital por rol, etc.) se carga desde variables

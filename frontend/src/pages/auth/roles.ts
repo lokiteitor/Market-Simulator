@@ -49,4 +49,6 @@ export const ROLE_LABEL: Record<AgentRole, string> = {
   trader: "Trader",
   // Rol de solo-monitoreo; no aparece en el selector de registro (ROLE_INFOS).
   admin: "Administrador",
+  // Banco central del patrón oro; tampoco es registrable.
+  bank: "Banco central",
 };

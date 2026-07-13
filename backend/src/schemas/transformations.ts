@@ -68,7 +68,7 @@ export type LotConsumptionJson = z.infer<typeof LotConsumptionSchema>;
 export const ProducedLotSchema = z.object({
   lot_id: UuidSchema,
   product_id: UuidSchema,
-  origin: z.enum(["initial", "production", "purchase"]),
+  origin: z.enum(["initial", "production", "purchase", "conversion"]),
   qty_original_cent: z.number().int().min(1),
   qty_available_cent: z.number().int().min(0),
   qty_reserved_cent: z.number().int().min(0),

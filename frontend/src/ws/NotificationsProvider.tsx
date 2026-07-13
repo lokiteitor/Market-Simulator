@@ -141,6 +141,20 @@ function toastForNotification(msg: Notification): ToastDetail | null {
       if (username !== null) detail.body = `${username} salió del mercado.`;
       return detail;
     }
+    case "trade_printed":
+      // Tape de mercado: demasiado frecuente para toasts; solo invalida queries.
+      return null;
+    case "gold_converted": {
+      const direction = strField(p, "direction");
+      const total = numField(p, "total_cents");
+      const body =
+        total !== null
+          ? direction === "sell_gold"
+            ? `Vendiste oro al banco por ${fmtMoney(total)} (dinero acuñado).`
+            : `Compraste oro al banco por ${fmtMoney(total)}.`
+          : "Conversión ejecutada en la ventanilla del banco.";
+      return { kind: "success", title: "Conversión de oro", body };
+    }
     default:
       // Tipo desconocido (p. ej. heartbeat de aplicación): sin toast.
       return null;
@@ -160,6 +174,8 @@ const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   transformation_completed: ["self", "processes", "history"],
   bankruptcy_notice: ["self", "orders", "processes"],
   agent_bankrupt: ["market"],
+  trade_printed: ["market"],
+  gold_converted: ["self", "history"],
 };
 
 function invalidateForNotification(qc: QueryClient, msg: Notification): void {

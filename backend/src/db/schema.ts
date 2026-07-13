@@ -18,6 +18,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
@@ -50,6 +51,10 @@ export const agentRole = pgEnum("agent_role", [
   // Rol de solo-monitoreo (panel admin): no participa en el mercado y no es
   // registrable por /auth/register. Ver MARKET_ROLES en types/contracts.ts.
   "admin",
+  // Banco central del patrón oro: agente único del seed, sin credenciales,
+  // no registrable. Opera la ventanilla de convertibilidad y recibe fees.
+  // Excluido de agregados de mercado (NON_MARKET_ROLES en types/contracts.ts).
+  "bank",
 ]);
 
 export const agentStatus = pgEnum("agent_status", ["active", "bankrupt"]);
@@ -74,6 +79,7 @@ export const inventoryLotOrigin = pgEnum("inventory_lot_origin", [
   "initial", // carga inicial del setup
   "production", // producido por transformación
   "purchase", // adquirido vía trade
+  "conversion", // adquirido vía ventanilla del banco (gold_conversion)
 ]);
 
 export const eventType = pgEnum("event_type", [
@@ -87,6 +93,17 @@ export const eventType = pgEnum("event_type", [
   "process_completed",
   "process_cancelled",
   "snapshot_taken",
+  "gold_converted", // conversión ejecutada en la ventanilla del banco
+  "money_issued", // acuñación de capital semilla en un registro dinámico
+  "deposit_depleted", // un resource_deposit llegó a 0 (yacimiento agotado)
+]);
+
+// Dirección de una conversión de ventanilla, desde la perspectiva del agente:
+// buy_gold = compra oro al banco (paga window_ask, el dinero se DESTRUYE);
+// sell_gold = vende oro al banco (cobra window_bid, el dinero se ACUÑA).
+export const conversionDirection = pgEnum("conversion_direction", [
+  "buy_gold",
+  "sell_gold",
 ]);
 
 // =============================================================================
@@ -95,6 +112,8 @@ export const eventType = pgEnum("event_type", [
 
 export const product = pgTable("product", {
   productId: uuid("product_id").primaryKey().default(sql`uuidv7()`),
+  // Identificador estable del catálogo (seed-config `key`, ej. 'trigo').
+  key: text("key").notNull().unique(),
   name: text("name").notNull().unique(),
   unit: text("unit").notNull(),
   category: productCategory("category").notNull(),
@@ -330,6 +349,40 @@ export const trade = pgTable(
   ],
 );
 
+// Conversión ejecutada en la ventanilla del banco central (patrón oro).
+// Sin fees; price_cents_per_unit es el bid/ask de gold_standard según la
+// dirección. Declarada antes de inventory_lot por la FK source_conversion_id.
+export const goldConversion = pgTable(
+  "gold_conversion",
+  {
+    conversionId: uuid("conversion_id").primaryKey().default(sql`uuidv7()`),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.agentId),
+    direction: conversionDirection("direction").notNull(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => product.productId),
+    qtyCent: bigint("qty_cent", { mode: "number" }).notNull(),
+    priceCentsPerUnit: bigint("price_cents_per_unit", {
+      mode: "number",
+    }).notNull(),
+    totalCents: bigint("total_cents", { mode: "number" }).notNull(),
+    executedAt: timestamp("executed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_gold_conversion_agent_time").on(t.agentId, t.executedAt.desc()),
+    check("gold_conversion_qty_cent_check", sql`${t.qtyCent} > 0`),
+    check(
+      "gold_conversion_price_cents_per_unit_check",
+      sql`${t.priceCentsPerUnit} > 0`,
+    ),
+    check("gold_conversion_total_cents_check", sql`${t.totalCents} >= 0`),
+  ],
+);
+
 // =============================================================================
 // 4. PROCESOS DE TRANSFORMACIÓN
 // =============================================================================
@@ -416,6 +469,9 @@ export const inventoryLot = pgTable(
     sourceProcessId: uuid("source_process_id").references(
       () => transformationProcess.processId,
     ),
+    sourceConversionId: uuid("source_conversion_id").references(
+      () => goldConversion.conversionId,
+    ),
   },
   (t) => [
     // Índice clave para consumo FIFO. UUIDv7 desempata por tiempo de creación
@@ -429,6 +485,9 @@ export const inventoryLot = pgTable(
     index("idx_lot_source_process")
       .on(t.sourceProcessId)
       .where(sql`${t.sourceProcessId} IS NOT NULL`),
+    index("idx_lot_source_conversion")
+      .on(t.sourceConversionId)
+      .where(sql`${t.sourceConversionId} IS NOT NULL`),
     check("inventory_lot_qty_original_check", sql`${t.qtyOriginal} > 0`),
     check("inventory_lot_qty_available_check", sql`${t.qtyAvailable} >= 0`),
     check("inventory_lot_qty_reserved_check", sql`${t.qtyReserved} >= 0`),
@@ -442,7 +501,7 @@ export const inventoryLot = pgTable(
     ),
     check(
       "inventory_lot_check1",
-      sql`(${t.origin} = 'purchase' AND ${t.sourceTradeId} IS NOT NULL AND ${t.sourceProcessId} IS NULL) OR (${t.origin} = 'production' AND ${t.sourceProcessId} IS NOT NULL AND ${t.sourceTradeId} IS NULL) OR (${t.origin} = 'initial' AND ${t.sourceTradeId} IS NULL AND ${t.sourceProcessId} IS NULL)`,
+      sql`(${t.origin} = 'purchase' AND ${t.sourceTradeId} IS NOT NULL AND ${t.sourceProcessId} IS NULL AND ${t.sourceConversionId} IS NULL) OR (${t.origin} = 'production' AND ${t.sourceProcessId} IS NOT NULL AND ${t.sourceTradeId} IS NULL AND ${t.sourceConversionId} IS NULL) OR (${t.origin} = 'conversion' AND ${t.sourceConversionId} IS NOT NULL AND ${t.sourceTradeId} IS NULL AND ${t.sourceProcessId} IS NULL) OR (${t.origin} = 'initial' AND ${t.sourceTradeId} IS NULL AND ${t.sourceProcessId} IS NULL AND ${t.sourceConversionId} IS NULL)`,
     ),
   ],
 );
@@ -508,6 +567,33 @@ export const transformationLotConsumption = pgTable(
   ],
 );
 
+// Lotes consumidos por una conversión de ventanilla (FIFO del lado que
+// entrega el oro). Espejo de trade_lot_consumption para COGS/auditoría.
+export const conversionLotConsumption = pgTable(
+  "conversion_lot_consumption",
+  {
+    conversionId: uuid("conversion_id")
+      .notNull()
+      .references(() => goldConversion.conversionId, { onDelete: "cascade" }),
+    lotId: uuid("lot_id")
+      .notNull()
+      .references(() => inventoryLot.lotId),
+    qtyConsumed: bigint("qty_consumed", { mode: "number" }).notNull(),
+    unitCostCents: bigint("unit_cost_cents", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.conversionId, t.lotId] }),
+    check(
+      "conversion_lot_consumption_qty_consumed_check",
+      sql`${t.qtyConsumed} > 0`,
+    ),
+    check(
+      "conversion_lot_consumption_unit_cost_cents_check",
+      sql`${t.unitCostCents} >= 0`,
+    ),
+  ],
+);
+
 // =============================================================================
 // 7. EVENT LOG (append-only, sin particionado en v1)
 // =============================================================================
@@ -548,6 +634,19 @@ export const marketSnapshot = pgTable(
     feesCollectedCents: bigint("fees_collected_cents", {
       mode: "number",
     }).notNull(),
+    // Patrón oro: estado del banco y del yacimiento (NULL si no hay
+    // gold_standard sembrado en la corrida).
+    bankMoneyCents: bigint("bank_money_cents", { mode: "number" }),
+    bankGoldQtyCent: bigint("bank_gold_qty_cent", { mode: "number" }),
+    depositRemainingCent: bigint("deposit_remaining_cent", { mode: "number" }),
+    moneyIssuedCents: bigint("money_issued_cents", { mode: "number" }),
+    moneyBurnedCents: bigint("money_burned_cents", { mode: "number" }),
+    wagesPaidCents: bigint("wages_paid_cents", { mode: "number" }),
+    // Invariante de conservación (debe ser 0): Σ capital de TODOS los agentes
+    // + wages_paid − initial_money − money_issued + money_burned.
+    conservationDeltaCents: bigint("conservation_delta_cents", {
+      mode: "number",
+    }),
     note: text("note"), // por qué se disparó este snapshot
   },
   (t) => [unique("market_snapshot_taken_at_key").on(t.takenAt)],
@@ -584,6 +683,102 @@ export const marketSnapshotProduct = pgTable(
 );
 
 // =============================================================================
+// 9. PATRÓN ORO: YACIMIENTO FINITO Y BANCO CENTRAL
+// =============================================================================
+
+// Stock global FINITO de un recurso primario; sorteado en el seed y agotado
+// por la producción (clamp en materializeProcess). Genérico por product_id;
+// en v1 solo se siembra para el oro.
+export const resourceDeposit = pgTable(
+  "resource_deposit",
+  {
+    productId: uuid("product_id")
+      .primaryKey()
+      .references(() => product.productId),
+    qtyInitialCent: bigint("qty_initial_cent", { mode: "number" }).notNull(),
+    qtyRemainingCent: bigint("qty_remaining_cent", {
+      mode: "number",
+    }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("resource_deposit_qty_initial_cent_check", sql`${t.qtyInitialCent} >= 0`),
+    check(
+      "resource_deposit_qty_remaining_cent_check",
+      sql`${t.qtyRemainingCent} >= 0`,
+    ),
+    check(
+      "resource_deposit_check",
+      sql`${t.qtyRemainingCent} <= ${t.qtyInitialCent}`,
+    ),
+  ],
+);
+
+// Singleton con la política monetaria de la corrida (escrita por el seed;
+// solo mutan los contadores issued/burned). Su fila FOR UPDATE es el mutex
+// de ventanilla + emisión de registro; el matching nunca la toca.
+export const goldStandard = pgTable(
+  "gold_standard",
+  {
+    singleton: boolean("singleton").primaryKey().default(true),
+    bankAgentId: uuid("bank_agent_id")
+      .notNull()
+      .references(() => agent.agentId),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => product.productId),
+    parityCentsPerUnit: bigint("parity_cents_per_unit", {
+      mode: "number",
+    }).notNull(),
+    windowBidCents: bigint("window_bid_cents", { mode: "number" }).notNull(),
+    windowAskCents: bigint("window_ask_cents", { mode: "number" }).notNull(),
+    coverageRatioBps: bigint("coverage_ratio_bps", { mode: "number" }).notNull(),
+    initialMoneyCents: bigint("initial_money_cents", {
+      mode: "number",
+    }).notNull(),
+    moneyIssuedCents: bigint("money_issued_cents", { mode: "number" })
+      .notNull()
+      .default(0),
+    moneyBurnedCents: bigint("money_burned_cents", { mode: "number" })
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("gold_standard_singleton_check", sql`${t.singleton}`),
+    check(
+      "gold_standard_parity_cents_per_unit_check",
+      sql`${t.parityCentsPerUnit} > 0`,
+    ),
+    check("gold_standard_window_bid_cents_check", sql`${t.windowBidCents} > 0`),
+    check(
+      "gold_standard_coverage_ratio_bps_check",
+      sql`${t.coverageRatioBps} > 0`,
+    ),
+    check(
+      "gold_standard_initial_money_cents_check",
+      sql`${t.initialMoneyCents} >= 0`,
+    ),
+    check(
+      "gold_standard_money_issued_cents_check",
+      sql`${t.moneyIssuedCents} >= 0`,
+    ),
+    check(
+      "gold_standard_money_burned_cents_check",
+      sql`${t.moneyBurnedCents} >= 0`,
+    ),
+    check(
+      "gold_standard_check",
+      sql`${t.windowAskCents} >= ${t.windowBidCents}`,
+    ),
+  ],
+);
+
+// =============================================================================
 // Tipos de fila inferidos (conveniencia para repositorios/servicios)
 // =============================================================================
 
@@ -602,6 +797,11 @@ export type InventoryLotRow = typeof inventoryLot.$inferSelect;
 export type TradeLotConsumptionRow = typeof tradeLotConsumption.$inferSelect;
 export type TransformationLotConsumptionRow =
   typeof transformationLotConsumption.$inferSelect;
+export type GoldConversionRow = typeof goldConversion.$inferSelect;
+export type ConversionLotConsumptionRow =
+  typeof conversionLotConsumption.$inferSelect;
+export type ResourceDepositRow = typeof resourceDeposit.$inferSelect;
+export type GoldStandardRow = typeof goldStandard.$inferSelect;
 export type EventLogRow = typeof eventLog.$inferSelect;
 export type MarketSnapshotRow = typeof marketSnapshot.$inferSelect;
 export type MarketSnapshotAgentCapitalRow =

@@ -9,6 +9,7 @@
     "seed": "bun src/seed.ts",
     "seed:admin": "bun src/seed-admin.ts",
     "snapshot": "bun src/scripts/enqueue-snapshot.ts",
+    "backfill:product-keys": "bun src/scripts/backfill-product-keys.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests/unit",
     "e2e": "bun tests/e2e/run.ts"

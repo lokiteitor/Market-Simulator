@@ -8,6 +8,7 @@ const (
 	TypePlaceOrder        ActionType = "place_order"
 	TypeCancelOrder       ActionType = "cancel_order"
 	TypeStartTransformation ActionType = "start_transformation"
+	TypeConvertGold       ActionType = "convert_gold"
 	TypeSleep             ActionType = "sleep"
 )
 
@@ -38,6 +39,15 @@ type StartTransformation struct {
 }
 
 func (a StartTransformation) Type() ActionType { return TypeStartTransformation }
+
+// ConvertGold opera la ventanilla del banco central (patrón oro):
+// sell_gold cobra dinero acuñado a window_bid; buy_gold paga a window_ask.
+type ConvertGold struct {
+	Direction models.ConversionDirection `json:"direction"`
+	QtyCent   int64                      `json:"qty_cent"`
+}
+
+func (a ConvertGold) Type() ActionType { return TypeConvertGold }
 
 type Sleep struct {
 	DurationSeconds int64 `json:"duration_seconds"`

@@ -34,12 +34,16 @@ import {
   agent,
   agentCapacity,
   agentCredentials,
+  goldStandard,
+  inventoryLot,
   product,
   productCategory,
   recipe,
   recipeInput,
+  resourceDeposit,
 } from "./db/schema";
 import { appendEvent, type AgentRegisteredPayload } from "./lib/event-log";
+import { goldWindow, parityCentsPerUnit, splitDeposit } from "./lib/gold";
 import { randIntInclusive, rngFor } from "./lib/rng";
 import { logger } from "./observability/logger";
 import { MARKET_ROLES, type AgentRole, type MarketRole } from "./types/contracts";
@@ -232,6 +236,72 @@ export function buildAgentPlan(
   return plan;
 }
 
+/** Clave RNG del sorteo del yacimiento (determinista con MASTER_SEED). */
+export const GOLD_DEPOSIT_RNG_KEY = "gold_deposit";
+
+export interface GoldPlan {
+  /** Sorteo total D del yacimiento (qtyCent). */
+  depositQtyCent: number;
+  /** Reserva inicial del banco (carved de D). */
+  bankGoldQtyCent: number;
+  /** Yacimiento minable restante (D − reserva del banco). */
+  minableQtyCent: number;
+  /** Masa monetaria inicial: agentes de mercado + capital del banco. */
+  initialMoneyCents: number;
+  parityCentsPerUnit: number;
+  windowBidCents: number;
+  windowAskCents: number;
+}
+
+/**
+ * Plan determinista del patrón oro (§banco central): sortea el yacimiento D
+ * con rngFor(masterSeed, "gold_deposit"), reparte la reserva inicial del
+ * banco y deriva la paridad de la masa TOTAL sembrada (agentes de mercado +
+ * capital inicial del banco) contra el yacimiento completo D. Lanza si la
+ * config produce paridad o bid < 1 (fail-fast, lib/gold.ts).
+ */
+export function buildGoldPlan(
+  marketCapitalCents: number,
+  opts: {
+    masterSeed: number;
+    gold: {
+      depositMinQtyCent: number;
+      depositMaxQtyCent: number;
+      coverageRatioBps: number;
+      windowSpreadBps: number;
+      bankInitialReserveBps: number;
+      bankInitialCapitalCents: number;
+    };
+  },
+): GoldPlan {
+  const rng = rngFor(opts.masterSeed, GOLD_DEPOSIT_RNG_KEY);
+  const depositQtyCent = randIntInclusive(
+    rng,
+    opts.gold.depositMinQtyCent,
+    opts.gold.depositMaxQtyCent,
+  );
+  const { bankGoldQtyCent, minableQtyCent } = splitDeposit(
+    depositQtyCent,
+    opts.gold.bankInitialReserveBps,
+  );
+  const initialMoneyCents = marketCapitalCents + opts.gold.bankInitialCapitalCents;
+  const parity = parityCentsPerUnit(
+    initialMoneyCents,
+    depositQtyCent,
+    opts.gold.coverageRatioBps,
+  );
+  const window = goldWindow(parity, opts.gold.windowSpreadBps);
+  return {
+    depositQtyCent,
+    bankGoldQtyCent,
+    minableQtyCent,
+    initialMoneyCents,
+    parityCentsPerUnit: parity,
+    windowBidCents: window.bidCents,
+    windowAskCents: window.askCents,
+  };
+}
+
 // =============================================================================
 // Seed (DB)
 // =============================================================================
@@ -249,6 +319,7 @@ interface SeedSummary {
   agents: number;
   totalCapitalCents: number;
   byRole: Record<AgentRoleKey, { agents: number; capitalCents: number }>;
+  gold: GoldPlan;
 }
 
 function mustGet(map: Map<string, string>, key: string, what: string): string {
@@ -270,6 +341,13 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
   const rawJson = await readFile(seedConfigPath, "utf8");
   const cfg = parseSeedConfig(rawJson);
   const configHash = seedConfigHash(rawJson);
+
+  // Fail-fast del patrón oro: el producto-respaldo debe existir en el catálogo.
+  if (!cfg.products.some((p) => p.key === config.gold.productKey)) {
+    throw new Error(
+      `seed: GOLD_PRODUCT_KEY "${config.gold.productKey}" no existe en el catálogo del seed-config`,
+    );
+  }
 
   const plan = buildAgentPlan(cfg, {
     masterSeed: config.masterSeed,
@@ -301,7 +379,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     for (const p of cfg.products) {
       const rows = await tx
         .insert(product)
-        .values({ name: p.name, unit: p.unit, category: p.category })
+        .values({ key: p.key, name: p.name, unit: p.unit, category: p.category })
         .returning({ productId: product.productId });
       const row = rows[0];
       if (row === undefined) {
@@ -418,6 +496,84 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       totalCapitalCents += entry.capitalCents;
     }
 
+    // --- Patrón oro: banco central + yacimiento + política monetaria ---------
+    // La paridad se calcula con el capital de mercado YA sembrado, de modo que
+    // la masa inicial queda respaldada por construcción.
+    const gold = buildGoldPlan(totalCapitalCents, {
+      masterSeed: config.masterSeed,
+      gold: config.gold,
+    });
+    const goldProductId = mustGet(productIdByKey, config.gold.productKey, "producto");
+
+    // Banco central: agente único SIN credenciales (no logueable) y sin
+    // capacidades. Su capital inicial da liquidez contable a la emisión de
+    // registros antes de acumular fees.
+    const bankRows = await tx
+      .insert(agent)
+      .values({
+        username: config.gold.bankUsername,
+        role: "bank",
+        status: "active",
+        capitalAvailable: config.gold.bankInitialCapitalCents,
+        capitalReserved: 0,
+        seedCapital: config.gold.bankInitialCapitalCents,
+      })
+      .returning({ agentId: agent.agentId });
+    const bankRow = bankRows[0];
+    if (bankRow === undefined) {
+      throw new Error(`seed: insert del banco "${config.gold.bankUsername}" no devolvió fila`);
+    }
+    const bankAgentId = bankRow.agentId;
+
+    // Reserva inicial de oro del banco como lote normal (origin 'initial',
+    // costo 0: no salió de ningún circuito).
+    if (gold.bankGoldQtyCent > 0) {
+      await tx.insert(inventoryLot).values({
+        agentId: bankAgentId,
+        productId: goldProductId,
+        origin: "initial",
+        qtyOriginal: gold.bankGoldQtyCent,
+        qtyAvailable: gold.bankGoldQtyCent,
+        qtyReserved: 0,
+        unitCostCents: 0,
+      });
+    }
+
+    // Yacimiento minable (lo que no se llevó el banco).
+    await tx.insert(resourceDeposit).values({
+      productId: goldProductId,
+      qtyInitialCent: gold.minableQtyCent,
+      qtyRemainingCent: gold.minableQtyCent,
+    });
+
+    // Política monetaria de la corrida (singleton; fija salvo contadores).
+    await tx.insert(goldStandard).values({
+      singleton: true,
+      bankAgentId,
+      productId: goldProductId,
+      parityCentsPerUnit: gold.parityCentsPerUnit,
+      windowBidCents: gold.windowBidCents,
+      windowAskCents: gold.windowAskCents,
+      coverageRatioBps: config.gold.coverageRatioBps,
+      initialMoneyCents: gold.initialMoneyCents,
+      moneyIssuedCents: 0,
+      moneyBurnedCents: 0,
+    });
+
+    const bankPayload: SeedAgentRegisteredPayload = {
+      agent_id: bankAgentId,
+      username: config.gold.bankUsername,
+      role: "bank",
+      seed_capital_cents: config.gold.bankInitialCapitalCents,
+      seed_config_hash: configHash,
+      master_seed: config.masterSeed,
+    };
+    await appendEvent(tx, {
+      type: "agent_registered",
+      agentId: bankAgentId,
+      payload: bankPayload,
+    });
+
     const summary: SeedSummary = {
       products: cfg.products.length,
       recipes: cfg.recipes.length,
@@ -425,6 +581,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       agents: planWithHashes.length,
       totalCapitalCents,
       byRole,
+      gold,
     };
     return summary;
   });
@@ -448,6 +605,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       agents: result.agents,
       byRole: result.byRole,
       totalCapitalCents: result.totalCapitalCents,
+      gold: result.gold,
     },
     "Seed completado",
   );

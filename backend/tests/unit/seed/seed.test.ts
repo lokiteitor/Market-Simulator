@@ -13,6 +13,8 @@ import type { AgentRoleKey, SeedCapitalRange } from "../../../src/config";
 import { randIntInclusive, rngFor } from "../../../src/lib/rng";
 import {
   buildAgentPlan,
+  buildGoldPlan,
+  GOLD_DEPOSIT_RNG_KEY,
   parseSeedConfig,
   seedConfigHash,
   type SeedConfig,
@@ -211,5 +213,71 @@ describe("buildAgentPlan", () => {
     expect(a.map((e) => e.capitalCents)).not.toEqual(
       b.map((e) => e.capitalCents),
     );
+  });
+});
+
+describe("buildGoldPlan", () => {
+  const GOLD = {
+    depositMinQtyCent: 80000,
+    depositMaxQtyCent: 150000,
+    coverageRatioBps: 10000,
+    windowSpreadBps: 500,
+    bankInitialReserveBps: 2000,
+    bankInitialCapitalCents: 500000,
+  };
+
+  test("determinista: dos llamadas con la misma semilla producen el mismo plan", () => {
+    const a = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    const b = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    expect(a).toEqual(b);
+  });
+
+  test("el sorteo D es rngFor(masterSeed, GOLD_DEPOSIT_RNG_KEY) en el rango", () => {
+    const plan = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    const expected = randIntInclusive(
+      rngFor(42, GOLD_DEPOSIT_RNG_KEY),
+      GOLD.depositMinQtyCent,
+      GOLD.depositMaxQtyCent,
+    );
+    expect(plan.depositQtyCent).toBe(expected);
+    expect(plan.depositQtyCent).toBeGreaterThanOrEqual(GOLD.depositMinQtyCent);
+    expect(plan.depositQtyCent).toBeLessThanOrEqual(GOLD.depositMaxQtyCent);
+  });
+
+  test("otra semilla maestra cambia el yacimiento", () => {
+    const a = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    const b = buildGoldPlan(1_400_000, { masterSeed: 43, gold: GOLD });
+    expect(a.depositQtyCent).not.toBe(b.depositQtyCent);
+  });
+
+  test("reparto: banco + minable = D, con floor en la reserva del banco", () => {
+    const plan = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    expect(plan.bankGoldQtyCent + plan.minableQtyCent).toBe(plan.depositQtyCent);
+    expect(plan.bankGoldQtyCent).toBe(
+      Math.floor((plan.depositQtyCent * GOLD.bankInitialReserveBps) / 10000),
+    );
+  });
+
+  test("masa inicial = capital de mercado + capital del banco; paridad y banda coherentes", () => {
+    const plan = buildGoldPlan(1_400_000, { masterSeed: 42, gold: GOLD });
+    expect(plan.initialMoneyCents).toBe(1_400_000 + GOLD.bankInitialCapitalCents);
+    const expectedParity = Number(
+      (BigInt(plan.initialMoneyCents) * BigInt(GOLD.coverageRatioBps)) /
+        (100n * BigInt(plan.depositQtyCent)),
+    );
+    expect(plan.parityCentsPerUnit).toBe(expectedParity);
+    const half = Math.floor((plan.parityCentsPerUnit * GOLD.windowSpreadBps) / 10000);
+    expect(plan.windowBidCents).toBe(plan.parityCentsPerUnit - half);
+    expect(plan.windowAskCents).toBe(plan.parityCentsPerUnit + half);
+    expect(plan.windowBidCents).toBeGreaterThan(0);
+  });
+
+  test("fail-fast: masa ridícula frente al yacimiento ⇒ paridad < 1 lanza", () => {
+    expect(() =>
+      buildGoldPlan(10, {
+        masterSeed: 42,
+        gold: { ...GOLD, bankInitialCapitalCents: 0 },
+      }),
+    ).toThrow(/paridad calculada/);
   });
 });

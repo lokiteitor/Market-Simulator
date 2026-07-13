@@ -39,8 +39,9 @@ import type { InventoryService, BankruptcyService } from "../types/contracts";
 // Módulos paralelos ([M5], [M2]); nombres exactos del contrato §8.
 import { inventoryService } from "./inventory-service";
 import { bankruptcyService } from "./bankruptcy-service";
+import { bankRepository } from "../repositories/bank-repository";
 import { matchOrder, type ExecutedTrade, type MatchOutcome } from "./matching/engine";
-import { releaseReservedCapital, reserveBuyerCapital } from "./matching/capital";
+import { creditAvailable, releaseReservedCapital, reserveBuyerCapital } from "./matching/capital";
 
 const log = logger.child({ module: "order-service" });
 
@@ -273,6 +274,11 @@ async function publishTradeNotifications(executed: ExecutedTrade[]): Promise<voi
     await safePublish("order_executed→seller", () =>
       publishToAgent(e.trade.sellerAgentId, toSeller),
     );
+    // Tape público: los trades ya son visibles vía GET /market/{id}/trades con
+    // ambas identidades, así que el broadcast no revela nada nuevo.
+    await safePublish("trade_printed broadcast", () =>
+      publishBroadcast({ type: "trade_printed", occurred_at: occurredAt, payload: base }),
+    );
   }
 }
 
@@ -424,7 +430,25 @@ export const orderService = {
             await appendEvent(tx, { type: "order_placed", agentId, payload: placedPayload });
 
             // Matching (§10.1) dentro de la MISMA tx y lock.
-            return matchOrder(tx, order);
+            const matched = await matchOrder(tx, order);
+
+            // Patrón oro: los fees NO se evaporan — se acreditan al banco
+            // central en la MISMA tx. Un ÚNICO crédito por la suma de ambos
+            // lados de todos los fills, como ÚLTIMA escritura con lock de la
+            // tx (la fila del banco es el elemento MÁXIMO del orden global de
+            // locks; después solo quedan lecturas/commit). Si la corrida no
+            // tiene gold_standard (DB antigua), se evaporan como antes.
+            const totalFees = matched.trades.reduce(
+              (sum, t) => sum + t.trade.feeBuyerCents + t.trade.feeSellerCents,
+              0,
+            );
+            if (totalFees > 0) {
+              const bankAgentId = await bankRepository.getBankAgentId(tx);
+              if (bankAgentId !== null) {
+                await creditAvailable(tx, bankAgentId, totalFees);
+              }
+            }
+            return matched;
           }),
         ),
       );

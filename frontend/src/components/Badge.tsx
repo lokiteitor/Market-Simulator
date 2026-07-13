@@ -22,6 +22,7 @@ export type BadgeKind =
   | "consumer"
   | "trader"
   | "admin"
+  | "bank"
   // estados
   | "active"
   | "partial"
@@ -51,6 +52,7 @@ const KIND_CLASS: Record<BadgeKind, string> = {
   consumer: styles["roleConsumer"] ?? "",
   trader: styles["roleTrader"] ?? "",
   admin: styles["neutral"] ?? styles["stateCancelled"] ?? "",
+  bank: styles["roleTrader"] ?? "",
   active: styles["stateActive"] ?? "",
   partial: styles["statePartial"] ?? "",
   completed: styles["stateCompleted"] ?? "",

@@ -82,3 +82,49 @@ func TestGetAccessTokenFallsBackToLoginWhenRefreshIsRevoked(t *testing.T) {
 		t.Fatalf("got token %q after %d logins, want a plain refresh", token, client.logins)
 	}
 }
+
+// InvalidateAccessToken descarta un token que localmente parece válido (p.ej.
+// el servidor lo rechazó con 401 tras rotar el secreto JWT): la siguiente
+// llamada debe obtener uno fresco en vez de devolver el cacheado.
+func TestInvalidateAccessTokenForcesRefresh(t *testing.T) {
+	client := &fakeClient{validRefresh: "refresh-valid"}
+
+	a := NewAuthManager("bot_1", "pw", models.AgentRole("consumer"), "")
+	a.SetRefresher(client.refresh)
+	a.SetLoginHelper(client)
+	a.accessToken = "stale-but-locally-valid"
+	a.refreshToken = "refresh-valid"
+	a.accessExp = time.Now().Add(10 * time.Minute)
+	a.tokenTTL = 15 * time.Minute
+	a.refreshExp = time.Now().Add(7 * 24 * time.Hour)
+
+	a.InvalidateAccessToken()
+
+	token, err := a.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccessToken: %v", err)
+	}
+	if token != "access-from-refresh" {
+		t.Fatalf("got token %q, want a freshly refreshed one", token)
+	}
+}
+
+// Con tokens de vida corta el buffer se recorta a un tercio del TTL: un token
+// recién emitido no debe refrescarse (y rotar el refresh token) en cada request.
+func TestRefreshBufferClampedForShortLivedTokens(t *testing.T) {
+	client := &fakeClient{validRefresh: "refresh-valid"}
+
+	a := NewAuthManager("bot_1", "pw", models.AgentRole("consumer"), "")
+	a.SetRefresher(client.refresh)
+	a.SetLoginHelper(client)
+	a.storeTokensLocked("short-lived-access", "refresh-valid",
+		time.Now().Add(30*time.Second), time.Now().Add(7*24*time.Hour))
+
+	token, err := a.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccessToken: %v", err)
+	}
+	if token != "short-lived-access" {
+		t.Fatalf("got token %q, want the cached one (no premature refresh)", token)
+	}
+}

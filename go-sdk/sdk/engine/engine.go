@@ -107,9 +107,37 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 		Rand:   rand.New(rand.NewPCG(seed, 0)),
 		Clock:  clock,
 		Config: cfg.Strategy,
+		Market: &marketData{e: e},
 	}
-	
+
 	return e
+}
+
+// marketData adapta el cliente REST a strategy.MarketData. Usa el contexto de
+// ejecución del engine cuando está corriendo (respeta la cancelación de Stop).
+type marketData struct {
+	e *Engine
+}
+
+func (m *marketData) runCtx() context.Context {
+	m.e.Lock()
+	defer m.e.Unlock()
+	if m.e.ctx != nil {
+		return m.e.ctx
+	}
+	return context.Background()
+}
+
+func (m *marketData) TopOfBook(productID string) (*models.TopOfBook, error) {
+	return m.e.client.GetTopOfBook(m.runCtx(), productID)
+}
+
+func (m *marketData) RecentTrades(productID string, q models.TradesQuery) ([]models.Trade, error) {
+	return m.e.client.GetRecentTrades(m.runCtx(), productID, q)
+}
+
+func (m *marketData) BankInfo() (*models.BankInfo, error) {
+	return m.e.client.GetBankInfo(m.runCtx())
 }
 
 func (e *Engine) Start(ctx context.Context) error {
@@ -323,6 +351,22 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 			if err == nil {
 				e.logger.Info("transformation process started", "process_id", resp.ProcessID)
 				e.state.AddProcess(*resp)
+			}
+		case actions.ConvertGold:
+			req := models.ConvertGoldRequest{
+				Direction: act.Direction,
+				QtyCent:   act.QtyCent,
+			}
+			var conv *models.GoldConversion
+			conv, err = e.client.ConvertGold(ctx, req)
+			if err == nil {
+				e.logger.Info("gold conversion executed",
+					"conversion_id", conv.ConversionID,
+					"direction", conv.Direction,
+					"qty_cent", conv.QtyCent,
+					"total_cents", conv.TotalCents)
+				// El capital/inventario locales se sincronizan vía la
+				// notificación gold_converted del WS (o el próximo snapshot).
 			}
 		case actions.Sleep:
 			e.logger.Info("strategy requested sleep", "duration_seconds", act.DurationSeconds)

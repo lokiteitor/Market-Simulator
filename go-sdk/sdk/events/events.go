@@ -55,6 +55,21 @@ type AgentJoined struct {
 
 func (e AgentJoined) Occurred() time.Time { return e.JoinedAt }
 
+// TradePrinted es el tape público del mercado: un broadcast por cada trade
+// ejecutado, sea o no del agente. Es la señal event-driven para estrategias
+// que reaccionan a precio/volumen sin hacer polling REST.
+type TradePrinted struct {
+	TradeID         string    `json:"trade_id"`
+	ProductID       string    `json:"product_id"`
+	BuyerAgentID    string    `json:"buyer_agent_id"`
+	SellerAgentID   string    `json:"seller_agent_id"`
+	QtyExecutedCent int64     `json:"qty_executed_cent"`
+	PriceCents      int64     `json:"price_cents"`
+	ExecutedAt      time.Time `json:"executed_at"`
+}
+
+func (e TradePrinted) Occurred() time.Time { return e.ExecutedAt }
+
 type AgentBankrupt struct {
 	AgentID    string    `json:"agent_id"`
 	Username   string    `json:"username"`
@@ -62,6 +77,20 @@ type AgentBankrupt struct {
 }
 
 func (e AgentBankrupt) Occurred() time.Time { return e.BankruptAt }
+
+// GoldConverted: conversión propia ejecutada en la ventanilla del banco
+// central (patrón oro). Personal: solo llega al agente que convirtió.
+type GoldConverted struct {
+	ConversionID      string    `json:"conversion_id"`
+	Direction         string    `json:"direction"` // buy_gold | sell_gold
+	ProductID         string    `json:"product_id"`
+	QtyCent           int64     `json:"qty_cent"`
+	PriceCentsPerUnit int64     `json:"price_cents_per_unit"`
+	TotalCents        int64     `json:"total_cents"`
+	ExecutedAt        time.Time `json:"executed_at"`
+}
+
+func (e GoldConverted) Occurred() time.Time { return e.ExecutedAt }
 
 type WSConnected struct {
 	ConnectedAt time.Time

@@ -21,10 +21,12 @@ import { decodeCursor } from "../lib/cursor";
 import { DomainError, domainError } from "../lib/errors";
 import {
   appendEvent,
+  type DepositDepletedPayload,
   type ProcessCancelledPayload,
   type ProcessCompletedPayload,
   type ProcessStartedPayload,
 } from "../lib/event-log";
+import { clampMint } from "../lib/gold";
 import { unitCostFromTotal } from "../lib/money";
 import {
   intervalToSimSeconds,
@@ -36,6 +38,7 @@ import { publishBroadcast, publishToAgent, type Notification } from "../notifier
 import { logger } from "../observability/logger";
 import { productionUnitsTotal } from "../observability/metrics";
 import { productLabels } from "../observability/product-names";
+import { depositRepository } from "../repositories/deposit-repository";
 import {
   transformationRepository as repo,
   type ProcessStatus,
@@ -251,17 +254,52 @@ async function materializeProcess(
   }
   const consumptions = await repo.getConsumptions(tx, proc.processId);
   const totalCostCents = inputsTotalCostCents(consumptions) + proc.wagePaidCents;
-  const qtyProducedCent = qtyTimesExecutions(rec.outputQty, proc.executionsPlanned);
-  const unitCostCents = unitCostFromTotal(totalCostCents, qtyProducedCent);
+  const qtyPlannedCent = qtyTimesExecutions(rec.outputQty, proc.executionsPlanned);
 
-  const outputLotId = await inventoryService.createLot(tx, {
-    agentId: proc.agentId,
-    productId: rec.outputProductId,
-    origin: "production",
-    qtyCent: qtyProducedCent,
-    unitCostCents,
-    sourceProcessId: proc.processId,
-  });
+  // Yacimiento finito (patrón oro): si el producto de salida tiene
+  // resource_deposit, la producción se CLAMPEA a lo que queda (min(remaining,
+  // planificado)) y el remanente se decrementa en la MISMA tx. Orden de locks:
+  // proceso (ya bloqueado por el caller) → depósito. Si el clamp deja 0, no se
+  // crea lote (CHECK qty_original > 0): el salario/insumos se pierden, igual
+  // que en una cancelación (política sin reembolsos).
+  let qtyProducedCent = qtyPlannedCent;
+  let depositDepleted: DepositDepletedPayload | null = null;
+  const deposit = await depositRepository.lockDeposit(tx, rec.outputProductId);
+  if (deposit !== undefined) {
+    const { mintedQtyCent, remainingAfterCent } = clampMint(
+      deposit.qtyRemainingCent,
+      qtyPlannedCent,
+    );
+    qtyProducedCent = mintedQtyCent;
+    if (mintedQtyCent > 0) {
+      const ok = await depositRepository.decrement(tx, rec.outputProductId, mintedQtyCent);
+      if (!ok) {
+        // Inalcanzable: la fila está bloqueada FOR UPDATE y el clamp ya acotó.
+        throw new Error(
+          `materializeProcess: decremento del depósito de ${rec.outputProductId} falló`,
+        );
+      }
+    }
+    if (remainingAfterCent === 0 && deposit.qtyRemainingCent > 0) {
+      depositDepleted = {
+        product_id: rec.outputProductId,
+        qty_initial_cent: deposit.qtyInitialCent,
+        process_id: proc.processId,
+      };
+    }
+  }
+
+  let outputLotId: string | null = null;
+  if (qtyProducedCent > 0) {
+    outputLotId = await inventoryService.createLot(tx, {
+      agentId: proc.agentId,
+      productId: rec.outputProductId,
+      origin: "production",
+      qtyCent: qtyProducedCent,
+      unitCostCents: unitCostFromTotal(totalCostCents, qtyProducedCent),
+      sourceProcessId: proc.processId,
+    });
+  }
 
   const completedAt = new Date();
   await repo.completeProcess(tx, proc.processId, completedAt);
@@ -275,6 +313,10 @@ async function materializeProcess(
     output_lot_id: outputLotId,
   };
   await appendEvent(tx, { type: "process_completed", agentId: proc.agentId, payload });
+  if (depositDepleted !== null) {
+    // Evento del sistema (sin agentId): el yacimiento es global.
+    await appendEvent(tx, { type: "deposit_depleted", payload: depositDepleted });
+  }
 
   // §8: llamar tras la transición terminal, DENTRO de la misma tx. El caller
   // publica bankruptcy_notice + agent_bankrupt post-commit si devolvió true.
@@ -367,6 +409,19 @@ async function startTransformation(
         detail: `La receta ${recipeId} no existe.`,
         field: "recipe_id",
       });
+    }
+
+    // Fail-fast del yacimiento finito: si el producto de salida tiene depósito
+    // agotado, iniciar el proceso solo quemaría salario/insumos para producir
+    // 0 (el clamp de materializeProcess). Sin lock: la carrera residual entre
+    // este check y la materialización la resuelve el clamp.
+    const remaining = await depositRepository.getRemaining(tx, found.recipe.outputProductId);
+    if (remaining === 0) {
+      throw domainError(
+        "resource_depleted",
+        `El yacimiento del producto ${found.recipe.outputProductId} está agotado; la receta ya no puede producir.`,
+        { field: "recipe_id" },
+      );
     }
 
     const installations = await repo.getInstallations(tx, agentId, recipeId);

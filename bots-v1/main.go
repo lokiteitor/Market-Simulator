@@ -41,6 +41,7 @@ type GlobalConfig struct {
 	SimTimeFactor     float64                `yaml:"sim_time_factor"`
 	MaxRecipesPerTick int                    `yaml:"max_recipes_per_tick"`
 	Prices            map[string]interface{} `yaml:"prices"`
+	Market            map[string]interface{} `yaml:"market"`
 	Bots              []BotRunnerConfig      `yaml:"bots"`
 }
 
@@ -152,6 +153,7 @@ func main() {
 				"prices":               globalCfg.Prices,
 				"sim_time_factor":      globalCfg.SimTimeFactor,
 				"max_recipes_per_tick": globalCfg.MaxRecipesPerTick,
+				"market":               globalCfg.Market,
 			},
 		}
 

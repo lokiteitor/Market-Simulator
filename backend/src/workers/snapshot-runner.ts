@@ -17,7 +17,7 @@
  *
  * No publica notificaciones: snapshot_taken no es un NotificationType (§9).
  */
-import { and, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, gt, inArray, notInArray, sql } from "drizzle-orm";
 import { withTransaction } from "../db";
 import {
   agent,
@@ -28,10 +28,14 @@ import {
   marketSnapshotProduct,
   product,
   trade,
+  transformationProcess,
 } from "../db/schema";
 import type { SnapshotTakenPayload } from "../lib/event-log";
 import { appendEvent } from "../lib/event-log";
 import { logger } from "../observability/logger";
+import { bankRepository } from "../repositories/bank-repository";
+import { depositRepository } from "../repositories/deposit-repository";
+import { NON_MARKET_ROLES } from "../types/contracts";
 
 const log = logger.child({ component: "snapshot-runner" });
 
@@ -46,6 +50,19 @@ export interface SnapshotResult {
   feesCollectedCents: number;
   agentsSnapshotted: number;
   productsSnapshotted: number;
+  /** Patrón oro (null si la corrida no tiene gold_standard sembrado). */
+  bankMoneyCents: number | null;
+  bankGoldQtyCent: number | null;
+  depositRemainingCent: number | null;
+  moneyIssuedCents: number | null;
+  moneyBurnedCents: number | null;
+  wagesPaidCents: number | null;
+  /**
+   * Invariante de conservación (debe ser 0):
+   *   Σ capital de TODOS los agentes + Σ wage_paid
+   *   − initial_money − money_issued + money_burned.
+   */
+  conservationDeltaCents: number | null;
 }
 
 /**
@@ -87,16 +104,20 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
   const result = await withTransaction(
     async (tx) => {
       // --- Agregados de cabecera -------------------------------------------
-      // Excluir admins (rol de solo-monitoreo, capital 0): no son población de
-      // mercado y falsearían active_agents / total_money_cents.
+      // Excluir roles no-mercado (admin: solo-monitoreo; bank: reservas del
+      // banco central) de active_agents / total_money_cents DE MERCADO. La
+      // suma para el invariante de conservación sí incluye a TODOS.
       const agentAggRows = await tx
         .select({
           activeAgents: sql<
             string | number
-          >`count(*) filter (where ${agent.status} = 'active' and ${agent.role} <> 'admin')`,
+          >`count(*) filter (where ${agent.status} = 'active' and ${agent.role} not in ('admin', 'bank'))`,
           totalMoneyCents: sql<
             string | number
-          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}) filter (where ${agent.role} <> 'admin'), 0)`,
+          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}) filter (where ${agent.role} not in ('admin', 'bank')), 0)`,
+          allMoneyCents: sql<
+            string | number
+          >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
         })
         .from(agent);
       const feeAggRows = await tx
@@ -109,7 +130,55 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
 
       const activeAgents = num(agentAggRows[0]?.activeAgents ?? 0);
       const totalMoneyCents = num(agentAggRows[0]?.totalMoneyCents ?? 0);
+      const allMoneyCents = num(agentAggRows[0]?.allMoneyCents ?? 0);
       const feesCollectedCents = num(feeAggRows[0]?.feesCollectedCents ?? 0);
+
+      // --- Patrón oro: estado del banco + invariante de conservación --------
+      // Los salarios son el ÚNICO sumidero de dinero (se descuentan al iniciar
+      // procesos y no se acreditan a nadie); el invariante debe sumarlos.
+      const gs = await bankRepository.getGoldStandard(tx);
+      let bankMoneyCents: number | null = null;
+      let bankGoldQtyCent: number | null = null;
+      let depositRemainingCent: number | null = null;
+      let moneyIssuedCents: number | null = null;
+      let moneyBurnedCents: number | null = null;
+      let wagesPaidCents: number | null = null;
+      let conservationDeltaCents: number | null = null;
+      if (gs !== undefined) {
+        const wageAggRows = await tx
+          .select({
+            wages: sql<
+              string | number
+            >`coalesce(sum(${transformationProcess.wagePaidCents}), 0)`,
+          })
+          .from(transformationProcess);
+        wagesPaidCents = num(wageAggRows[0]?.wages ?? 0);
+        const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
+        bankMoneyCents = (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0);
+        bankGoldQtyCent = await bankRepository.getGoldAvailable(tx, gs.bankAgentId, gs.productId);
+        depositRemainingCent = (await depositRepository.getRemaining(tx, gs.productId)) ?? null;
+        moneyIssuedCents = gs.moneyIssuedCents;
+        moneyBurnedCents = gs.moneyBurnedCents;
+        conservationDeltaCents =
+          allMoneyCents +
+          wagesPaidCents -
+          gs.initialMoneyCents -
+          gs.moneyIssuedCents +
+          gs.moneyBurnedCents;
+        if (conservationDeltaCents !== 0) {
+          log.error(
+            {
+              conservationDeltaCents,
+              allMoneyCents,
+              wagesPaidCents,
+              initialMoneyCents: gs.initialMoneyCents,
+              moneyIssuedCents,
+              moneyBurnedCents,
+            },
+            "INVARIANTE DE CONSERVACIÓN ROTO: la masa monetaria no cuadra",
+          );
+        }
+      }
 
       const insertedHead = await tx
         .insert(marketSnapshot)
@@ -117,6 +186,13 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
           activeAgents,
           totalMoneyCents,
           feesCollectedCents,
+          bankMoneyCents,
+          bankGoldQtyCent,
+          depositRemainingCent,
+          moneyIssuedCents,
+          moneyBurnedCents,
+          wagesPaidCents,
+          conservationDeltaCents,
           note: normalizedNote,
         })
         .returning({
@@ -135,7 +211,7 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
           capitalTotal: sql<string | number>`${agent.capitalAvailable} + ${agent.capitalReserved}`,
         })
         .from(agent)
-        .where(ne(agent.role, "admin"));
+        .where(notInArray(agent.role, [...NON_MARKET_ROLES]));
       const capitalRows = capitals.map((c) => ({
         snapshotId: head.snapshotId,
         agentId: c.agentId,
@@ -210,6 +286,13 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
         feesCollectedCents,
         agentsSnapshotted: capitalRows.length,
         productsSnapshotted: productRows.length,
+        bankMoneyCents,
+        bankGoldQtyCent,
+        depositRemainingCent,
+        moneyIssuedCents,
+        moneyBurnedCents,
+        wagesPaidCents,
+        conservationDeltaCents,
       };
       return summary;
     },
@@ -225,6 +308,12 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
       feesCollectedCents: result.feesCollectedCents,
       agents: result.agentsSnapshotted,
       products: result.productsSnapshotted,
+      bankMoneyCents: result.bankMoneyCents,
+      bankGoldQtyCent: result.bankGoldQtyCent,
+      depositRemainingCent: result.depositRemainingCent,
+      moneyIssuedCents: result.moneyIssuedCents,
+      moneyBurnedCents: result.moneyBurnedCents,
+      conservationDeltaCents: result.conservationDeltaCents,
     },
     "snapshot de mercado persistido",
   );

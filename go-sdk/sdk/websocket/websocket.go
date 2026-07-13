@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -19,6 +20,18 @@ import (
 type TokenProvider interface {
 	GetAccessToken(ctx context.Context) (string, error)
 }
+
+// TokenInvalidator is implemented by token providers that can discard a
+// cached access token the server no longer accepts (see client.TokenInvalidator).
+type TokenInvalidator interface {
+	InvalidateAccessToken()
+}
+
+// closeUnauthorized is the application close code the backend sends when the
+// handshake token is invalid (contract §12). The backend verifies the token
+// after the upgrade, so an invalid token shows up as this close code on the
+// first read rather than as an HTTP 401 on the dial.
+const closeUnauthorized = 4401
 
 type wsEnvelope struct {
 	Type       string          `json:"type"`
@@ -130,8 +143,12 @@ func (c *Client) connectionLoop() {
 		dialer := websocket.DefaultDialer
 		dialer.HandshakeTimeout = 10 * time.Second
 
-		conn, _, err := dialer.DialContext(c.ctx, u.String(), nil)
+		conn, resp, err := dialer.DialContext(c.ctx, u.String(), nil)
 		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+				c.logger.Warn("websocket handshake rejected as unauthorized, discarding cached access token")
+				c.invalidateToken()
+			}
 			c.logger.Error("websocket dial failed", "error", err)
 			attempt++
 			if err := c.backoff.Sleep(c.ctx, attempt); err != nil {
@@ -154,7 +171,11 @@ func (c *Client) connectionLoop() {
 		}
 
 		// Run the read loop
-		c.readLoop(conn)
+		readErr := c.readLoop(conn)
+		if websocket.IsCloseError(readErr, closeUnauthorized) {
+			c.logger.Warn("websocket closed as unauthorized, discarding cached access token")
+			c.invalidateToken()
+		}
 
 		c.Lock()
 		if c.conn == conn {
@@ -164,7 +185,15 @@ func (c *Client) connectionLoop() {
 	}
 }
 
-func (c *Client) readLoop(conn *websocket.Conn) {
+func (c *Client) invalidateToken() {
+	if inv, ok := c.tokenProvider.(TokenInvalidator); ok {
+		inv.InvalidateAccessToken()
+	}
+}
+
+// readLoop reads until the connection fails and returns the read error so the
+// connection loop can distinguish an auth rejection from a plain disconnect.
+func (c *Client) readLoop(conn *websocket.Conn) error {
 	// Set read deadline and handle heartbeats
 	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(appData string) error {
@@ -176,7 +205,7 @@ func (c *Client) readLoop(conn *websocket.Conn) {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			c.logger.Error("websocket read error", "error", err)
-			break
+			return err
 		}
 
 		event, err := c.parseWSEvent(message)
@@ -188,7 +217,7 @@ func (c *Client) readLoop(conn *websocket.Conn) {
 		select {
 		case c.eventChan <- event:
 		case <-c.ctx.Done():
-			return
+			return nil
 		}
 	}
 }
@@ -249,6 +278,18 @@ func (c *Client) parseWSEvent(msg []byte) (events.Event, error) {
 			return nil, err
 		}
 		p.BankruptAt = env.OccurredAt
+		ev = p
+	case "trade_printed":
+		var p events.TradePrinted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		ev = p
+	case "gold_converted":
+		var p events.GoldConverted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
 		ev = p
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", env.Type)

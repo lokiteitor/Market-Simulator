@@ -17,7 +17,7 @@
  * depender de nombres internos de los repos de M3/M4 (que se implementan en
  * paralelo y cuyo API interno no está fijado por el contrato).
  */
-import { and, asc, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
@@ -32,6 +32,7 @@ import {
   type TransformationProcessRow,
 } from "../db/schema";
 import { domainError } from "../lib/errors";
+import { NON_MARKET_ROLES } from "../types/contracts";
 
 /** Fila de proceso running acompañada del INTERVAL de su receta (string pg). */
 export interface RunningProcessWithDuration {
@@ -91,8 +92,10 @@ export const agentRepository = {
         >`floor(avg(${agent.capitalAvailable} + ${agent.capitalReserved}))::bigint`,
       })
       .from(agent)
-      // Excluir admins: son solo-monitoreo (capital 0) y falsearían el promedio.
-      .where(and(eq(agent.status, "active"), ne(agent.role, "admin")));
+      // Excluir roles no-mercado: admin (solo-monitoreo, capital 0) y bank
+      // (sus reservas son política monetaria, no capital de mercado).
+      // Fuente única: NON_MARKET_ROLES (types/contracts).
+      .where(and(eq(agent.status, "active"), notInArray(agent.role, [...NON_MARKET_ROLES])));
     const value = rows[0]?.avg;
     return value === null || value === undefined ? null : Number(value);
   },

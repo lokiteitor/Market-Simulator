@@ -38,6 +38,7 @@ import type { ProblemErrorItem, ProblemJson } from "./lib/errors";
 import { logger } from "./observability/logger";
 import { httpRequestDuration } from "./observability/metrics";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerBankRoutes } from "./routes/bank";
 import { registerAgentRoutes } from "./routes/agents";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerCatalogRoutes } from "./routes/catalog";
@@ -244,6 +245,7 @@ export function buildApp(): FastifyInstance {
       await registerTransformationRoutes(v1);
       await registerHistoryRoutes(v1);
       registerAdminRoutes(v1);
+      registerBankRoutes(v1);
     },
     { prefix: "/v1" },
   );

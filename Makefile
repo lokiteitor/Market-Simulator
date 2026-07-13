@@ -15,7 +15,7 @@ run-bots: build-bots
 	cd bots-v1 && ./bots-v1-runner -config config.yaml
 
 run-swarm: build-bots
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 5000 -jitter 120
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900
 
 clean-docker:
 	docker compose -f infra/docker-compose.yml down --volumes --remove-orphans

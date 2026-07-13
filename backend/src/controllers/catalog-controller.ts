@@ -24,6 +24,7 @@ export function recipeDurationRealSeconds(durationInterval: string): number {
 export function toProductDto(row: ProductRow): ProductDto {
   return {
     product_id: row.productId,
+    key: row.key,
     name: row.name,
     unit: row.unit,
     category: row.category,

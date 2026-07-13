@@ -59,11 +59,12 @@ export const inventoryRepository = {
     p: {
       agentId: string;
       productId: string;
-      origin: "initial" | "production" | "purchase";
+      origin: "initial" | "production" | "purchase" | "conversion";
       qtyCent: number;
       unitCostCents: number;
       sourceTradeId: string | null;
       sourceProcessId: string | null;
+      sourceConversionId: string | null;
     },
   ): Promise<string> {
     const rows = await tx
@@ -78,6 +79,7 @@ export const inventoryRepository = {
         unitCostCents: p.unitCostCents,
         sourceTradeId: p.sourceTradeId,
         sourceProcessId: p.sourceProcessId,
+        sourceConversionId: p.sourceConversionId,
       })
       .returning({ lotId: inventoryLot.lotId });
     const row = rows[0];

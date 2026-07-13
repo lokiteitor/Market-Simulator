@@ -81,6 +81,8 @@ export type ProductCategory = "raw_primary" | "intermediate" | "final_consumptio
 
 export interface Product {
   product_id: string;
+  /** Identificador estable del catálogo (ej. `trigo`), constante entre seeds. */
+  key: string;
   name: string;
   /** Unidad de medida del producto (ej. `kg`, `litro`, `cabezas`). */
   unit: string;
@@ -118,7 +120,9 @@ export type AgentRole =
   | "consumer"
   | "trader"
   // Rol de solo-monitoreo (panel admin): no participa en el mercado.
-  | "admin";
+  | "admin"
+  // Banco central del patrón oro: opera la ventanilla de convertibilidad.
+  | "bank";
 
 export type AgentStatus = "active" | "bankrupt";
 
@@ -147,7 +151,7 @@ export interface InventoryPosition {
   qty_reserved_cent: number;
 }
 
-export type InventoryLotOrigin = "initial" | "production" | "purchase";
+export type InventoryLotOrigin = "initial" | "production" | "purchase" | "conversion";
 
 export interface InventoryLot {
   lot_id: string;
@@ -350,7 +354,11 @@ export type NotificationType =
   | "order_cancelled"
   | "transformation_completed"
   | "bankruptcy_notice"
-  | "agent_bankrupt";
+  | "agent_bankrupt"
+  /** Broadcast por cada trade ejecutado en el mercado (payload = Trade). */
+  | "trade_printed"
+  /** Personal: conversión en la ventanilla del banco (payload = GoldConversion). */
+  | "gold_converted";
 
 export interface Notification {
   type: NotificationType;
