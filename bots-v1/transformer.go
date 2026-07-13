@@ -112,12 +112,11 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				}
 
 				// Check budget limits
-				maxAffordable := capitalAvail / price
-				if qtyToBuy > maxAffordable {
+				if maxAffordable := maxQtyForBudget(capitalAvail, price); qtyToBuy > maxAffordable {
 					qtyToBuy = maxAffordable
 				}
 
-				if qtyToBuy > 0 {
+				if isReservable(qtyToBuy, price) {
 					ctx.Logger.Info("Placing buy order for inputs", "product_id", input.ProductID, "qty_cent", qtyToBuy, "price_cents", price)
 					acts = append(acts, actions.PlaceOrder{
 						ProductID:       input.ProductID,
@@ -127,7 +126,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 						TTLSeconds:      300,
 					})
 					// Subtract capital optimistically
-					capitalAvail -= qtyToBuy * price
+					capitalAvail -= notionalCents(qtyToBuy, price)
 					activeBuyQty[input.ProductID] += qtyToBuy
 				}
 			}

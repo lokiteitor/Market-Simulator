@@ -89,12 +89,12 @@ func (s *TraderStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 
 			// Ensure we do not spend more than 15% of our available capital on a single product's speculation
-			maxSpend := capitalAvail / 7
-			if qtyToBuy*price > maxSpend {
-				qtyToBuy = maxSpend / price
+			maxSpendCents := capitalAvail / 7
+			if maxQty := maxQtyForBudget(maxSpendCents, price); qtyToBuy > maxQty {
+				qtyToBuy = maxQty
 			}
 
-			if qtyToBuy > 0 {
+			if isReservable(qtyToBuy, price) {
 				ctx.Logger.Info("Trader placing spec buy order", "product_id", product.ProductID, "qty_cent", qtyToBuy, "price_cents", price)
 				acts = append(acts, actions.PlaceOrder{
 					ProductID:       product.ProductID,
@@ -103,7 +103,7 @@ func (s *TraderStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					LimitPriceCents: price,
 					TTLSeconds:      300,
 				})
-				capitalAvail -= qtyToBuy * price
+				capitalAvail -= notionalCents(qtyToBuy, price)
 			}
 		}
 	}

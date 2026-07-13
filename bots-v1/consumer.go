@@ -68,12 +68,12 @@ func (s *ConsumerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 
 			// Ensure we don't spend more than 20% of our available capital on a single order
-			maxSpend := capitalAvail / 5
-			if qtyToBuy*price > maxSpend {
-				qtyToBuy = maxSpend / price
+			maxSpendCents := capitalAvail / 5
+			if maxQty := maxQtyForBudget(maxSpendCents, price); qtyToBuy > maxQty {
+				qtyToBuy = maxQty
 			}
 
-			if qtyToBuy > 0 {
+			if isReservable(qtyToBuy, price) {
 				ctx.Logger.Info("Placing buy order for consumption", "product_id", product.ProductID, "qty_cent", qtyToBuy, "price_cents", price)
 				acts = append(acts, actions.PlaceOrder{
 					ProductID:       product.ProductID,
@@ -83,7 +83,7 @@ func (s *ConsumerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					TTLSeconds:      300,
 				})
 				// Deduct capital optimistically
-				capitalAvail -= qtyToBuy * price
+				capitalAvail -= notionalCents(qtyToBuy, price)
 			}
 		}
 	}

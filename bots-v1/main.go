@@ -75,50 +75,24 @@ func main() {
 	if *scale > 0 {
 		log.Printf("Scale mode active. Generating %d bots programmatically...", *scale)
 		roles := []models.AgentRole{"primary_producer", "transformer", "consumer", "trader"}
-		
-		// Setup sub-recipes to distribute amongst producers & transformers
-		producerRecipes := []string{"cultivo_trigo", "cultivo_maiz", "ordena", "cultivo_tomate", "germinado_rapido"}
-		transformerRecipeSets := [][]string{
-			{"molienda", "panaderia"},
-			{"nixtamalizado", "tortilleria"},
-			{"queseria"},
-			{"salseria"},
-		}
 
 		for i := 1; i <= *scale; i++ {
 			// Round-robin distribution of roles
 			role := roles[(i-1)%len(roles)]
 			username := fmt.Sprintf("scale_%s_%d", role, i)
-			
-			bot := BotRunnerConfig{
+
+			// Sin requested_capacities: el backend asigna a cada agente las
+			// capacidades de su rol desde infra/seed-config.json y ademas exige
+			// que recipe_id sea un UUID (rechaza las keys con 400). El fan-out
+			// lo acota max_recipes_per_tick.
+			botsToRun = append(botsToRun, BotRunnerConfig{
 				Username:            username,
 				Password:            "dev-password-123", // standard dev password
 				Role:                role,
 				PersistPath:         fmt.Sprintf("./sessions/%s.json", username),
 				AutoRegister:        true,
 				TickIntervalSeconds: 5,
-			}
-
-			// Distribute capacities
-			if role == "primary_producer" {
-				recipeIndex := (i - 1) % len(producerRecipes)
-				recipeID := producerRecipes[recipeIndex]
-				bot.RequestedCapacities = []YAMLRequestedCapacity{
-					{RecipeID: recipeID, Installations: 2},
-				}
-			} else if role == "transformer" {
-				setIndex := (i - 1) % len(transformerRecipeSets)
-				recipes := transformerRecipeSets[setIndex]
-				bot.RequestedCapacities = make([]YAMLRequestedCapacity, len(recipes))
-				for rIdx, recipeID := range recipes {
-					bot.RequestedCapacities[rIdx] = YAMLRequestedCapacity{
-						RecipeID:      recipeID,
-						Installations: 2,
-					}
-				}
-			}
-
-			botsToRun = append(botsToRun, bot)
+			})
 		}
 	} else {
 		botsToRun = globalCfg.Bots

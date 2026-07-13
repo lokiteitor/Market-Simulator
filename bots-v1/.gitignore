@@ -1,2 +1,5 @@
-.session*
+.sessions*
+sessions/*
 bots-v1-runner
+bots-v1
+.session_*
