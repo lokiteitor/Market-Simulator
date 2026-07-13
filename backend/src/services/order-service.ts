@@ -24,6 +24,7 @@ import { expiresAtFromTtl } from "../lib/simtime";
 import { publishBroadcast, publishToAgent, type Notification } from "../notifier";
 import { logger } from "../observability/logger";
 import { tradesExecutedTotal, tradeVolumeUnitsTotal } from "../observability/metrics";
+import { productLabels } from "../observability/product-names";
 import {
   orderRepository,
   isOpenStatus,
@@ -250,8 +251,9 @@ async function safePublish(what: string, fn: () => Promise<void>): Promise<void>
 async function publishTradeNotifications(executed: ExecutedTrade[]): Promise<void> {
   for (const e of executed) {
     // Métricas de negocio (post-commit: solo trades ya persistidos).
-    tradesExecutedTotal.inc({ product: e.trade.productId });
-    tradeVolumeUnitsTotal.inc({ product: e.trade.productId }, e.trade.qtyExecuted);
+    const labels = await productLabels(e.trade.productId);
+    tradesExecutedTotal.inc(labels);
+    tradeVolumeUnitsTotal.inc(labels, e.trade.qtyExecuted);
 
     const occurredAt = e.trade.executedAt.toISOString();
     const base = tradeToApi(e.trade);

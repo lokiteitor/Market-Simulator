@@ -35,6 +35,7 @@ import {
 import { publishBroadcast, publishToAgent, type Notification } from "../notifier";
 import { logger } from "../observability/logger";
 import { productionUnitsTotal } from "../observability/metrics";
+import { productLabels } from "../observability/product-names";
 import {
   transformationRepository as repo,
   type ProcessStatus,
@@ -212,7 +213,7 @@ async function publishMaterialized(results: MaterializedProcess[]): Promise<void
   for (const r of results) {
     // Métrica de negocio (post-commit: solo producción ya persistida).
     productionUnitsTotal.inc(
-      { product: r.payload.output_product_id },
+      await productLabels(r.payload.output_product_id),
       r.payload.qty_produced_cent,
     );
     const n: Notification = {

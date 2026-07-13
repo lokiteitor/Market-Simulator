@@ -48,13 +48,18 @@ export const workerJobsFailed = new Counter({
 // sweeper de transformaciones → worker:8002), ambos ya scrapeados por
 // Prometheus. Los agregados de estado (nº agentes, capital, libro) son gauges
 // scrape-time en observability/business-metrics.ts (solo en el proceso core).
+//
+// Convención de labels de producto (compartida con business-metrics.ts):
+//   product     → nombre legible ("Trigo"); es el que se agrupa en Grafana.
+//   product_id  → UUID, para cruzar con la DB.
+// Los contadores resuelven el nombre con observability/product-names.ts.
 // ---------------------------------------------------------------------------
 
 /** Trades ejecutados por el matching, por producto [M3]. */
 export const tradesExecutedTotal = new Counter({
   name: "trades_executed_total",
   help: "Trades ejecutados por el motor de matching",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
 });
 
@@ -65,7 +70,7 @@ export const tradesExecutedTotal = new Counter({
 export const tradeVolumeUnitsTotal = new Counter({
   name: "trade_volume_units_total",
   help: "Volumen negociado acumulado (qty_executed) por producto",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
 });
 
@@ -76,6 +81,6 @@ export const tradeVolumeUnitsTotal = new Counter({
 export const productionUnitsTotal = new Counter({
   name: "production_units_total",
   help: "Unidades producidas por transformaciones, por producto",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
 });

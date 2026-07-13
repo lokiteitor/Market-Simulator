@@ -62,7 +62,15 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
 // ---------------------------------------------------------------------------
 // Gauges. Cada uno resetea sus series y las re-puebla en cada scrape para no
 // dejar labels obsoletos (p. ej. un producto sin libro deja de emitir).
+//
+// Labels de producto: `product` = nombre legible (el que agrupa Grafana),
+// `product_id` = UUID. Misma convención que los contadores de metrics.ts, que
+// resuelven el nombre vía product-names.ts; aquí ya viene en el snapshot.
 // ---------------------------------------------------------------------------
+
+function productLabels(p: MarketProductView): { product: string; product_id: string } {
+  return { product: p.name, product_id: p.productId };
+}
 
 new Gauge({
   name: "market_active_agents",
@@ -115,15 +123,15 @@ new Gauge({
 new Gauge({
   name: "market_book_depth_units",
   help: "Profundidad del libro (Σ qty_pending) por producto y lado",
-  labelNames: ["product", "side"] as const,
+  labelNames: ["product", "product_id", "side"] as const,
   registers: [register],
   async collect() {
     const s = await fetchSnapshot();
     if (s === null) return;
     this.reset();
     for (const p of s.market) {
-      this.set({ product: p.productId, side: "buy" }, p.bidDepth);
-      this.set({ product: p.productId, side: "sell" }, p.askDepth);
+      this.set({ ...productLabels(p), side: "buy" }, p.bidDepth);
+      this.set({ ...productLabels(p), side: "sell" }, p.askDepth);
     }
   },
 });
@@ -131,14 +139,14 @@ new Gauge({
 new Gauge({
   name: "market_best_bid_cents",
   help: "Mejor bid vigente por producto (ausente si no hay compradores)",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
   async collect() {
     const s = await fetchSnapshot();
     if (s === null) return;
     this.reset();
     for (const p of s.market) {
-      if (p.bestBidCents !== null) this.set({ product: p.productId }, p.bestBidCents);
+      if (p.bestBidCents !== null) this.set(productLabels(p), p.bestBidCents);
     }
   },
 });
@@ -146,14 +154,14 @@ new Gauge({
 new Gauge({
   name: "market_best_ask_cents",
   help: "Mejor ask vigente por producto (ausente si no hay vendedores)",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
   async collect() {
     const s = await fetchSnapshot();
     if (s === null) return;
     this.reset();
     for (const p of s.market) {
-      if (p.bestAskCents !== null) this.set({ product: p.productId }, p.bestAskCents);
+      if (p.bestAskCents !== null) this.set(productLabels(p), p.bestAskCents);
     }
   },
 });
@@ -161,13 +169,13 @@ new Gauge({
 new Gauge({
   name: "market_inventory_units",
   help: "Inventario total del sistema (Σ disponible+reservado) por producto",
-  labelNames: ["product"] as const,
+  labelNames: ["product", "product_id"] as const,
   registers: [register],
   async collect() {
     const s = await fetchSnapshot();
     if (s === null) return;
     this.reset();
-    for (const p of s.market) this.set({ product: p.productId }, p.totalInventory);
+    for (const p of s.market) this.set(productLabels(p), p.totalInventory);
   },
 });
 
