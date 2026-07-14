@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { generateUUID } from "../../lib/uuid";
 import type {
   OrderSide,
   PlaceOrderRequest,
@@ -107,7 +108,7 @@ export function OrderFormModal({
     setQtyText("");
     setPriceText("");
     setTtlSimSeconds(DEFAULT_TTL_SIM_SECONDS);
-    setClientOrderId(crypto.randomUUID());
+    setClientOrderId(generateUUID());
     setFieldErrors({});
     setDomainError(null);
     setBanner(null);

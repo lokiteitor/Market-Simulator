@@ -17,6 +17,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { generateUUID } from "../../lib/uuid";
 import type {
   OrderSide,
   PlaceOrderRequest,
@@ -90,7 +91,7 @@ export function QuickOrderForm({ product, self, onPlaced }: QuickOrderFormProps)
   const [ttlSim, setTtlSim] = useState<number>(DEFAULT_TTL_SIM_SECONDS);
   /** Id de idempotencia: uno por "intención" de orden. */
   const [clientOrderId, setClientOrderId] = useState<string>(() =>
-    crypto.randomUUID(),
+    generateUUID(),
   );
   /** Mostrar errores locales solo tras el primer intento de envío. */
   const [showErrors, setShowErrors] = useState(false);
@@ -102,7 +103,7 @@ export function QuickOrderForm({ product, self, onPlaced }: QuickOrderFormProps)
     setShowErrors(false);
     setServerErrors({});
     setServerProblem(null);
-    setClientOrderId(crypto.randomUUID());
+    setClientOrderId(generateUUID());
   }, [productId]);
 
   const bankrupt = self !== null && self.agent.status === "bankrupt";
@@ -158,7 +159,7 @@ export function QuickOrderForm({ product, self, onPlaced }: QuickOrderFormProps)
         body: base + extra,
       });
       // Nueva intención para la próxima orden + limpiar feedback.
-      setClientOrderId(crypto.randomUUID());
+      setClientOrderId(generateUUID());
       setQtyInput("");
       setShowErrors(false);
       setServerErrors({});

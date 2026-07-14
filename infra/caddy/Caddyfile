@@ -6,7 +6,7 @@
     header {
         Access-Control-Allow-Origin *
         Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH"
-        Access-Control-Allow-Headers *
+        Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
         Access-Control-Expose-Headers *
         Access-Control-Max-Age 3600
         defer
