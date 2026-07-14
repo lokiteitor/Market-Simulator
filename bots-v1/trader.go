@@ -63,10 +63,6 @@ func (s *TraderStrategy) Initialize(ctx *strategy.Context) error {
 	s.basePrices = resolveBasePrices(ctx)
 	s.view = newMarketView(ctx, s.basePrices)
 	s.bank = loadBankWindow(ctx)
-	s.pricedPool = make([]string, 0, len(s.basePrices))
-	for id := range s.basePrices {
-		s.pricedPool = append(s.pricedPool, id)
-	}
 	s.p = traderParams{
 		halfSpread:    sampleRange(s.rnd, 0.015, 0.05),
 		universeSize:  sampleIntRange(s.rnd, 8, 16),
@@ -83,12 +79,50 @@ func (s *TraderStrategy) Initialize(ctx *strategy.Context) error {
 		restBudget:    int(marketCfgFloat(ctx.Config, "rest_budget_per_tick", 4)),
 		arbMargin:     sampleRange(s.rnd, 0.02, 0.06),
 	}
+	// Pool FIJO por bot (especialización): con el tape por suscripción solo
+	// llegan trades de productos declarados, así que en vez de muestrear el
+	// catálogo entero cada tick, cada trader se especializa en un subconjunto
+	// aleatorio ~3× su universo por tick (la población de traders cubre el
+	// catálogo completo entre todos), más el oro si hay ventanilla (arb).
+	full := make([]string, 0, len(s.basePrices))
+	for id := range s.basePrices {
+		full = append(full, id)
+	}
+	poolSize := s.p.universeSize * 3
+	if poolSize > len(full) {
+		poolSize = len(full)
+	}
+	s.pricedPool = make([]string, 0, poolSize+1)
+	for _, i := range s.rnd.Perm(len(full))[:poolSize] {
+		s.pricedPool = append(s.pricedPool, full[i])
+	}
+	if s.bank.enabled {
+		inPool := false
+		for _, id := range s.pricedPool {
+			if id == s.bank.goldProductID {
+				inPool = true
+				break
+			}
+		}
+		if !inPool {
+			s.pricedPool = append(s.pricedPool, s.bank.goldProductID)
+		}
+	}
 	ctx.Logger.Info("TraderStrategy initialized",
 		"priced_products", len(s.basePrices),
+		"tape_products", len(s.pricedPool),
 		"half_spread", s.p.halfSpread,
 		"universe_size", s.p.universeSize,
 	)
 	return nil
+}
+
+// SubscribedProducts implementa strategy.ProductSubscriber: el pool fijo del
+// market maker (su especialización) es exactamente el tape que necesita.
+func (s *TraderStrategy) SubscribedProducts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.pricedPool...)
 }
 
 func (s *TraderStrategy) Tick(ctx *strategy.Context) []actions.Action {

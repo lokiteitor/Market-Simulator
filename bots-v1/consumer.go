@@ -73,6 +73,14 @@ func (s *ConsumerStrategy) Initialize(ctx *strategy.Context) error {
 	return nil
 }
 
+// SubscribedProducts implementa strategy.ProductSubscriber: la demanda final
+// solo necesita el tape de los productos de consumo final que compra.
+func (s *ConsumerStrategy) SubscribedProducts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.finalProducts...)
+}
+
 func (s *ConsumerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	s.mu.Lock()
 	defer s.mu.Unlock()

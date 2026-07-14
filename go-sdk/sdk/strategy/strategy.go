@@ -69,3 +69,13 @@ type Strategy interface {
 	Tick(ctx *Context) []actions.Action
 	HandleEvent(ctx *Context, e events.Event) []actions.Action
 }
+
+// ProductSubscriber lo implementan las estrategias que acotan su interés en
+// el tape (trade_printed): el engine, tras Initialize, suscribe el WebSocket
+// SOLO a esos productos (fan-out selectivo, contrato §12) — con miles de bots
+// esto reduce órdenes de magnitud el tráfico push del servidor. No
+// implementar la interfaz (o devolver nil/vacío) suscribe al comodín "*"
+// (todos los productos, el comportamiento histórico).
+type ProductSubscriber interface {
+	SubscribedProducts() []string
+}

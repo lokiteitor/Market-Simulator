@@ -125,7 +125,7 @@ El Worker comparte el código de dominio con el Core (mismo monorepo) pero arran
 Versión 18+ por `uuidv7()` nativo. Todas las decisiones de modelado y los índices están en `schema.sql` y `documentacion_base_datos.md`. El Core y el Worker se conectan al mismo cluster.
 
 **Redis.**
-Una sola instancia con dos bases lógicas (ADR-009): db `0` para el pub/sub de notificaciones WebSocket (canales `agent:{agent_id}` para mensajes personales y un canal global para broadcasts) y db `1` para BullMQ.
+Una sola instancia con dos bases lógicas (ADR-009): db `0` para el pub/sub de notificaciones WebSocket (canales `agent:{agent_id}` para mensajes personales, `product:{product_id}` para el tape por producto —fan-out selectivo de `trade_printed`, suscripción declarada por el cliente— y un canal global solo para broadcasts raros) y db `1` para BullMQ.
 
 **Prometheus + Grafana.**
 El Core y el Worker exponen `/metrics` en endpoints internos no proxeados por Caddy. Prometheus hace scraping. Grafana se conecta a Prometheus y queda accesible para el operador.

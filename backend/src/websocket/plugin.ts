@@ -11,12 +11,16 @@
  * así el cliente WS (que no puede leer respuestas HTTP del handshake en
  * browsers) siempre observa un close code distinguible.
  *
- * Canal unidireccional servidor→cliente: los mensajes entrantes del cliente
- * se ignoran (los ping/pong del protocolo los maneja `ws` automáticamente).
+ * Eventos: servidor→cliente. El ÚNICO mensaje cliente→servidor aceptado es
+ * `{"type":"subscribe_products","product_ids":[...]}` (fan-out selectivo del
+ * tape: declara qué `trade_printed` quiere recibir el socket; `"*"` = todos).
+ * Sin suscripción declarada no se recibe tape. Cualquier otro mensaje entrante
+ * se ignora (los ping/pong del protocolo los maneja `ws` automáticamente).
  * Heartbeat: ping del servidor cada 30 s; sin pong al siguiente tick ⇒
  * terminate (openapi: "el servidor envía heartbeats periódicos").
  */
 import fastifyWebsocket from "@fastify/websocket";
+import { z } from "zod";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type {} from "@fastify/jwt"; // module augmentation: app.jwt (lo registra el plugin auth [M1])
 import { logger } from "../observability/logger";
@@ -28,6 +32,31 @@ export const CLOSE_UNAUTHORIZED = 4401;
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+/**
+ * Único mensaje cliente→servidor del contrato §12: suscripción declarativa al
+ * tape. `product_ids` reemplaza por completo la suscripción anterior; el
+ * elemento `"*"` (solo o combinado) equivale al firehose completo. El límite
+ * de 256 ids cubre el catálogo entero (155 productos) con margen y acota el
+ * costo de un cliente malicioso.
+ */
+const subscribeProductsSchema = z.object({
+  type: z.literal("subscribe_products"),
+  product_ids: z.array(z.string().min(1).max(128)).max(256),
+});
+
+/** Parsea un frame entrante; null si no es un subscribe_products válido. */
+export function parseSubscribeProducts(raw: unknown): string[] | null {
+  if (typeof raw !== "string" && !(raw instanceof Buffer)) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
+  } catch {
+    return null;
+  }
+  const parsed = subscribeProductsSchema.safeParse(json);
+  return parsed.success ? parsed.data.product_ids : null;
+}
+
 /** Close code 1011 (unexpected condition) para fallos al registrar en el hub. */
 const CLOSE_INTERNAL_ERROR = 1011;
 
@@ -36,7 +65,7 @@ const CLOSE_INTERNAL_ERROR = 1011;
  * declaraciones de tipos en este árbol de dependencias).
  */
 interface WsSocket extends HubSocket {
-  on(event: "message", listener: () => void): unknown;
+  on(event: "message", listener: (data: unknown) => void): unknown;
   on(event: "pong", listener: () => void): unknown;
   on(event: "close", listener: () => void): unknown;
   on(event: "error", listener: (err: Error) => void): unknown;
@@ -95,9 +124,15 @@ export async function registerWebsocketRoutes(app: FastifyInstance): Promise<voi
       return;
     }
 
-    // Canal unidireccional: se ignoran los mensajes entrantes del cliente.
-    socket.on("message", () => {
-      /* ignorado a propósito (contrato §12) */
+    // Único mensaje cliente→servidor aceptado: subscribe_products (fan-out
+    // selectivo del tape). Todo lo demás se ignora (contrato §12).
+    socket.on("message", (data) => {
+      const productIds = parseSubscribeProducts(data);
+      if (productIds === null) return;
+      const subscription = productIds.includes("*") ? ("all" as const) : productIds;
+      wsHub.setProductSubscriptions(socket, subscription).catch((err: unknown) => {
+        request.log.warn({ err, agentId }, "ws: fallo aplicando subscribe_products");
+      });
     });
 
     // Heartbeat servidor→cliente.

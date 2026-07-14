@@ -27,6 +27,7 @@ type PrimaryProducerStrategy struct {
 	maxRecipesPerTick int
 	p                 producerParams
 	recipeFilter      func(recipeID string) bool
+	subscribed        []string
 }
 
 type producerParams struct {
@@ -68,8 +69,30 @@ func (s *PrimaryProducerStrategy) Initialize(ctx *strategy.Context) error {
 		liqCap:        sampleRange(s.rnd, 1.2, 1.5),
 		restBudget:    int(marketCfgFloat(ctx.Config, "rest_budget_per_tick", 4)),
 	}
+	// Suscripción de tape (fan-out selectivo): solo los outputs de las
+	// recetas primarias que este bot puede ejecutar, más el oro si hay
+	// ventanilla (su precio de mercado decide vender al banco o al libro).
+	seen := make(map[string]bool)
+	for _, capSt := range ctx.State.Capacities() {
+		recipe, ok := ctx.State.Recipe(capSt.RecipeID)
+		if !ok || len(recipe.Inputs) != 0 {
+			continue
+		}
+		if s.recipeFilter != nil && !s.recipeFilter(recipe.RecipeID) {
+			continue
+		}
+		seen[recipe.OutputProductID] = true
+	}
+	if s.bank.enabled {
+		seen[s.bank.goldProductID] = true
+	}
+	s.subscribed = make([]string, 0, len(seen))
+	for id := range seen {
+		s.subscribed = append(s.subscribed, id)
+	}
 	ctx.Logger.Info("PrimaryProducerStrategy initialized",
 		"priced_products", len(s.basePrices),
+		"tape_products", len(s.subscribed),
 		"sim_time_factor", s.simTimeFactor,
 		"max_recipes_per_tick", s.maxRecipesPerTick,
 		"target_margin", s.p.targetMargin,
@@ -203,6 +226,14 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	}
 
 	return acts
+}
+
+// SubscribedProducts implementa strategy.ProductSubscriber: el engine
+// suscribe el WS solo al tape de estos productos.
+func (s *PrimaryProducerStrategy) SubscribedProducts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.subscribed...)
 }
 
 func (s *PrimaryProducerStrategy) HandleEvent(ctx *strategy.Context, e events.Event) []actions.Action {

@@ -11,7 +11,8 @@
  *   mapa explícito (["self"], ["orders"], ["market", productId],
  *   ["processes"], ["history"]).
  * - Cierre limpio (sin reintentos fantasma) al perder la autenticación o
- *   desmontar. El canal es unidireccional servidor→cliente.
+ *   desmontar. Único mensaje cliente→servidor: `subscribe_products` en cada
+ *   onopen (el tape `trade_printed` es por suscripción; la SPA usa `"*"`).
  */
 
 import {
@@ -263,6 +264,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       ws.onopen = () => {
         if (disposed) return;
         attempts = 0;
+        // Tape por suscripción (fan-out selectivo, contrato §12): sin esta
+        // declaración el servidor no entrega trade_printed. La SPA usa el
+        // comodín (pocas conexiones, y las páginas de mercado invalidan
+        // queries por producto); debe re-enviarse en cada (re)conexión.
+        try {
+          ws.send(JSON.stringify({ type: "subscribe_products", product_ids: ["*"] }));
+        } catch {
+          // Socket cerrado entre onopen y send: la reconexión lo reintenta.
+        }
         setConnected(true);
         if (wasConnected) {
           // Resync tras reconexión: el estado autoritativo pudo cambiar

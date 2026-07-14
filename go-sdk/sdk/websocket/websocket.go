@@ -40,6 +40,14 @@ type wsEnvelope struct {
 	Payload    json.RawMessage `json:"payload"`
 }
 
+// subscribeProductsMsg es el ÚNICO mensaje cliente→servidor del canal
+// (contrato §12): declara los productos cuyo trade_printed quiere recibir
+// esta conexión. Reemplaza la declaración anterior; "*" = todos.
+type subscribeProductsMsg struct {
+	Type       string   `json:"type"`
+	ProductIDs []string `json:"product_ids"`
+}
+
 type Client struct {
 	sync.Mutex
 	wsURL         string
@@ -52,6 +60,10 @@ type Client struct {
 	cancel        context.CancelFunc
 	running       bool
 	backoff       *util.Backoff
+	// Suscripción de tape vigente (fan-out selectivo): se re-envía tras cada
+	// (re)conexión porque vive en la conexión, no en el agente.
+	products    []string
+	productsSet bool
 }
 
 func NewClient(wsURL string, tokenProvider TokenProvider, logger *slog.Logger) *Client {
@@ -76,6 +88,37 @@ func NewClient(wsURL string, tokenProvider TokenProvider, logger *slog.Logger) *
 
 func (c *Client) Events() <-chan events.Event {
 	return c.eventChan
+}
+
+// SetProductSubscriptions declara los productos cuyo trade_printed quiere
+// recibir el cliente ("*" = todos). El servidor NO entrega tape sin
+// suscripción declarada. Puede llamarse antes de Start o en caliente; el
+// cliente la re-envía automáticamente tras cada reconexión.
+func (c *Client) SetProductSubscriptions(productIDs []string) {
+	c.Lock()
+	c.products = append([]string(nil), productIDs...)
+	c.productsSet = true
+	conn := c.conn
+	c.Unlock()
+	if conn != nil {
+		if err := c.sendProductSubscriptions(conn); err != nil {
+			c.logger.Warn("websocket failed to send product subscriptions", "error", err)
+		}
+	}
+}
+
+// sendProductSubscriptions escribe la suscripción vigente en la conexión.
+// Toma el lock para serializar los frames de datos (gorilla admite un solo
+// escritor concurrente; los WriteControl del pong van aparte y son seguros).
+func (c *Client) sendProductSubscriptions(conn *websocket.Conn) error {
+	c.Lock()
+	defer c.Unlock()
+	if !c.productsSet {
+		return nil
+	}
+	msg := subscribeProductsMsg{Type: "subscribe_products", ProductIDs: c.products}
+	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	return conn.WriteJSON(msg)
 }
 
 func (c *Client) Start(ctx context.Context) error {
@@ -210,6 +253,12 @@ func (c *Client) connectionLoop(ctx context.Context) {
 
 		attempt = 0 // reset backoff on successful connection
 		c.logger.Info("websocket connected successfully")
+
+		// Re-declarar la suscripción de tape: vive en la conexión y el
+		// servidor no entrega trade_printed hasta recibirla.
+		if err := c.sendProductSubscriptions(conn); err != nil {
+			c.logger.Warn("websocket failed to send product subscriptions", "error", err)
+		}
 
 		// Dispatch connected event to channel
 		select {

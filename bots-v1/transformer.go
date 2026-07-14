@@ -23,6 +23,7 @@ type TransformerStrategy struct {
 	simTimeFactor     float64
 	maxRecipesPerTick int
 	p                 transformerParams
+	subscribed        []string
 }
 
 type transformerParams struct {
@@ -71,8 +72,26 @@ func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 		capitalDen:    int64(sampleIntRange(s.rnd, 3, 6)),
 		restBudget:    int(marketCfgFloat(ctx.Config, "rest_budget_per_tick", 4)),
 	}
+	// Suscripción de tape (fan-out selectivo): insumos y outputs de las
+	// recetas de sus instalaciones — todo lo que compra y todo lo que vende.
+	seen := make(map[string]bool)
+	for _, capSt := range ctx.State.Capacities() {
+		recipe, ok := ctx.State.Recipe(capSt.RecipeID)
+		if !ok {
+			continue
+		}
+		for _, input := range recipe.Inputs {
+			seen[input.ProductID] = true
+		}
+		seen[recipe.OutputProductID] = true
+	}
+	s.subscribed = make([]string, 0, len(seen))
+	for id := range seen {
+		s.subscribed = append(s.subscribed, id)
+	}
 	ctx.Logger.Info("TransformerStrategy initialized",
 		"priced_products", len(s.basePrices),
+		"tape_products", len(s.subscribed),
 		"sim_time_factor", s.simTimeFactor,
 		"max_recipes_per_tick", s.maxRecipesPerTick,
 		"cross_prob", s.p.crossProb,
@@ -285,6 +304,14 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	}
 
 	return acts
+}
+
+// SubscribedProducts implementa strategy.ProductSubscriber: el engine
+// suscribe el WS solo al tape de estos productos.
+func (s *TransformerStrategy) SubscribedProducts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.subscribed...)
 }
 
 func (s *TransformerStrategy) HandleEvent(ctx *strategy.Context, e events.Event) []actions.Action {

@@ -153,6 +153,10 @@ Agente ──< Proceso transformación >── Receta
 - `agent_joined` (broadcast): nuevo agente registrado.
 - `agent_bankrupt` (broadcast): agente entró en quiebra.
 - `bankruptcy_notice` (personal): notificación al agente de que ha quebrado y debe apagarse.
+- `trade_printed` (por suscripción): tape en tiempo real. Se entrega solo a las
+  conexiones que declararon interés en el producto vía el mensaje
+  `subscribe_products` del canal WS (o en todos con `"*"`); el tape completo
+  siempre está disponible vía `GET /market/{id}/trades`.
 
 ---
 

@@ -1807,12 +1807,20 @@ security:
 x-websocket-channel:
   url: wss://{host}/v1/ws
   description: |
-    Canal unidireccional servidor→cliente para notificaciones push. El cliente
-    se conecta con su access token JWT (header `Authorization` o, donde el
-    cliente WS no permita headers, query `?access_token=...`). El servidor
-    valida el token al handshake y suscribe al canal personal del agente
-    (`agent:{agent_id}`) y al canal global de broadcasts. Internamente el
-    transporte usa Redis pub/sub.
+    Canal de notificaciones push servidor→cliente. El cliente se conecta con
+    su access token JWT (header `Authorization` o, donde el cliente WS no
+    permita headers, query `?access_token=...`). El servidor valida el token
+    al handshake y suscribe al canal personal del agente (`agent:{agent_id}`)
+    y al canal global de broadcasts. Internamente el transporte usa Redis
+    pub/sub.
+
+    **Tape por suscripción (fan-out selectivo):** `trade_printed` NO se
+    entrega por defecto. El cliente declara qué productos le interesan con el
+    único mensaje cliente→servidor del canal (ver `client_messages`); recibe
+    entonces el tape solo de esos productos, o de todos si se suscribe con el
+    comodín `"*"`. Cada mensaje de suscripción REEMPLAZA al anterior (lista
+    vacía = desuscribirse del tape) y debe re-enviarse tras cada reconexión:
+    la suscripción vive en la conexión, no en el agente.
 
     El servidor envía heartbeats periódicos (`ping`/`pong`) para detectar
     desconexiones. La desconexión arbitraria del cliente no afecta órdenes
@@ -1831,15 +1839,35 @@ x-websocket-channel:
           - transformation_completed  # personal
           - bankruptcy_notice    # personal
           - agent_bankrupt       # broadcast
-          - trade_printed        # broadcast: cada trade ejecutado (payload = Trade)
+          - trade_printed        # por suscripción: cada trade de un producto suscrito (payload = Trade)
           - gold_converted       # personal: conversión en la ventanilla del banco (payload = GoldConversion)
       occurred_at: { type: string, format: date-time }
       payload:
         type: object
         description: Payload tipado por `type`. Los esquemas concretos se documentan en la capa de aplicación.
         additionalProperties: true
+  client_messages:
+    subscribe_products:
+      description: |
+        Único mensaje cliente→servidor aceptado. Declara (reemplazando la
+        declaración anterior de esta conexión) los productos cuyo
+        `trade_printed` quiere recibir el socket. `"*"` como elemento
+        equivale a suscribirse a todos los productos (firehose; pensado para
+        la SPA/paneles, no para el enjambre). Límites: máx. 256 ids de máx.
+        128 caracteres; los mensajes inválidos se ignoran en silencio.
+      example: { type: subscribe_products, product_ids: [trigo, harina] }
+      schema:
+        type: object
+        required: [type, product_ids]
+        properties:
+          type: { type: string, enum: [subscribe_products] }
+          product_ids:
+            type: array
+            maxItems: 256
+            items: { type: string, minLength: 1, maxLength: 128 }
   notes: |
-    El canal WS **no acepta comandos** del cliente; cualquier acción se hace vía REST.
+    Fuera de `subscribe_products`, el canal WS **no acepta comandos** del
+    cliente; cualquier acción se hace vía REST.
     El cliente debería siempre poder reconstruir todo el estado vía
     `GET /agents/me` tras una reconexión, sin depender de haber recibido las
-    notificaciones.
+    notificaciones. El tape perdido se recupera vía `GET /market/{id}/trades`.

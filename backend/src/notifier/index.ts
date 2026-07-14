@@ -1,8 +1,11 @@
 // Notificador Redis pub/sub (CONTRATOS_IMPLEMENTACION.md §9) — [F5 contracts]
 //
 // Publica notificaciones a canales Redis (DB 0, config.redisPubSubUrl):
-//   - `agent:{agentId}`  → notificaciones personales
-//   - `broadcast`        → notificaciones globales
+//   - `agent:{agentId}`    → notificaciones personales
+//   - `product:{productId}`→ tape por producto (trade_printed); los clientes
+//                            se suscriben solo a los productos que operan
+//                            (fan-out selectivo) o al patrón `product:*`
+//   - `broadcast`          → notificaciones globales (solo eventos raros)
 //
 // El mensaje WS entregado al cliente por el hub [M7] es el JSON `Notification`
 // tal cual se publica aquí. Los services publican SOLO post-commit (regla §0).
@@ -20,9 +23,10 @@ export type NotificationType =
   | "transformation_completed"
   | "agent_bankrupt"
   | "bankruptcy_notice"
-  // Broadcast por cada trade ejecutado (payload = objeto Trade del openapi).
-  // Los trades ya son públicos vía GET /market/{id}/trades; esto es el tape
-  // en tiempo real para clientes event-driven.
+  // Tape por producto (canal `product:{id}`) por cada trade ejecutado
+  // (payload = objeto Trade del openapi). Los trades ya son públicos vía
+  // GET /market/{id}/trades; esto es el tape en tiempo real para clientes
+  // event-driven, entregado SOLO a quien se suscribió al producto.
   | "trade_printed"
   // Personal: conversión ejecutada en la ventanilla del banco (patrón oro).
   // Payload = objeto GoldConversion del openapi.
@@ -39,6 +43,14 @@ export interface Notification {
 export function agentChannel(agentId: string): string {
   return `agent:${agentId}`;
 }
+
+/** Canal del tape de un producto (trade_printed). */
+export function productChannel(productId: string): string {
+  return `product:${productId}`;
+}
+
+/** Patrón pub/sub que cubre el tape de TODOS los productos (firehose). */
+export const PRODUCT_CHANNEL_PATTERN = "product:*";
 
 /** Canal de broadcast global. */
 export const BROADCAST_CHANNEL = "broadcast";
@@ -61,6 +73,11 @@ function getPublisher(): Redis {
 /** Publica una notificación personal en el canal `agent:{agentId}`. */
 export async function publishToAgent(agentId: string, n: Notification): Promise<void> {
   await getPublisher().publish(agentChannel(agentId), JSON.stringify(n));
+}
+
+/** Publica una notificación del tape en el canal `product:{productId}`. */
+export async function publishToProduct(productId: string, n: Notification): Promise<void> {
+  await getPublisher().publish(productChannel(productId), JSON.stringify(n));
 }
 
 /** Publica una notificación global en el canal `broadcast`. */

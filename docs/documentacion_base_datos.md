@@ -39,7 +39,7 @@ La arquitectura de datos del sistema se compone de:
 #### Redis
 
 - **Motor**: Redis (versión por definir en despliegue)
-- **Uso**: transporte de mensajes para notificaciones push WebSocket hacia los agentes (`order_executed`, `order_expired`, `order_cancelled`, `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`, `trade_printed`, `gold_converted`). No persiste estado de dominio.
+- **Uso**: transporte de mensajes para notificaciones push WebSocket hacia los agentes (`order_executed`, `order_expired`, `order_cancelled`, `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`, `trade_printed`, `gold_converted`). Canales: `agent:{id}` (personales), `product:{id}` (tape por producto, fan-out selectivo de `trade_printed`; el hub se suscribe al canal con el primer socket interesado y al patrón `product:*` para los suscriptores firehose) y `broadcast` (solo eventos raros como `agent_bankrupt`). No persiste estado de dominio.
 - **Colecciones / Índices clave**:
   - Canales pub/sub por agente para notificaciones personales
   - Canal pub/sub global para broadcasts

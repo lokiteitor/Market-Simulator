@@ -210,7 +210,18 @@ func (e *Engine) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize strategy: %w", err)
 	}
 
-	// 5. Connect WebSocket
+	// 5. Declarar la suscripción de tape ANTES de conectar el WS (fan-out
+	// selectivo): el servidor solo entrega trade_printed de estos productos.
+	tapeProducts := []string{"*"}
+	if ps, ok := e.strategy.(strategy.ProductSubscriber); ok {
+		if ids := ps.SubscribedProducts(); len(ids) > 0 {
+			tapeProducts = ids
+		}
+	}
+	e.ws.SetProductSubscriptions(tapeProducts)
+	e.logger.Info("tape subscription declared", "products", len(tapeProducts))
+
+	// 6. Connect WebSocket
 	e.logger.Info("starting websocket connection...")
 	if err := e.ws.Start(e.ctx); err != nil {
 		e.Lock()
@@ -219,10 +230,10 @@ func (e *Engine) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start websocket client: %w", err)
 	}
 
-	// 6. Start Scheduler
+	// 7. Start Scheduler
 	e.scheduler.Start(e.ctx)
 
-	// 7. Schedule periodic ticks
+	// 8. Schedule periodic ticks
 	interval := time.Duration(e.config.Bot.TickIntervalSeconds) * time.Second
 	if interval <= 0 {
 		interval = 5 * time.Second
@@ -239,7 +250,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.executeActions(ctx, actionsList)
 	})
 
-	// 8. Start background event dispatcher
+	// 9. Start background event dispatcher
 	e.wg.Add(1)
 	go e.eventDispatcher()
 

@@ -21,7 +21,7 @@ import {
 import { withProductLock } from "../lib/locks";
 import { notionalCents, reserveForQty } from "../lib/money";
 import { expiresAtFromTtl } from "../lib/simtime";
-import { publishBroadcast, publishToAgent, type Notification } from "../notifier";
+import { publishBroadcast, publishToAgent, publishToProduct, type Notification } from "../notifier";
 import { logger } from "../observability/logger";
 import { tradesExecutedTotal, tradeVolumeUnitsTotal } from "../observability/metrics";
 import { productLabels } from "../observability/product-names";
@@ -274,10 +274,16 @@ async function publishTradeNotifications(executed: ExecutedTrade[]): Promise<voi
     await safePublish("order_executed→seller", () =>
       publishToAgent(e.trade.sellerAgentId, toSeller),
     );
-    // Tape público: los trades ya son visibles vía GET /market/{id}/trades con
-    // ambas identidades, así que el broadcast no revela nada nuevo.
-    await safePublish("trade_printed broadcast", () =>
-      publishBroadcast({ type: "trade_printed", occurred_at: occurredAt, payload: base }),
+    // Tape público POR PRODUCTO (fan-out selectivo): solo lo reciben los
+    // clientes suscritos a este producto (o al firehose `product:*`). Los
+    // trades ya son visibles vía GET /market/{id}/trades con ambas
+    // identidades, así que el canal no revela nada nuevo.
+    await safePublish("trade_printed product", () =>
+      publishToProduct(e.trade.productId, {
+        type: "trade_printed",
+        occurred_at: occurredAt,
+        payload: base,
+      }),
     );
   }
 }
