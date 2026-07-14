@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -250,7 +251,12 @@ func main() {
 
 			logInfo("[%s] Launching bot (%d/%d)...", username, botIdx+1, len(botsToRun))
 			if err := e.Start(ctx); err != nil {
-				log.Printf("[%s] Bot failed to start: %v", username, err)
+				// El shutdown puede cancelar el contexto con el arranque en vuelo.
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					logInfo("[%s] Start aborted by shutdown", username)
+				} else {
+					log.Printf("[%s] Bot failed to start: %v", username, err)
+				}
 			}
 		}(eng, botCfg.Username, idx)
 	}
@@ -410,7 +416,13 @@ func runWithRotation(
 
 		logInfo("[%s] Starting active period of %v", botCfg.Username, activeDuration)
 		if err := eng.Start(botCtx); err != nil {
-			log.Printf("[%s] Failed to start: %v", botCfg.Username, err)
+			// El fin del turno o el shutdown pueden cancelar el contexto
+			// con el arranque (auth/catálogo/snapshot) en vuelo.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				logInfo("[%s] Start aborted by shutdown or end of active period", botCfg.Username)
+			} else {
+				log.Printf("[%s] Failed to start: %v", botCfg.Username, err)
+			}
 			return
 		}
 

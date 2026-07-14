@@ -213,3 +213,51 @@ func TestSQLiteSessionPersistenceAndMigration(t *testing.T) {
 	}
 }
 
+// fakeClientWithSnapshot extiende fakeClient con un snapshot válido, que
+// PerformAuth necesita tras un login para resolver el agent_id.
+type fakeClientWithSnapshot struct {
+	fakeClient
+}
+
+func (f *fakeClientWithSnapshot) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models.AgentSnapshot, error) {
+	return &models.AgentSnapshot{
+		Agent: models.AgentPublic{AgentID: "agent-snap-1", Role: models.AgentRole("consumer")},
+	}, nil
+}
+
+// Con -no-persist (persistPath == "") las sesiones viven en RAM compartida del
+// proceso: la re-activación de un bot (rotación del swarm) debe reutilizar la
+// cadena de refresh tokens en lugar de pagar otro login con argon2.
+func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
+	client := &fakeClientWithSnapshot{}
+	username := "bot_mem_" + t.Name() // único: memorySessions es global al proceso
+
+	a1 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
+	a1.SetRefresher(client.refresh)
+	if err := a1.PerformAuth(context.Background(), client, false, nil); err != nil {
+		t.Fatalf("PerformAuth (primera activación): %v", err)
+	}
+	if client.logins != 1 {
+		t.Fatalf("got %d logins en la primera activación, want 1", client.logins)
+	}
+
+	// Segunda activación: AuthManager nuevo, como lo crea la rotación del swarm.
+	a2 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
+	a2.SetRefresher(client.refresh)
+	if err := a2.PerformAuth(context.Background(), client, false, nil); err != nil {
+		t.Fatalf("PerformAuth (segunda activación): %v", err)
+	}
+	if client.logins != 1 {
+		t.Fatalf("got %d logins tras la re-activación, want 1 (debió refrescar, no re-loguear)", client.logins)
+	}
+	if got := a2.GetAgentID(); got != "agent-snap-1" {
+		t.Fatalf("agentID %q tras cargar la sesión de RAM, want agent-snap-1", got)
+	}
+
+	if err := a2.ClearSession(); err != nil {
+		t.Fatalf("ClearSession: %v", err)
+	}
+	if _, ok := memorySessions.Load(username); ok {
+		t.Fatal("ClearSession no eliminó la sesión en RAM")
+	}
+}

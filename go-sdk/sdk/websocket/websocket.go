@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -156,6 +157,11 @@ func (c *Client) connectionLoop(ctx context.Context) {
 		// Get access token for this connection attempt
 		token, err := c.tokenProvider.GetAccessToken(ctx)
 		if err != nil {
+			// Durante el apagado el contexto muere con la request en vuelo.
+			if ctx.Err() != nil {
+				c.logger.Debug("websocket token request interrupted by shutdown", "error", err)
+				return
+			}
 			c.logger.Error("websocket failed to get access token for connection", "error", err)
 			// Wait and retry
 			attempt++
@@ -181,6 +187,11 @@ func (c *Client) connectionLoop(ctx context.Context) {
 
 		conn, resp, err := dialer.DialContext(ctx, u.String(), nil)
 		if err != nil {
+			// Durante el apagado el contexto muere con el dial en vuelo.
+			if ctx.Err() != nil {
+				c.logger.Debug("websocket dial interrupted by shutdown", "error", err)
+				return
+			}
 			if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 				c.logger.Warn("websocket handshake rejected as unauthorized, discarding cached access token")
 				c.invalidateToken()
@@ -250,7 +261,13 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			c.logger.Error("websocket read error", "error", err)
+			// Stop() cancela el contexto y cierra la conexión: ese despertar
+			// del ReadMessage es un apagado normal, no un error de red.
+			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+				c.logger.Debug("websocket read interrupted by shutdown", "error", err)
+			} else {
+				c.logger.Error("websocket read error", "error", err)
+			}
 			return err
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(readDeadline))

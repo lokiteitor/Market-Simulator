@@ -42,6 +42,18 @@ export const workerJobsFailed = new Counter({
   registers: [register],
 });
 
+/**
+ * Requests al cache de lecturas públicas (lib/read-cache), por clase de clave
+ * y desenlace (hit | miss | error). El hit-rate por clase es la señal de que
+ * el cache está absorbiendo el read-side de los bots.
+ */
+export const readCacheRequestsTotal = new Counter({
+  name: "read_cache_requests_total",
+  help: "Consultas al read-cache de Redis por clase de clave y desenlace",
+  labelNames: ["key_class", "outcome"] as const,
+  registers: [register],
+});
+
 // ---------------------------------------------------------------------------
 // Métricas de NEGOCIO (event-driven). Se incrementan donde ocurre el evento;
 // las series aparecen en el proceso que las emite (matching → core:8001;

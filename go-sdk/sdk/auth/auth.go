@@ -43,6 +43,14 @@ type SessionData struct {
 	RefreshExpiresAt time.Time        `json:"refresh_expires_at"`
 }
 
+// memorySessions conserva las sesiones en RAM cuando no hay persistencia en
+// disco (persistPath == ""), compartidas entre todos los AuthManager del
+// proceso: las re-activaciones de un bot (rotación del swarm con -no-persist)
+// reutilizan la cadena de refresh tokens en vez de pagar un login con argon2
+// en el servidor por cada activación. Coste: ~1 KiB por bot que haya estado
+// activo alguna vez en la vida del proceso.
+var memorySessions sync.Map // username → SessionData
+
 type AuthManager struct {
 	sync.RWMutex
 	username     string
@@ -280,7 +288,20 @@ func resolveSQLitePath(persistPath string) string {
 
 func (a *AuthManager) loadSessionLocked() bool {
 	if a.persistPath == "" {
-		return false
+		v, ok := memorySessions.Load(a.username)
+		if !ok {
+			return false
+		}
+		data := v.(SessionData)
+		a.password = data.Password
+		a.role = data.Role
+		a.agentID = data.AgentID
+		a.accessToken = data.AccessToken
+		a.refreshToken = data.RefreshToken
+		a.accessExp = data.AccessExpiresAt
+		a.refreshExp = data.RefreshExpiresAt
+		a.tokenTTL = time.Until(data.AccessExpiresAt)
+		return true
 	}
 
 	dbPath := resolveSQLitePath(a.persistPath)
@@ -364,6 +385,16 @@ func (a *AuthManager) loadSessionLocked() bool {
 
 func (a *AuthManager) saveSessionLocked() error {
 	if a.persistPath == "" {
+		memorySessions.Store(a.username, SessionData{
+			Username:         a.username,
+			Password:         a.password,
+			Role:             a.role,
+			AgentID:          a.agentID,
+			AccessToken:      a.accessToken,
+			RefreshToken:     a.refreshToken,
+			AccessExpiresAt:  a.accessExp,
+			RefreshExpiresAt: a.refreshExp,
+		})
 		return nil
 	}
 	dbPath := resolveSQLitePath(a.persistPath)
@@ -411,15 +442,16 @@ func (a *AuthManager) ClearSession() error {
 	a.accessExp = time.Time{}
 	a.refreshExp = time.Time{}
 	a.tokenTTL = 0
-	if a.persistPath != "" {
-		dbPath := resolveSQLitePath(a.persistPath)
-		db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000&_journal_mode=WAL")
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-		_, err = db.Exec(`DELETE FROM sessions WHERE username = ?`, a.username)
+	if a.persistPath == "" {
+		memorySessions.Delete(a.username)
+		return nil
+	}
+	dbPath := resolveSQLitePath(a.persistPath)
+	db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000&_journal_mode=WAL")
+	if err != nil {
 		return err
 	}
-	return nil
+	defer db.Close()
+	_, err = db.Exec(`DELETE FROM sessions WHERE username = ?`, a.username)
+	return err
 }

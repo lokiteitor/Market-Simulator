@@ -11,9 +11,15 @@
  * integer, minimum 1).
  */
 import type { ProductRow, RecipeInputRow } from "../db/schema";
+import { cachedJson } from "../lib/read-cache";
 import { intervalToSimSeconds, simSecondsToRealMs } from "../lib/simtime";
 import type { ProductDto, RecipeDto, RecipeInputDto } from "../schemas/catalog";
 import { catalogService, type RecipeWithInputs } from "../services/catalog-service";
+
+// El catálogo es estático durante la corrida (solo lo escribe el seed, que es
+// idempotente y puede re-ejecutarse con el core vivo): TTL de 60 s en vez de
+// infinito para que un re-seed se refleje solo, sin invalidación explícita.
+const CATALOG_TTL_MS = 60_000;
 
 /** INTERVAL simulado de la DB → segundos REALES enteros (openapi `duration_seconds`). */
 export function recipeDurationRealSeconds(durationInterval: string): number {
@@ -54,8 +60,10 @@ export function toRecipeDto(row: RecipeWithInputs): RecipeDto {
 
 export const catalogController = {
   async listProducts(): Promise<ProductDto[]> {
-    const rows = await catalogService.listProducts();
-    return rows.map(toProductDto);
+    return cachedJson("products", "cache:catalog:products", CATALOG_TTL_MS, async () => {
+      const rows = await catalogService.listProducts();
+      return rows.map(toProductDto);
+    });
   },
 
   async getProduct(productId: string): Promise<ProductDto> {
@@ -63,8 +71,15 @@ export const catalogController = {
   },
 
   async listRecipes(outputProductId?: string): Promise<RecipeDto[]> {
-    const rows = await catalogService.listRecipes(outputProductId);
-    return rows.map(toRecipeDto);
+    return cachedJson(
+      "recipes",
+      `cache:catalog:recipes:${outputProductId ?? "all"}`,
+      CATALOG_TTL_MS,
+      async () => {
+        const rows = await catalogService.listRecipes(outputProductId);
+        return rows.map(toRecipeDto);
+      },
+    );
   },
 
   async getRecipe(recipeId: string): Promise<RecipeDto> {

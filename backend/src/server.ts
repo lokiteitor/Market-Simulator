@@ -16,6 +16,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import { config } from "./config";
 import { closeDb } from "./db";
+import { closeReadCache } from "./lib/read-cache";
 import { closeNotifier } from "./notifier";
 // Registra los gauges de negocio scrape-time SOLO en el core (side-effect del
 // import); el worker no debe exponerlos.
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
       await metricsApp.close();
       await closeDb();
       await closeNotifier();
+      await closeReadCache();
       logger.info("shutdown completo");
       process.exit(0);
     } catch (err) {

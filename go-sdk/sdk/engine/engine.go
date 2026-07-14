@@ -280,7 +280,12 @@ func (e *Engine) eventDispatcher() {
 					time.Sleep(jitter)
 					snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
 					if err != nil {
-						e.logger.Error("failed to reload snapshot on websocket reconnect", "error", err)
+						// El apagado puede cancelar el contexto con la request en vuelo.
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							e.logger.Debug("snapshot reload aborted by shutdown", "error", err)
+						} else {
+							e.logger.Error("failed to reload snapshot on websocket reconnect", "error", err)
+						}
 					} else {
 						e.state.Rebuild(snap)
 						e.logger.Info("local state synchronized with server snapshot")
@@ -312,6 +317,12 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 	for _, action := range actionsList {
 		if action == nil {
 			continue
+		}
+		// El contexto muere en el shutdown o al expirar el período activo:
+		// las acciones restantes del lote ya no pueden ejecutarse.
+		if ctx.Err() != nil {
+			e.logger.Debug("context cancelled, discarding remaining actions", "type", action.Type())
+			return
 		}
 		e.logger.Info("executing action", "type", action.Type())
 		var err error
@@ -378,6 +389,11 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 		}
 
 		if err != nil {
+			// La cancelación del contexto es un apagado normal, no un error.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				e.logger.Debug("action aborted by context cancellation", "type", action.Type(), "error", err)
+				return
+			}
 			e.logger.Error("failed to execute action", "type", action.Type(), "error", err)
 		}
 	}
