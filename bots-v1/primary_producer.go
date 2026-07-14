@@ -137,9 +137,15 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			fair, hasFair = s.bank.windowBid, true
 		}
 		if hasFair && costPU > 0 && float64(fair) < float64(costPU)*(1+s.p.minMargin) {
-			ctx.Logger.Debug("produccion pausada: fair no cubre coste+margen",
-				"recipe_id", recipe.RecipeID, "fair", fair, "unit_cost", costPU)
-			continue
+			// Si no hay competencia barata en el mercado (sin asks o el mejor ask es caro),
+			// no pausamos la producción para poder abastecer al mercado.
+			floor := float64(costPU) * (1 + s.p.minMargin)
+			top := s.view.Top(ctx, recipe.OutputProductID)
+			if top != nil && top.BestAsk != nil && float64(top.BestAsk.PriceCents) < floor {
+				ctx.Logger.Debug("produccion pausada: fair no cubre coste+margen y hay competencia barata",
+					"recipe_id", recipe.RecipeID, "fair", fair, "unit_cost", costPU, "best_ask", top.BestAsk.PriceCents)
+				continue
+			}
 		}
 		recipesActed++
 		// No siempre a plena capacidad: los operadores humanos dosifican.

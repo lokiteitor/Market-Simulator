@@ -153,6 +153,17 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		inputsCost, wage, revenue, priced := s.execEconomics(recipe)
 		profitable := priced && float64(revenue) >= float64(inputsCost+wage)*(1+s.p.minMargin)
 
+		if !profitable && priced {
+			// Si no es rentable a precio estimado de mercado, comprobamos si de verdad hay
+			// competencia barata (un ask en el mercado por debajo de nuestro coste + margen).
+			// Si no hay asks o el mejor ask es caro, consideramos que la receta es viable para producir.
+			floor := float64(inputsCost+wage)*(1+s.p.minMargin)
+			topOut := s.view.Top(ctx, recipe.OutputProductID)
+			if topOut == nil || topOut.BestAsk == nil || float64(notionalCents(recipe.OutputQtyCent, topOut.BestAsk.PriceCents)) >= floor {
+				profitable = true
+			}
+		}
+
 		// A. Arrancar ejecuciones solo si son rentables a precios de mercado.
 		if profitable && capStatus.AvailableSlots > 0 {
 			maxExecutions := capStatus.AvailableSlots
