@@ -100,6 +100,8 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	}
 	s.view.BeginTick(s.p.restBudget)
 
+	capitalAvail, _ := ctx.State.Capital()
+
 	var acts []actions.Action
 	capacities := ctx.State.Capacities()
 
@@ -148,15 +150,27 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 		}
 		recipesActed++
+		wage := int64(float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor)
+
 		// No siempre a plena capacidad: los operadores humanos dosifican.
 		execs := capStatus.AvailableSlots
-		if execs > 1 && chance(s.rnd, 0.5) {
-			execs = 1 + s.rnd.IntN(execs)
+		if wage > 0 {
+			maxExecsByCapital := int(capitalAvail / wage)
+			if maxExecsByCapital < execs {
+				execs = maxExecsByCapital
+			}
 		}
-		acts = append(acts, actions.StartTransformation{
-			RecipeID:          recipe.RecipeID,
-			ExecutionsPlanned: execs,
-		})
+
+		if execs > 0 {
+			if execs > 1 && chance(s.rnd, 0.5) {
+				execs = 1 + s.rnd.IntN(execs)
+			}
+			acts = append(acts, actions.StartTransformation{
+				RecipeID:          recipe.RecipeID,
+				ExecutionsPlanned: execs,
+			})
+			capitalAvail -= wage * int64(execs)
+		}
 	}
 
 	// 2. Venta del inventario a precio de mercado con suelo de coste.

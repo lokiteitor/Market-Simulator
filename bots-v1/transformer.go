@@ -164,7 +164,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 		}
 
-		// A. Arrancar ejecuciones solo si son rentables a precios de mercado.
+		// A. Arrancar ejecuciones solo si son rentables a precios de mercado y hay capital para salarios.
 		if profitable && capStatus.AvailableSlots > 0 {
 			maxExecutions := capStatus.AvailableSlots
 			for _, input := range recipe.Inputs {
@@ -172,6 +172,13 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				possible := int(inv.QtyAvailableCent / input.QtyRequiredCent)
 				if possible < maxExecutions {
 					maxExecutions = possible
+				}
+			}
+			// Limitar ejecuciones segun capital disponible para salarios upfront
+			if wage > 0 {
+				maxExecsByCapital := int(capitalAvail / wage)
+				if maxExecsByCapital < maxExecutions {
+					maxExecutions = maxExecsByCapital
 				}
 			}
 			if maxExecutions > 0 {
@@ -183,6 +190,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					RecipeID:          recipe.RecipeID,
 					ExecutionsPlanned: execs,
 				})
+				capitalAvail -= wage * int64(execs)
 			}
 		} else if priced && !profitable {
 			ctx.Logger.Debug("receta pausada: sin margen a precios de mercado",
