@@ -2,7 +2,10 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -128,3 +131,85 @@ func TestRefreshBufferClampedForShortLivedTokens(t *testing.T) {
 		t.Fatalf("got token %q, want the cached one (no premature refresh)", token)
 	}
 }
+
+func TestSQLiteSessionPersistenceAndMigration(t *testing.T) {
+	tempDir := t.TempDir()
+	jsonPath := filepath.Join(tempDir, "test_session.json")
+	sqlitePath := filepath.Join(tempDir, "sessions.sqlite")
+
+	a := NewAuthManager("test_user", "test_pass", models.AgentRole("trader"), sqlitePath)
+	a.agentID = "agent_123"
+	a.accessToken = "access_token_123"
+	a.refreshToken = "refresh_token_123"
+	a.accessExp = time.Now().Add(10 * time.Minute).Round(time.Second)
+	a.refreshExp = time.Now().Add(1 * time.Hour).Round(time.Second)
+
+	if err := a.saveSessionLocked(); err != nil {
+		t.Fatalf("failed to save session to sqlite: %v", err)
+	}
+
+	a2 := NewAuthManager("test_user", "test_pass", models.AgentRole("trader"), sqlitePath)
+	if !a2.loadSessionLocked() {
+		t.Fatalf("failed to load session from sqlite")
+	}
+
+	if a2.password != a.password || a2.agentID != a.agentID || a2.accessToken != a.accessToken || a2.refreshToken != a.refreshToken {
+		t.Fatalf("loaded session data does not match saved data")
+	}
+	if !a2.accessExp.Equal(a.accessExp) || !a2.refreshExp.Equal(a.refreshExp) {
+		t.Fatalf("loaded expires at dates do not match")
+	}
+
+	if err := a2.ClearSession(); err != nil {
+		t.Fatalf("failed to clear session: %v", err)
+	}
+
+	a3 := NewAuthManager("test_user", "test_pass", models.AgentRole("trader"), sqlitePath)
+	if a3.loadSessionLocked() {
+		t.Fatalf("expected loadSessionLocked to fail after ClearSession")
+	}
+
+	jsonData := SessionData{
+		Username:         "migrated_user",
+		Password:         "migrated_pass",
+		Role:             models.AgentRole("consumer"),
+		AgentID:          "agent_migrated",
+		AccessToken:      "access_migrated",
+		RefreshToken:     "refresh_migrated",
+		AccessExpiresAt:  time.Now().Add(5 * time.Minute).Round(time.Second),
+		RefreshExpiresAt: time.Now().Add(30 * time.Minute).Round(time.Second),
+	}
+
+	f, err := os.OpenFile(jsonPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		t.Fatalf("failed to create fake json file: %v", err)
+	}
+	if err := json.NewEncoder(f).Encode(jsonData); err != nil {
+		f.Close()
+		t.Fatalf("failed to encode fake json: %v", err)
+	}
+	f.Close()
+
+	aMigrate := NewAuthManager("migrated_user", "migrated_pass", models.AgentRole("consumer"), jsonPath)
+	if !aMigrate.loadSessionLocked() {
+		t.Fatalf("failed to load and migrate session from JSON to SQLite")
+	}
+
+	if aMigrate.accessToken != "access_migrated" || aMigrate.agentID != "agent_migrated" {
+		t.Fatalf("migrated data does not match")
+	}
+
+	if _, err := os.Stat(jsonPath); !os.IsNotExist(err) {
+		t.Fatalf("expected JSON file to be removed after migration")
+	}
+
+	expectedDBPath := filepath.Join(tempDir, "sessions.sqlite")
+	aCheck := NewAuthManager("migrated_user", "migrated_pass", models.AgentRole("consumer"), expectedDBPath)
+	if !aCheck.loadSessionLocked() {
+		t.Fatalf("failed to load migrated session directly from SQLite")
+	}
+	if aCheck.accessToken != "access_migrated" {
+		t.Fatalf("data loaded from SQLite after migration does not match")
+	}
+}
+

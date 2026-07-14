@@ -30,8 +30,10 @@ import {
   REFRESH_TOKEN_CLEANUP_QUEUE,
   SNAPSHOT_QUEUE,
   TRANSFORMATION_SWEEP_QUEUE,
+  GOLD_ISSUANCE_QUEUE,
   bullmqConnectionOptions,
 } from "./workers/queues";
+import { agentService } from "./services/agent-service";
 import type { SnapshotJobData, WorkerQueueName } from "./workers/queues";
 import { runRefreshTokenCleanup } from "./workers/refresh-token-cleaner";
 import { runSnapshot } from "./workers/snapshot-runner";
@@ -59,7 +61,8 @@ const repeatJobOpts: JobsOptions = {
 const transformationQueue = new Queue(TRANSFORMATION_SWEEP_QUEUE, { connection });
 const orderExpiryQueue = new Queue(ORDER_EXPIRY_SWEEP_QUEUE, { connection });
 const cleanupQueue = new Queue(REFRESH_TOKEN_CLEANUP_QUEUE, { connection });
-const queues = [transformationQueue, orderExpiryQueue, cleanupQueue];
+const goldIssuanceQueue = new Queue(GOLD_ISSUANCE_QUEUE, { connection });
+const queues = [transformationQueue, orderExpiryQueue, cleanupQueue, goldIssuanceQueue];
 
 await transformationQueue.upsertJobScheduler(
   "transformation-sweep-every",
@@ -134,7 +137,24 @@ const cleanupWorker = instrument(
   REFRESH_TOKEN_CLEANUP_QUEUE,
 );
 
-const workers = [transformationWorker, orderExpiryWorker, snapshotWorker, cleanupWorker];
+const goldIssuanceWorker = instrument(
+  new Worker<{ agentId: string }>(
+    GOLD_ISSUANCE_QUEUE,
+    async (job) => {
+      await agentService.fundAgentSeedCapital(job.data.agentId);
+    },
+    { connection, concurrency: 1 },
+  ),
+  GOLD_ISSUANCE_QUEUE,
+);
+
+const workers = [
+  transformationWorker,
+  orderExpiryWorker,
+  snapshotWorker,
+  cleanupWorker,
+  goldIssuanceWorker,
+];
 
 // ---------------------------------------------------------------------------
 // Servidor de métricas (registry compartido) en WORKER_METRICS_PORT

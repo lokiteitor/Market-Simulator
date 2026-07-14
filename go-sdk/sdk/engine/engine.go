@@ -47,8 +47,8 @@ type Engine struct {
 }
 
 var sharedTransport = &http.Transport{
-	MaxIdleConns:        10000,
-	MaxIdleConnsPerHost: 10000,
+	MaxIdleConns:        30000,
+	MaxIdleConnsPerHost: 30000,
 	IdleConnTimeout:     90 * time.Second,
 }
 

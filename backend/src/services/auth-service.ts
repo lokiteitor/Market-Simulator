@@ -19,6 +19,19 @@ import {
 import { authRepository } from "../repositories/auth-repository";
 import { agentRegistrar } from "./agent-service";
 import type { AgentRole, AgentRow } from "../types/contracts";
+import { Queue } from "bullmq";
+import { GOLD_ISSUANCE_QUEUE, bullmqConnectionOptions } from "../workers/queues";
+
+let goldIssuanceQueue: Queue<{ agentId: string }> | null = null;
+
+function getGoldIssuanceQueue(): Queue<{ agentId: string }> {
+  if (goldIssuanceQueue === null) {
+    goldIssuanceQueue = new Queue<{ agentId: string }>(GOLD_ISSUANCE_QUEUE, {
+      connection: bullmqConnectionOptions(),
+    });
+  }
+  return goldIssuanceQueue;
+}
 
 // ---------------------------------------------------------------------------
 // Tipos de resultado
@@ -149,6 +162,14 @@ async function register(p: {
   } catch (err) {
     throw translateUniqueUsername(err, p.username);
   }
+
+  getGoldIssuanceQueue().add(
+    "fund-agent",
+    { agentId: committed.agentRow.agentId },
+    { removeOnComplete: true, removeOnFail: true }
+  ).catch((err) => {
+    console.error("Error al encolar gold-issuance job:", err);
+  });
 
   const access = signAccessToken({
     agentId: committed.agentRow.agentId,

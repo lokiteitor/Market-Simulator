@@ -140,6 +140,17 @@ export const agentRepository = {
     );
   },
 
+  async updateAgentCapitalAndSeed(tx: Tx, agentId: string, cents: number): Promise<void> {
+    assertNonNegativeInt(cents, "cents");
+    await tx
+      .update(agent)
+      .set({
+        capitalAvailable: cents,
+        seedCapital: cents,
+      })
+      .where(eq(agent.agentId, agentId));
+  },
+
   /**
    * Débito atómico de capital_available (§10.3).
    * 0 filas afectadas ⇒ DomainError insufficient_capital (422).

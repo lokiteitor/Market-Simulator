@@ -154,6 +154,8 @@ export interface AgentService extends AgentRegistrar {
   ): Promise<InventoryLotRow[]>;
   /** Fila completa del agente; el controller expone solo los campos públicos. */
   getPublicAgent(agentId: string): Promise<AgentRow>;
+  /** Fondeo de capital semilla diferido y asíncrono. */
+  fundAgentSeedCapital(agentId: string): Promise<void>;
 }
 
 export const agentService: AgentService = {
@@ -168,72 +170,8 @@ export const agentService: AgentService = {
     p: { username: string; role: AgentRole; seedCapitalCents?: number },
   ): Promise<AgentRow> {
     let seedCapitalCents = p.seedCapitalCents;
-    // Emisión respaldada (patrón oro): el capital semilla del registro
-    // dinámico se financia PRIMERO con capital del banco (fees reciclados,
-    // transferencia conservadora) y el resto se ACUÑA solo si el oro del
-    // banco lo respalda al ratio de cobertura. El grant objetivo sigue siendo
-    // el promedio del capital de mercado (§10.12), capado por la capacidad.
-    let emission: { fromBankCents: number; mintedCents: number } | null = null;
     if (seedCapitalCents === undefined) {
-      const target =
-        (await agentRepository.averageActiveTotalCapitalCents(tx)) ??
-        config.defaultSeedCapitalCents;
-
-      // gold_standard FOR UPDATE ANTES de cualquier lock de agente (orden
-      // global de locks): serializa toda la emisión y los cambios de oro.
-      const gs = await bankRepository.lockGoldStandard(tx);
-      if (gs === undefined) {
-        // Corrida sin patrón oro (DB antigua): comportamiento legado (minting
-        // sin contrapartida).
-        seedCapitalCents = target;
-      } else {
-        const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
-        const bankCapital = bankRow?.capitalAvailable ?? 0;
-        const goldAvailable = await bankRepository.getGoldAvailable(
-          tx,
-          gs.bankAgentId,
-          gs.productId,
-        );
-        const capacity = issuanceCapacityCents(
-          goldAvailable,
-          gs.parityCentsPerUnit,
-          gs.coverageRatioBps,
-        );
-        const headroom = Math.max(0, capacity - (gs.moneyIssuedCents - gs.moneyBurnedCents));
-        const grant = Math.min(target, bankCapital + headroom);
-        if (grant < config.gold.minRegistrationCapitalCents) {
-          throw domainError(
-            "insufficient_gold_backing",
-            `El banco no puede financiar el capital semilla: máximo respaldable ${grant} centavos ` +
-              `(< mínimo ${config.gold.minRegistrationCapitalCents}). Vende oro al banco o espera fees.`,
-          );
-        }
-        const fromBankCents = Math.min(grant, bankCapital);
-        const mintedCents = grant - fromBankCents;
-        if (fromBankCents > 0) {
-          // Solo el matching acredita (suma) al banco concurrentemente, así
-          // que este débito condicional no puede fallar bajo el mutex de
-          // gold_standard.
-          const debited = await bankRepository.debitAgentCapital(
-            tx,
-            gs.bankAgentId,
-            fromBankCents,
-          );
-          if (!debited) {
-            throw new Error(
-              `createAgent: débito de ${fromBankCents} al banco falló bajo mutex de emisión`,
-            );
-          }
-        }
-        if (mintedCents > 0) {
-          await bankRepository.addMoneyIssued(tx, mintedCents);
-        }
-        seedCapitalCents = grant;
-        emission = { fromBankCents, mintedCents };
-      }
-    }
-    if (!Number.isSafeInteger(seedCapitalCents) || seedCapitalCents < 0) {
-      throw new Error(`createAgent: seedCapitalCents inválido: ${seedCapitalCents}`);
+      seedCapitalCents = 0;
     }
 
     const row = await agentRepository.insertAgent(tx, {
@@ -241,16 +179,6 @@ export const agentService: AgentService = {
       role: p.role,
       seedCapitalCents,
     });
-
-    if (emission !== null) {
-      const moneyIssued: MoneyIssuedPayload = {
-        agent_id: row.agentId,
-        grant_cents: seedCapitalCents,
-        from_bank_capital_cents: emission.fromBankCents,
-        minted_cents: emission.mintedCents,
-      };
-      await appendEvent(tx, { type: "money_issued", agentId: row.agentId, payload: moneyIssued });
-    }
 
     // Capacidades del rol desde seed-config: keys de receta → name → recipe_id.
     const seedConfig = loadSeedConfig();
@@ -393,6 +321,77 @@ export const agentService: AgentService = {
         throw domainError("unknown_agent", `El agente ${agentId} no existe.`);
       }
       return row;
+    });
+  },
+
+  async fundAgentSeedCapital(agentId: string): Promise<void> {
+    await withTransaction(async (tx) => {
+      const gs = await bankRepository.lockGoldStandard(tx);
+      const agentRow = await agentRepository.findByIdForUpdate(tx, agentId);
+      if (!agentRow || agentRow.seedCapital > 0 || agentRow.status === "bankrupt") {
+        return;
+      }
+
+      const target =
+        (await agentRepository.averageActiveTotalCapitalCents(tx)) ??
+        config.defaultSeedCapitalCents;
+
+      let grant = target;
+      let emission: { fromBankCents: number; mintedCents: number } | null = null;
+
+      if (gs !== undefined) {
+        const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
+        const bankCapital = bankRow?.capitalAvailable ?? 0;
+        const goldAvailable = await bankRepository.getGoldAvailable(
+          tx,
+          gs.bankAgentId,
+          gs.productId,
+        );
+        const capacity = issuanceCapacityCents(
+          goldAvailable,
+          gs.parityCentsPerUnit,
+          gs.coverageRatioBps,
+        );
+        const headroom = Math.max(0, capacity - (gs.moneyIssuedCents - gs.moneyBurnedCents));
+        grant = Math.min(target, bankCapital + headroom);
+        if (grant < config.gold.minRegistrationCapitalCents) {
+          throw domainError(
+            "insufficient_gold_backing",
+            `El banco no puede financiar el capital semilla para ${agentRow.username}: máximo respaldable ${grant} centavos ` +
+              `(< mínimo ${config.gold.minRegistrationCapitalCents}).`,
+          );
+        }
+        const fromBankCents = Math.min(grant, bankCapital);
+        const mintedCents = grant - fromBankCents;
+        if (fromBankCents > 0) {
+          const debited = await bankRepository.debitAgentCapital(
+            tx,
+            gs.bankAgentId,
+            fromBankCents,
+          );
+          if (!debited) {
+            throw new Error(
+              `fundAgentSeedCapital: débito de ${fromBankCents} al banco falló bajo mutex de emisión`,
+            );
+          }
+        }
+        if (mintedCents > 0) {
+          await bankRepository.addMoneyIssued(tx, mintedCents);
+        }
+        emission = { fromBankCents, mintedCents };
+      }
+
+      await agentRepository.updateAgentCapitalAndSeed(tx, agentId, grant);
+
+      if (emission !== null) {
+        const moneyIssued: MoneyIssuedPayload = {
+          agent_id: agentRow.agentId,
+          grant_cents: grant,
+          from_bank_capital_cents: emission.fromBankCents,
+          minted_cents: emission.mintedCents,
+        };
+        await appendEvent(tx, { type: "money_issued", agentId: agentRow.agentId, payload: moneyIssued });
+      }
     });
   },
 };

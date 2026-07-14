@@ -40,6 +40,9 @@ type GlobalConfig struct {
 	Retry             engine.RetryConfig     `yaml:"retry"`
 	SimTimeFactor     float64                `yaml:"sim_time_factor"`
 	MaxRecipesPerTick int                    `yaml:"max_recipes_per_tick"`
+	MaxActive         int                    `yaml:"max_active"`
+	ActiveDuration    string                 `yaml:"active_duration"`
+	Scale             int                    `yaml:"scale"`
 	Prices            map[string]interface{} `yaml:"prices"`
 	Market            map[string]interface{} `yaml:"market"`
 	Bots              []BotRunnerConfig      `yaml:"bots"`
@@ -49,6 +52,8 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "path to config yaml file")
 	scale := flag.Int("scale", 0, "number of bots to run programmatically (ignores YAML bot list if > 0)")
 	jitterSec := flag.Int("jitter", 0, "max startup jitter in seconds to spread connection load (default: 0)")
+	maxActiveFlag := flag.Int("max-active", 0, "maximum number of active bots at the same time (0 = no limit)")
+	activeDurationFlag := flag.String("active-duration", "", "duration a bot remains active before sleeping (e.g. 10m, 600s)")
 	flag.Parse()
 
 	// Load config
@@ -73,11 +78,16 @@ func main() {
 	// Prepare list of bot configurations
 	var botsToRun []BotRunnerConfig
 
+	scaleVal := globalCfg.Scale
 	if *scale > 0 {
-		log.Printf("Scale mode active. Generating %d bots programmatically...", *scale)
+		scaleVal = *scale
+	}
+
+	if scaleVal > 0 {
+		log.Printf("Scale mode active. Generating %d bots programmatically...", scaleVal)
 		roles := []models.AgentRole{"primary_producer", "transformer", "consumer", "trader"}
 
-		for i := 1; i <= *scale; i++ {
+		for i := 1; i <= scaleVal; i++ {
 			// Round-robin distribution of roles
 			role := roles[(i-1)%len(roles)]
 			username := fmt.Sprintf("scale_%s_%d", role, i)
@@ -99,65 +109,65 @@ func main() {
 		botsToRun = globalCfg.Bots
 	}
 
-	log.Printf("Starting simulation with %d concurrent bots...", len(botsToRun))
+	log.Printf("Starting simulation with %d registered bots...", len(botsToRun))
+
+	// Determine maxActive and activeDuration
+	maxActive := globalCfg.MaxActive
+	if *maxActiveFlag > 0 {
+		maxActive = *maxActiveFlag
+	}
+
+	activeDuration := 10 * time.Minute // default
+	activeDurationStr := globalCfg.ActiveDuration
+	if *activeDurationFlag != "" {
+		activeDurationStr = *activeDurationFlag
+	}
+	if activeDurationStr != "" {
+		d, err := time.ParseDuration(activeDurationStr)
+		if err != nil {
+			log.Fatalf("Invalid active-duration '%s': %v", activeDurationStr, err)
+		}
+		activeDuration = d
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Seed random for startup jitter / shuffling
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Check if rotation mode is enabled and makes sense
+	if maxActive > 0 && len(botsToRun) > maxActive {
+		// Shuffle bots to distribute roles and spread load randomly
+		r.Shuffle(len(botsToRun), func(i, j int) {
+			botsToRun[i], botsToRun[j] = botsToRun[j], botsToRun[i]
+		})
+
+		// Setup clean OS signal handler to cancel main context
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			sig := <-sigChan
+			log.Printf("Received signal %v. Initiating rotation shutdown...", sig)
+			cancel()
+		}()
+
+		runWithRotation(ctx, botsToRun, globalCfg, maxActive, activeDuration)
+		log.Println("Rotation simulation finished. Exit.")
+		return
+	}
+
+	// Default behavior (no rotation)
 	var wg sync.WaitGroup
 	var engines []*engine.Engine
 	var enginesMu sync.Mutex
 
-	// Seed random for startup jitter
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	// Create and start each bot
 	for idx, botCfg := range botsToRun {
-		var strat strategy.Strategy
-		switch botCfg.Role {
-		case "primary_producer":
-			strat = NewPrimaryProducerStrategy()
-		case "transformer":
-			strat = NewTransformerStrategy()
-		case "consumer":
-			strat = NewConsumerStrategy()
-		case "trader":
-			strat = NewTraderStrategy()
-		default:
-			log.Printf("Warning: Unknown bot role '%s' for user '%s'. Skipping.", botCfg.Role, botCfg.Username)
+		eng := createEngine(botCfg, globalCfg)
+		if eng == nil {
 			continue
 		}
-
-		reqCapacities := make([]models.RequestedCapacity, len(botCfg.RequestedCapacities))
-		for i, capVal := range botCfg.RequestedCapacities {
-			reqCapacities[i] = models.RequestedCapacity{
-				RecipeID:      capVal.RecipeID,
-				Installations: capVal.Installations,
-			}
-		}
-
-		sdkCfg := &engine.Config{
-			Server: globalCfg.Server,
-			Bot: engine.BotConfig{
-				Username:            botCfg.Username,
-				Password:            botCfg.Password,
-				Role:                botCfg.Role,
-				PersistPath:         botCfg.PersistPath,
-				AutoRegister:        botCfg.AutoRegister,
-				TickIntervalSeconds: botCfg.TickIntervalSeconds,
-				RequestedCapacities: reqCapacities,
-			},
-			Logging: globalCfg.Logging,
-			Retry:   globalCfg.Retry,
-			Strategy: map[string]interface{}{
-				"prices":               globalCfg.Prices,
-				"sim_time_factor":      globalCfg.SimTimeFactor,
-				"max_recipes_per_tick": globalCfg.MaxRecipesPerTick,
-				"market":               globalCfg.Market,
-			},
-		}
-
-		eng := engine.NewEngine(sdkCfg, strat, nil, nil)
 		
 		enginesMu.Lock()
 		engines = append(engines, eng)
@@ -208,4 +218,158 @@ func main() {
 	// Wait for all goroutines to cleanup
 	wg.Wait()
 	log.Println("All bots stopped successfully. Exit.")
+}
+
+func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine {
+	var strat strategy.Strategy
+	switch botCfg.Role {
+	case "primary_producer":
+		strat = NewPrimaryProducerStrategy()
+	case "transformer":
+		strat = NewTransformerStrategy()
+	case "consumer":
+		strat = NewConsumerStrategy()
+	case "trader":
+		strat = NewTraderStrategy()
+	default:
+		log.Printf("Warning: Unknown bot role '%s' for user '%s'. Skipping.", botCfg.Role, botCfg.Username)
+		return nil
+	}
+
+	reqCapacities := make([]models.RequestedCapacity, len(botCfg.RequestedCapacities))
+	for i, capVal := range botCfg.RequestedCapacities {
+		reqCapacities[i] = models.RequestedCapacity{
+			RecipeID:      capVal.RecipeID,
+			Installations: capVal.Installations,
+		}
+	}
+
+	sdkCfg := &engine.Config{
+		Server: globalCfg.Server,
+		Bot: engine.BotConfig{
+			Username:            botCfg.Username,
+			Password:            botCfg.Password,
+			Role:                botCfg.Role,
+			PersistPath:         botCfg.PersistPath,
+			AutoRegister:        botCfg.AutoRegister,
+			TickIntervalSeconds: botCfg.TickIntervalSeconds,
+			RequestedCapacities: reqCapacities,
+		},
+		Logging: globalCfg.Logging,
+		Retry:   globalCfg.Retry,
+		Strategy: map[string]interface{}{
+			"prices":               globalCfg.Prices,
+			"sim_time_factor":      globalCfg.SimTimeFactor,
+			"max_recipes_per_tick": globalCfg.MaxRecipesPerTick,
+			"market":               globalCfg.Market,
+		},
+	}
+
+	return engine.NewEngine(sdkCfg, strat, nil, nil)
+}
+
+func runWithRotation(
+	ctx context.Context,
+	bots []BotRunnerConfig,
+	globalCfg GlobalConfig,
+	maxActive int,
+	activeDuration time.Duration,
+) {
+	totalBots := len(bots)
+	log.Printf("Starting rotation: total bots = %d, max active = %d, active duration = %v", totalBots, maxActive, activeDuration)
+
+	// Calculate startup interval to stagger connection load
+	interval := time.Duration(float64(activeDuration) / float64(maxActive))
+	log.Printf("Staggered startup interval: %v", interval)
+
+	// A map of currently active engines to manage shutdown
+	activeEngines := make(map[string]*engine.Engine)
+	var activeMu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Channel to signal shutdown to any running goroutines
+	shutdownChan := make(chan struct{})
+
+	// Helper to run a single bot for a limited duration
+	runBot := func(botCfg BotRunnerConfig) {
+		wg.Add(1)
+		defer wg.Done()
+
+		eng := createEngine(botCfg, globalCfg)
+		if eng == nil {
+			return
+		}
+
+		// Register as active
+		activeMu.Lock()
+		if _, exists := activeEngines[botCfg.Username]; exists {
+			activeMu.Unlock()
+			log.Printf("[%s] Bot is already active, skipping start", botCfg.Username)
+			return
+		}
+		activeEngines[botCfg.Username] = eng
+		activeMu.Unlock()
+
+		defer func() {
+			// Unregister as active
+			activeMu.Lock()
+			delete(activeEngines, botCfg.Username)
+			activeMu.Unlock()
+		}()
+
+		// Create a context that is cancelled after activeDuration
+		botCtx, botCancel := context.WithTimeout(ctx, activeDuration)
+		defer botCancel()
+
+		log.Printf("[%s] Starting active period of %v", botCfg.Username, activeDuration)
+		if err := eng.Start(botCtx); err != nil {
+			log.Printf("[%s] Failed to start: %v", botCfg.Username, err)
+			return
+		}
+
+		// Wait for active duration to end or global shutdown
+		select {
+		case <-botCtx.Done():
+			log.Printf("[%s] Active period finished, stopping and going to sleep...", botCfg.Username)
+		case <-shutdownChan:
+			log.Printf("[%s] Shutdown signal received, stopping...", botCfg.Username)
+		}
+
+		// Stop the engine cleanly
+		eng.Stop()
+	}
+
+	nextBotIdx := 0
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Start the first bot immediately
+	go runBot(bots[nextBotIdx])
+	nextBotIdx = (nextBotIdx + 1) % totalBots
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Rotation manager context cancelled, initiating shutdown...")
+			close(shutdownChan)
+
+			// Stop all currently active engines
+			activeMu.Lock()
+			log.Printf("Stopping %d active engines...", len(activeEngines))
+			for _, eng := range activeEngines {
+				go eng.Stop()
+			}
+			activeMu.Unlock()
+
+			// Wait for all bot goroutines to finish
+			wg.Wait()
+			return
+
+		case <-ticker.C:
+			// Start the next bot
+			botCfg := bots[nextBotIdx]
+			go runBot(botCfg)
+			nextBotIdx = (nextBotIdx + 1) % totalBots
+		}
+	}
 }

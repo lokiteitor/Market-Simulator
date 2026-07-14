@@ -19,12 +19,14 @@ export const TRANSFORMATION_SWEEP_QUEUE = "transformation-sweep";
 export const ORDER_EXPIRY_SWEEP_QUEUE = "order-expiry-sweep";
 export const SNAPSHOT_QUEUE = "snapshot";
 export const REFRESH_TOKEN_CLEANUP_QUEUE = "refresh-token-cleanup";
+export const GOLD_ISSUANCE_QUEUE = "gold-issuance";
 
 export const WORKER_QUEUES = [
   TRANSFORMATION_SWEEP_QUEUE,
   ORDER_EXPIRY_SWEEP_QUEUE,
   SNAPSHOT_QUEUE,
   REFRESH_TOKEN_CLEANUP_QUEUE,
+  GOLD_ISSUANCE_QUEUE,
 ] as const;
 
 export type WorkerQueueName = (typeof WORKER_QUEUES)[number];

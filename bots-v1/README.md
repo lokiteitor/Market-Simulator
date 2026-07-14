@@ -39,6 +39,8 @@ Para generar y ejecutar automáticamente una cantidad masiva de bots distribuido
 
 * **`-scale 5000`**: Genera 5000 bots llamados `scale_primary_producer_X`, `scale_transformer_Y`, etc. Ignora la lista manual en el archivo YAML de configuración.
 * **`-jitter 120`**: Agrega un retardo aleatorio de inicio para cada bot entre 0 y 120 segundos. Esto distribuye las conexiones y solicitudes de registro e inicio de WebSocket para no saturar al servidor y evitar interbloqueos (deadlocks) o cuellos de botella en la base de datos.
+* **`-max-active 12000`**: Define la cantidad máxima de bots que pueden estar activos (conectados) simultáneamente. Si es 0 (valor por defecto) o no se especifica, todos los bots se ejecutarán al mismo tiempo sin rotación.
+* **`-active-duration 10m`**: Define la duración (p. ej., "10m", "600s", "1h") de la sesión activa de un bot antes de desconectarse, ir a dormir y ceder el turno al siguiente bot en la rotación.
 
 Las credenciales persistentes de estos agentes dinámicos se guardarán ordenadamente en la subcarpeta `./sessions/` en formato JSON.
 
@@ -46,7 +48,10 @@ Las credenciales persistentes de estos agentes dinámicos se guardarán ordenada
 
 ## 🛠️ Personalización de Parámetros
 
-El archivo **[`config.yaml`](file:///home/ddelgado/git/lab/world/bots-v1/config.yaml)** te permite configurar:
+El archivo **[`config.yaml`](file:///home/ddelgado/git/Market-Simulator/bots-v1/config.yaml)** te permite configurar:
 1. **`server`**: Los puntos de enlace HTTP y WebSocket del Caddy Gateway del simulador.
 2. **`prices`**: El precio base estimado de cada producto (en centavos de capital) usado por las heurísticas para calcular márgenes o límites de compra/venta.
-3. **`bots`**: Una lista de agentes configurables manuales.
+3. **`scale`**: Cantidad total de bots a generar programáticamente (ej. 50000). Si es mayor a 0, se ignorará la sección `bots`.
+4. **`max_active`**: Cantidad máxima de bots activos concurrentemente (ej. 12000).
+5. **`active_duration`**: Tiempo que cada bot permanece activo antes de rotar (ej. "10m").
+6. **`bots`**: Una lista de agentes configurables manuales.

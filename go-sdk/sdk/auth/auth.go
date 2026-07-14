@@ -2,16 +2,19 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/lokiteitor/market-simulator/sdk/models"
+	_ "modernc.org/sqlite"
 )
 
 // The access token is refreshed proactively when it is within this buffer of
@@ -263,34 +266,99 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 	return fmt.Errorf("authentication failed: %w", err)
 }
 
+func resolveSQLitePath(persistPath string) string {
+	if persistPath == "" {
+		return ""
+	}
+	ext := filepath.Ext(persistPath)
+	if ext == ".sqlite" || ext == ".db" {
+		return persistPath
+	}
+	dir := filepath.Dir(persistPath)
+	return filepath.Join(dir, "sessions.sqlite")
+}
+
 func (a *AuthManager) loadSessionLocked() bool {
 	if a.persistPath == "" {
 		return false
 	}
-	f, err := os.Open(a.persistPath)
+
+	dbPath := resolveSQLitePath(a.persistPath)
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return false
+	}
+
+	db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000&_journal_mode=WAL")
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer db.Close()
 
-	var data SessionData
-	if err := json.NewDecoder(f).Decode(&data); err != nil {
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
+		username TEXT PRIMARY KEY,
+		password TEXT,
+		role TEXT,
+		agent_id TEXT,
+		access_token TEXT,
+		refresh_token TEXT,
+		access_expires_at TEXT,
+		refresh_expires_at TEXT
+	)`)
+	if err != nil {
 		return false
 	}
 
-	// Only restore if the username matches
-	if data.Username != a.username {
+	var password, role, agentID, accessToken, refreshToken string
+	var accessExpiresStr, refreshExpiresStr string
+
+	err = db.QueryRow(`SELECT password, role, agent_id, access_token, refresh_token, access_expires_at, refresh_expires_at 
+		FROM sessions WHERE username = ?`, a.username).Scan(
+		&password, &role, &agentID, &accessToken, &refreshToken, &accessExpiresStr, &refreshExpiresStr,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) && strings.HasSuffix(a.persistPath, ".json") {
+			if f, jsonErr := os.Open(a.persistPath); jsonErr == nil {
+				var data SessionData
+				if decErr := json.NewDecoder(f).Decode(&data); decErr == nil && data.Username == a.username {
+					f.Close()
+					_, saveErr := db.Exec(`INSERT OR REPLACE INTO sessions 
+						(username, password, role, agent_id, access_token, refresh_token, access_expires_at, refresh_expires_at) 
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+						data.Username, data.Password, data.Role, data.AgentID,
+						data.AccessToken, data.RefreshToken,
+						data.AccessExpiresAt.Format(time.RFC3339),
+						data.RefreshExpiresAt.Format(time.RFC3339),
+					)
+					if saveErr == nil {
+						_ = os.Remove(a.persistPath)
+						return a.loadSessionLocked()
+					}
+				} else {
+					f.Close()
+				}
+			}
+		}
 		return false
 	}
 
-	a.password = data.Password
-	a.role = data.Role
-	a.agentID = data.AgentID
-	a.accessToken = data.AccessToken
-	a.refreshToken = data.RefreshToken
-	a.accessExp = data.AccessExpiresAt
-	a.refreshExp = data.RefreshExpiresAt
-	a.tokenTTL = time.Until(data.AccessExpiresAt)
+	accessExp, err := time.Parse(time.RFC3339, accessExpiresStr)
+	if err != nil {
+		return false
+	}
+	refreshExp, err := time.Parse(time.RFC3339, refreshExpiresStr)
+	if err != nil {
+		return false
+	}
+
+	a.password = password
+	a.role = models.AgentRole(role)
+	a.agentID = agentID
+	a.accessToken = accessToken
+	a.refreshToken = refreshToken
+	a.accessExp = accessExp
+	a.refreshExp = refreshExp
+	a.tokenTTL = time.Until(accessExp)
 	return true
 }
 
@@ -298,45 +366,41 @@ func (a *AuthManager) saveSessionLocked() error {
 	if a.persistPath == "" {
 		return nil
 	}
-	// Create directory if not exists
-	dir := filepath.Dir(a.persistPath)
+	dbPath := resolveSQLitePath(a.persistPath)
+	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	data := SessionData{
-		Username:         a.username,
-		Password:         a.password,
-		Role:             a.role,
-		AgentID:          a.agentID,
-		AccessToken:      a.accessToken,
-		RefreshToken:     a.refreshToken,
-		AccessExpiresAt:  a.accessExp,
-		RefreshExpiresAt: a.refreshExp,
-	}
-
-	// Write to temp file and rename to avoid partial writes
-	tmpFile := a.persistPath + ".tmp"
-	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000&_journal_mode=WAL")
 	if err != nil {
 		return err
 	}
-	defer func() {
-		f.Close()
-		_ = os.Remove(tmpFile)
-	}()
+	defer db.Close()
 
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(data); err != nil {
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
+		username TEXT PRIMARY KEY,
+		password TEXT,
+		role TEXT,
+		agent_id TEXT,
+		access_token TEXT,
+		refresh_token TEXT,
+		access_expires_at TEXT,
+		refresh_expires_at TEXT
+	)`)
+	if err != nil {
 		return err
 	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	f.Close()
 
-	return os.Rename(tmpFile, a.persistPath)
+	_, err = db.Exec(`INSERT OR REPLACE INTO sessions 
+		(username, password, role, agent_id, access_token, refresh_token, access_expires_at, refresh_expires_at) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.username, a.password, a.role, a.agentID,
+		a.accessToken, a.refreshToken,
+		a.accessExp.Format(time.RFC3339),
+		a.refreshExp.Format(time.RFC3339),
+	)
+	return err
 }
 
 func (a *AuthManager) ClearSession() error {
@@ -348,7 +412,14 @@ func (a *AuthManager) ClearSession() error {
 	a.refreshExp = time.Time{}
 	a.tokenTTL = 0
 	if a.persistPath != "" {
-		return os.Remove(a.persistPath)
+		dbPath := resolveSQLitePath(a.persistPath)
+		db, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000&_journal_mode=WAL")
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		_, err = db.Exec(`DELETE FROM sessions WHERE username = ?`, a.username)
+		return err
 	}
 	return nil
 }
