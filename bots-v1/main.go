@@ -25,6 +25,14 @@ type YAMLRequestedCapacity struct {
 	Installations int    `yaml:"installations"`
 }
 
+var quietMode bool
+
+func logInfo(format string, v ...interface{}) {
+	if !quietMode {
+		log.Printf(format, v...)
+	}
+}
+
 type BotRunnerConfig struct {
 	Username            string                  `yaml:"username"`
 	Password            string                  `yaml:"password"`
@@ -57,8 +65,11 @@ func main() {
 	maxActiveFlag := flag.Int("max-active", 0, "maximum number of active bots at the same time (0 = no limit)")
 	activeDurationFlag := flag.String("active-duration", "", "duration a bot remains active before sleeping (e.g. 10m, 600s)")
 	runnerID := flag.String("runner-id", "default", "unique identifier for this runner/machine to ensure deterministic and unique UUIDs")
+	noPersist := flag.Bool("no-persist", false, "disable disk persistence (sqlite and json) and keep sessions 100% in RAM")
+	quiet := flag.Bool("quiet", false, "only print a periodic summary of active bots and warn/error logs, silences individual bot lifecycle logs")
 	flag.Parse()
 
+	quietMode = *quiet
 	runnerVal := *runnerID
 	if runnerVal == "default" || runnerVal == "" {
 		if host, err := os.Hostname(); err == nil {
@@ -83,6 +94,9 @@ func main() {
 	}
 	if globalCfg.MaxRecipesPerTick <= 0 {
 		globalCfg.MaxRecipesPerTick = 8 // acota el fan-out cuando un agente tiene ~120 recetas
+	}
+	if quietMode {
+		globalCfg.Logging.Level = "warn"
 	}
 
 	// Prepare list of bot configurations
@@ -114,18 +128,27 @@ func main() {
 			// capacidades de su rol desde infra/seed-config.json y ademas exige
 			// que recipe_id sea un UUID (rechaza las keys con 400). El fan-out
 			// lo acota max_recipes_per_tick.
+			persistPath := fmt.Sprintf("./sessions/%s.json", username)
+			if *noPersist {
+				persistPath = ""
+			}
 			botsToRun = append(botsToRun, BotRunnerConfig{
 				Username:            username,
 				Password:            "dev-password-123", // standard dev password
 				Role:                role,
 				Strategy:            stratName,
-				PersistPath:         fmt.Sprintf("./sessions/%s.json", username),
+				PersistPath:         persistPath,
 				AutoRegister:        true,
 				TickIntervalSeconds: 5,
 			})
 		}
 	} else {
 		botsToRun = globalCfg.Bots
+		if *noPersist {
+			for i := range botsToRun {
+				botsToRun[i].PersistPath = ""
+			}
+		}
 	}
 
 	log.Printf("Starting simulation with %d registered bots...", len(botsToRun))
@@ -181,6 +204,24 @@ func main() {
 	var engines []*engine.Engine
 	var enginesMu sync.Mutex
 
+	if quietMode {
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					enginesMu.Lock()
+					runningCount := len(engines)
+					enginesMu.Unlock()
+					log.Printf("[RESUMEN] Bots activos iniciados: %d / %d", runningCount, len(botsToRun))
+				}
+			}
+		}()
+	}
+
 	// Create and start each bot
 	for idx, botCfg := range botsToRun {
 		eng := createEngine(botCfg, globalCfg)
@@ -199,7 +240,7 @@ func main() {
 			// Apply startup jitter if configured
 			if *jitterSec > 0 {
 				delay := time.Duration(r.Intn(*jitterSec*1000)) * time.Millisecond
-				log.Printf("[%s] Delaying start by %v to spread load...", username, delay)
+				logInfo("[%s] Delaying start by %v to spread load...", username, delay)
 				select {
 				case <-time.After(delay):
 				case <-ctx.Done():
@@ -207,7 +248,7 @@ func main() {
 				}
 			}
 
-			log.Printf("[%s] Launching bot (%d/%d)...", username, botIdx+1, len(botsToRun))
+			logInfo("[%s] Launching bot (%d/%d)...", username, botIdx+1, len(botsToRun))
 			if err := e.Start(ctx); err != nil {
 				log.Printf("[%s] Bot failed to start: %v", username, err)
 			}
@@ -315,6 +356,24 @@ func runWithRotation(
 	var activeMu sync.Mutex
 	var wg sync.WaitGroup
 
+	if quietMode {
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					activeMu.Lock()
+					activeCount := len(activeEngines)
+					activeMu.Unlock()
+					log.Printf("[RESUMEN] Bots totales: %d | Activos concurrentemente: %d / %d | Rotación: %v", totalBots, activeCount, maxActive, activeDuration)
+				}
+			}
+		}()
+	}
+
 	// Channel to signal shutdown to any running goroutines
 	shutdownChan := make(chan struct{})
 
@@ -332,7 +391,7 @@ func runWithRotation(
 		activeMu.Lock()
 		if _, exists := activeEngines[botCfg.Username]; exists {
 			activeMu.Unlock()
-			log.Printf("[%s] Bot is already active, skipping start", botCfg.Username)
+			logInfo("[%s] Bot is already active, skipping start", botCfg.Username)
 			return
 		}
 		activeEngines[botCfg.Username] = eng
@@ -349,7 +408,7 @@ func runWithRotation(
 		botCtx, botCancel := context.WithTimeout(ctx, activeDuration)
 		defer botCancel()
 
-		log.Printf("[%s] Starting active period of %v", botCfg.Username, activeDuration)
+		logInfo("[%s] Starting active period of %v", botCfg.Username, activeDuration)
 		if err := eng.Start(botCtx); err != nil {
 			log.Printf("[%s] Failed to start: %v", botCfg.Username, err)
 			return
@@ -358,9 +417,9 @@ func runWithRotation(
 		// Wait for active duration to end or global shutdown
 		select {
 		case <-botCtx.Done():
-			log.Printf("[%s] Active period finished, stopping and going to sleep...", botCfg.Username)
+			logInfo("[%s] Active period finished, stopping and going to sleep...", botCfg.Username)
 		case <-shutdownChan:
-			log.Printf("[%s] Shutdown signal received, stopping...", botCfg.Username)
+			logInfo("[%s] Shutdown signal received, stopping...", botCfg.Username)
 		}
 
 		// Stop the engine cleanly

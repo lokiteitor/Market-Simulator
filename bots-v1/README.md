@@ -42,8 +42,10 @@ Para generar y ejecutar automáticamente una cantidad masiva de bots distribuido
 * **`-jitter 120`**: Agrega un retardo aleatorio de inicio para cada bot entre 0 y 120 segundos. Esto distribuye las conexiones y solicitudes de registro e inicio de WebSocket para no saturar al servidor y evitar interbloqueos (deadlocks) o cuellos de botella en la base de datos.
 * **`-max-active 12000`**: Define la cantidad máxima de bots que pueden estar activos (conectados) simultáneamente. Si es 0 (valor por defecto) o no se especifica, todos los bots se ejecutarán al mismo tiempo sin rotación.
 * **`-active-duration 10m`**: Define la duración (p. ej., "10m", "600s", "1h") de la sesión activa de un bot antes de desconectarse, ir a dormir y ceder el turno al siguiente bot en la rotación.
+* **`-no-persist`**: Desactiva la persistencia física en disco (base de datos SQLite central y archivos JSON locales). Al activarse, los bots mantendrán sus credenciales y tokens de sesión únicamente en la memoria de su proceso en RAM, eliminando por completo las escrituras y lecturas de disco.
+* **`-quiet`**: Silencia las salidas repetitivas de ciclo de vida de los bots individuales (inicio, parada, retrasos por jitter, etc.) y configura el nivel de log del SDK a `warn`. A cambio, imprime un resumen consolidado en consola cada 10 segundos con el total de bots y bots activos actuales.
 
-Las credenciales persistentes de estos agentes dinámicos se guardarán ordenadamente en la subcarpeta `./sessions/` en formato JSON.
+Las credenciales persistentes de estos agentes dinámicos se guardarán ordenadamente en la subcarpeta `./sessions/` en formato JSON (a menos que se use `-no-persist`).
 
 ---
 

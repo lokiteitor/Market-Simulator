@@ -21,4 +21,5 @@ clean-docker:
 	docker compose -f infra/docker-compose.yml down --volumes --remove-orphans
 
 run-swarm-rpi: build-bots
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 100000 -jitter 60 -max-active 2500 -active-duration 4m
+	ulimit -n 65535	
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 100000 -jitter 60 -max-active 2500 -active-duration 4m -no-persist -quiet
