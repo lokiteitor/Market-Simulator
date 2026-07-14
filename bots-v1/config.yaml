@@ -17,6 +17,12 @@ retry:
 # Los bots multiplican por este factor para estimar el costo laboral correctamente.
 sim_time_factor: 5
 
+# Si el servidor rechaza una accion con 422 insufficient_capital, el bot duerme
+# este backoff (segundos reales), descarta el resto del lote y rebasea su
+# estado con un snapshot fresco. Clave en modo swarm: un bot sin capital deja
+# de martillar la API y cede el lugar al siguiente. 0 = default del SDK (60s).
+insufficient_capital_backoff_seconds: 120
+
 # Configuración de rotación de bots para simular actividad humana:
 # - max_active: cantidad máxima de bots activos concurrentemente (0 para sin límite, ejecuta todos)
 # - active_duration: cuánto tiempo juega cada bot antes de dormir y rotar (ej. "10m", "600s", "1h")

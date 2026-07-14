@@ -21,6 +21,11 @@ type BotConfig struct {
 	AutoRegister        bool                       `yaml:"auto_register"`
 	TickIntervalSeconds int                        `yaml:"tick_interval_seconds"`
 	RequestedCapacities []models.RequestedCapacity `yaml:"requested_capacities"`
+	// InsufficientCapitalBackoffSeconds: cuánto duerme el bot (segundos
+	// reales) tras recibir un 422 insufficient_capital del servidor, para
+	// dejar de martillar la API mientras se recupera capital (crítico en modo
+	// swarm). 0 usa el default del engine (60s).
+	InsufficientCapitalBackoffSeconds int `yaml:"insufficient_capital_backoff_seconds"`
 }
 
 type RetryConfig struct {

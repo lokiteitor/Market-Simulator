@@ -30,6 +30,21 @@ type APIError struct {
 	Problem    models.Problem
 }
 
+// CodeInsufficientCapital es el código de sub-error que el backend devuelve
+// (422) cuando el capital disponible no alcanza para reservar una orden de
+// compra o pagar el salario de una transformación.
+const CodeInsufficientCapital = "insufficient_capital"
+
+// HasCode indica si el Problem+JSON trae un sub-error con ese código.
+func (e *APIError) HasCode(code string) bool {
+	for _, err := range e.Problem.Errors {
+		if err.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *APIError) Error() string {
 	if len(e.Problem.Errors) > 0 {
 		var subErrors []string

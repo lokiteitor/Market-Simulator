@@ -187,6 +187,37 @@ productos); los trades de productos no suscritos se siguen viendo, si hace falta
 **Mitigación de Timeouts (`websocket read error: i/o timeout`):**
 Para evitar que la goroutine de lectura de WebSocket (`readLoop`) se bloquee cuando la cola pública `eventChan` se llena (debido a alta carga de red o retrasos en el procesamiento del bot al ejecutar llamadas API REST), el cliente del SDK utiliza un **buffer interno dinámico y asíncrono** (`bufferLoop`). Los eventos leídos se envían a un canal interno y se acumulan en un slice dinámico en memoria. Esto asegura que la lectura del socket nunca se bloquee, permitiendo procesar y responder pings a tiempo, lo que previene desconexiones por parte del cliente (read timeout de 60s) o del servidor/proxies intermedios (falta de pong tras 30s).
 
+### 4.5 Capital insuficiente: fees modelados, anticipación y backoff
+
+El matching cobra un **fee por lado** de cada trade (`FEE_FIXED_CENTS` +
+`FEE_RATE_BPS`, default 5¢ + 25 bps) desde el capital disponible. El estado
+local del SDK lo descuenta al aplicar cada `order_executed` (espejo en
+`state.go`); sin ese descuento el capital local quedaba inflado y las
+estrategias armaban órdenes que el servidor rechazaba con 422
+`insufficient_capital`. Tres capas de defensa en el engine:
+
+1. **Anticipación**: antes de ejecutar un `PlaceOrder` de compra, el engine
+   verifica que el nocional (`floor(qty×precio/100)`) quepa en el capital
+   disponible local y reserve al menos 1 centavo; si no, descarta la acción
+   sin gastar el request.
+2. **Backoff**: si el servidor igual responde 422 `insufficient_capital`
+   (deriva residual del estado local), el bot **se duerme**
+   `insufficient_capital_backoff_seconds` (global en `config.yaml`, default
+   60 s en el SDK) y descarta el resto del lote de acciones. Durante el sueño
+   no corre ticks ni `HandleEvent` (los eventos WS sí siguen actualizando el
+   estado local), con lo que cede API/CPU al resto del enjambre mientras
+   recupera capital (fills de ventas, expiración de reservas, procesos que
+   terminan).
+3. **Resincronización**: al recibir ese 422 se recarga el snapshot con jitter
+   de 0–5 s para rebasear el estado local con el servidor.
+4. **Cesión del slot en rotación**: el engine expone `LowCapital()`, un canal
+   que se cierra la primera vez que el servidor confirma el 422. En modo
+   rotación (`max_active`) el runner lo escucha y retira al bot antes de que
+   termine su `active_duration`, dejando el lugar al siguiente; el aviso
+   `"Sin capital: cede su lugar en la rotación"` se imprime incluso con
+   `-quiet`. La anticipación y el backoff loguean solo en `debug` para no
+   ensuciar el log del enjambre.
+
 ---
 
 ## 5. Estrategias por rol

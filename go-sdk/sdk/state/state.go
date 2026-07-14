@@ -47,14 +47,14 @@ type StateManager struct {
 
 func NewStateManager() *StateManager {
 	return &StateManager{
-		inventory:        make(map[string]models.InventoryPosition),
-		activeOrders:     make(map[string]models.Order),
-		runningProcesses: make(map[string]models.TransformationProcess),
-		capacities:       make(map[string]models.CapacityStatus),
-		products:         make(map[string]models.Product),
-		productsByKey:    make(map[string]models.Product),
-		recipes:          make(map[string]models.Recipe),
-		publicAgents:     make(map[string]models.AgentPublic),
+		inventory:             make(map[string]models.InventoryPosition),
+		activeOrders:          make(map[string]models.Order),
+		runningProcesses:      make(map[string]models.TransformationProcess),
+		capacities:            make(map[string]models.CapacityStatus),
+		products:              make(map[string]models.Product),
+		productsByKey:         make(map[string]models.Product),
+		recipes:               make(map[string]models.Recipe),
+		publicAgents:          make(map[string]models.AgentPublic),
 		inventoryDirty:        true,
 		activeOrdersDirty:     true,
 		runningProcessesDirty: true,
@@ -132,6 +132,20 @@ func (s *StateManager) SetCatalog(products []models.Product, recipes []models.Re
 // y el precio en centavos POR UNIDAD.
 func notionalCents(qtyCent, priceCents int64) int64 {
 	return qtyCent * priceCents / 100
+}
+
+// Parámetros de fee del matching (espejo de FEE_FIXED_CENTS y FEE_RATE_BPS del
+// backend). Cada lado de un trade paga fijo + floor(notional × bps / 10000)
+// desde su capital disponible; sin modelarlo el capital local queda inflado y
+// las órdenes siguientes revientan con 422 insufficient_capital.
+const (
+	feeFixedCents int64 = 5
+	feeRateBps    int64 = 25
+)
+
+// estimatedFeeCents replica feeCents() del backend para un notional dado.
+func estimatedFeeCents(notional int64) int64 {
+	return feeFixedCents + notional*feeRateBps/10000
 }
 
 // AddOrder manually registers a new order in the local state.
@@ -224,14 +238,25 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 				s.capitalReservedCents -= limitCost
 				s.capitalAvailableCents += diff // refund extra reserved amount
 
+				// El fee del comprador sale del disponible (el backend lo capea
+				// a available, así que este clamp mantiene el sesgo conservador).
+				s.capitalAvailableCents -= estimatedFeeCents(actualCost)
+				if s.capitalAvailableCents < 0 {
+					s.capitalAvailableCents = 0
+				}
+
 				// Add to inventory
 				inv := s.inventory[order.ProductID]
 				inv.ProductID = order.ProductID
 				inv.QtyAvailableCent += e.QtyExecutedCent
 				s.inventory[order.ProductID] = inv
 			} else {
-				// Sell order execution
-				s.capitalAvailableCents += notionalCents(e.QtyExecutedCent, e.PriceCents)
+				// Sell order execution (neto del fee del vendedor)
+				proceeds := notionalCents(e.QtyExecutedCent, e.PriceCents)
+				s.capitalAvailableCents += proceeds - estimatedFeeCents(proceeds)
+				if s.capitalAvailableCents < 0 {
+					s.capitalAvailableCents = 0
+				}
 
 				// Deduct from reserved inventory
 				inv := s.inventory[order.ProductID]

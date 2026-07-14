@@ -46,17 +46,20 @@ type BotRunnerConfig struct {
 }
 
 type GlobalConfig struct {
-	Server            engine.ServerConfig    `yaml:"server"`
-	Logging           logging.Config         `yaml:"logging"`
-	Retry             engine.RetryConfig     `yaml:"retry"`
-	SimTimeFactor     float64                `yaml:"sim_time_factor"`
-	MaxRecipesPerTick int                    `yaml:"max_recipes_per_tick"`
-	MaxActive         int                    `yaml:"max_active"`
-	ActiveDuration    string                 `yaml:"active_duration"`
-	Scale             int                    `yaml:"scale"`
-	Prices            map[string]interface{} `yaml:"prices"`
-	Market            map[string]interface{} `yaml:"market"`
-	Bots              []BotRunnerConfig      `yaml:"bots"`
+	Server            engine.ServerConfig `yaml:"server"`
+	Logging           logging.Config      `yaml:"logging"`
+	Retry             engine.RetryConfig  `yaml:"retry"`
+	SimTimeFactor     float64             `yaml:"sim_time_factor"`
+	MaxRecipesPerTick int                 `yaml:"max_recipes_per_tick"`
+	// Backoff (segundos reales) cuando el servidor rechaza una acción con 422
+	// insufficient_capital: el bot duerme y cede API/CPU al resto del enjambre.
+	InsufficientCapitalBackoffSeconds int                    `yaml:"insufficient_capital_backoff_seconds"`
+	MaxActive                         int                    `yaml:"max_active"`
+	ActiveDuration                    string                 `yaml:"active_duration"`
+	Scale                             int                    `yaml:"scale"`
+	Prices                            map[string]interface{} `yaml:"prices"`
+	Market                            map[string]interface{} `yaml:"market"`
+	Bots                              []BotRunnerConfig      `yaml:"bots"`
 }
 
 func main() {
@@ -229,7 +232,7 @@ func main() {
 		if eng == nil {
 			continue
 		}
-		
+
 		enginesMu.Lock()
 		engines = append(engines, eng)
 		enginesMu.Unlock()
@@ -273,7 +276,7 @@ func main() {
 	}
 
 	cancel()
-	
+
 	log.Println("Stopping all active engines...")
 	enginesMu.Lock()
 	for _, eng := range engines {
@@ -322,13 +325,14 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 	sdkCfg := &engine.Config{
 		Server: globalCfg.Server,
 		Bot: engine.BotConfig{
-			Username:            botCfg.Username,
-			Password:            botCfg.Password,
-			Role:                botCfg.Role,
-			PersistPath:         botCfg.PersistPath,
-			AutoRegister:        botCfg.AutoRegister,
-			TickIntervalSeconds: botCfg.TickIntervalSeconds,
-			RequestedCapacities: reqCapacities,
+			Username:                          botCfg.Username,
+			Password:                          botCfg.Password,
+			Role:                              botCfg.Role,
+			PersistPath:                       botCfg.PersistPath,
+			AutoRegister:                      botCfg.AutoRegister,
+			TickIntervalSeconds:               botCfg.TickIntervalSeconds,
+			RequestedCapacities:               reqCapacities,
+			InsufficientCapitalBackoffSeconds: globalCfg.InsufficientCapitalBackoffSeconds,
 		},
 		Logging: globalCfg.Logging,
 		Retry:   globalCfg.Retry,
@@ -426,10 +430,13 @@ func runWithRotation(
 			return
 		}
 
-		// Wait for active duration to end or global shutdown
+		// Wait for active duration to end, capital exhaustion or global shutdown
 		select {
 		case <-botCtx.Done():
 			logInfo("[%s] Active period finished, stopping and going to sleep...", botCfg.Username)
+		case <-eng.LowCapital():
+			// log.Printf (no logInfo) para que el aviso se vea también en -quiet.
+			log.Printf("[%s] Sin capital: cede su lugar en la rotación", botCfg.Username)
 		case <-shutdownChan:
 			logInfo("[%s] Shutdown signal received, stopping...", botCfg.Username)
 		}

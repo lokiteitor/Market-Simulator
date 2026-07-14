@@ -41,9 +41,15 @@ type Engine struct {
 	cancel  context.CancelFunc
 	running bool
 	wg      sync.WaitGroup
-	
+
 	stratCtx   *strategy.Context
 	sleepUntil time.Time
+
+	// lowCapitalCh se cierra (una sola vez) cuando el servidor confirma
+	// insufficient_capital: la señal que el runner usa en modo rotación para
+	// retirar el bot y ceder su lugar al siguiente.
+	lowCapitalOnce sync.Once
+	lowCapitalCh   chan struct{}
 }
 
 var sharedTransport = &http.Transport{
@@ -85,22 +91,23 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 	wsClient := websocket.NewClient(cfg.Server.WSURL, authMgr, logger)
 	stateMgr := state.NewStateManager()
 	sched := scheduler.NewScheduler()
-	
+
 	seed := uint64(time.Now().UnixNano()) + atomic.AddUint64(&seedCounter, 1)
 
 	e := &Engine{
-		config:    cfg,
-		logger:    logger.With("system", "engine"),
-		metrics:   metricsProvider,
-		clock:     clock,
-		authMgr:   authMgr,
-		client:    restClient,
-		ws:        wsClient,
-		state:     stateMgr,
-		scheduler: sched,
-		strategy:  strat,
+		config:       cfg,
+		logger:       logger.With("system", "engine"),
+		metrics:      metricsProvider,
+		clock:        clock,
+		authMgr:      authMgr,
+		client:       restClient,
+		ws:           wsClient,
+		state:        stateMgr,
+		scheduler:    sched,
+		strategy:     strat,
+		lowCapitalCh: make(chan struct{}),
 	}
-	
+
 	e.stratCtx = &strategy.Context{
 		State:  stateMgr,
 		Logger: e.logger.With("system", "strategy"),
@@ -286,32 +293,17 @@ func (e *Engine) eventDispatcher() {
 			if connEv, ok := ev.(events.WSConnected); ok {
 				e.logger.Info("websocket connected/reconnected", "at", connEv.ConnectedAt)
 				// Fetch snapshot asynchronusly with jitter
-				go func() {
-					jitter := time.Duration(e.stratCtx.Rand.IntN(5000)) * time.Millisecond
-					time.Sleep(jitter)
-					snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
-					if err != nil {
-						// El apagado puede cancelar el contexto con la request en vuelo.
-						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-							e.logger.Debug("snapshot reload aborted by shutdown", "error", err)
-						} else {
-							e.logger.Error("failed to reload snapshot on websocket reconnect", "error", err)
-						}
-					} else {
-						e.state.Rebuild(snap)
-						e.logger.Info("local state synchronized with server snapshot")
-					}
-				}()
+				go e.resyncSnapshot()
 				continue
 			}
 
 			// Apply to StateManager cache
 			e.state.ApplyEvent(ev)
-			
+
 			e.Lock()
 			sleeping := e.clock.Now().Before(e.sleepUntil)
 			e.Unlock()
-			
+
 			if !sleeping {
 				stratCtx := e.newStrategyContext()
 				actionsList := e.strategy.HandleEvent(stratCtx, ev)
@@ -322,6 +314,44 @@ func (e *Engine) eventDispatcher() {
 			return
 		}
 	}
+}
+
+// LowCapital devuelve un canal que se cierra la primera vez que el servidor
+// confirma insufficient_capital. En modo rotación el runner lo usa para
+// retirar al bot antes de que termine su período activo y ceder el lugar al
+// siguiente; en modo normal basta con el backoff interno (sleepUntil).
+func (e *Engine) LowCapital() <-chan struct{} {
+	return e.lowCapitalCh
+}
+
+// resyncSnapshot rebasea el estado local con un snapshot fresco del servidor,
+// con jitter para que un enjambre no sincronice sus requests. Se usa tras una
+// reconexión del WS y cuando el servidor desmiente el capital local.
+func (e *Engine) resyncSnapshot() {
+	jitter := time.Duration(e.stratCtx.Rand.IntN(5000)) * time.Millisecond
+	time.Sleep(jitter)
+	snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
+	if err != nil {
+		// El apagado puede cancelar el contexto con la request en vuelo.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			e.logger.Debug("snapshot reload aborted by shutdown", "error", err)
+		} else {
+			e.logger.Error("failed to reload snapshot", "error", err)
+		}
+		return
+	}
+	e.state.Rebuild(snap)
+	e.logger.Info("local state synchronized with server snapshot")
+}
+
+// capitalBackoff es la pausa tras un insufficient_capital confirmado por el
+// servidor: el bot duerme para dejar de martillar la API mientras recupera
+// capital (fills de ventas, expiración de reservas, procesos que terminan).
+func (e *Engine) capitalBackoff() time.Duration {
+	if s := e.config.Bot.InsufficientCapitalBackoffSeconds; s > 0 {
+		return time.Duration(s) * time.Second
+	}
+	return 60 * time.Second
 }
 
 func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Action) {
@@ -339,6 +369,21 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 		var err error
 		switch act := action.(type) {
 		case actions.PlaceOrder:
+			// Anticipación de insufficient_capital: si el nocional
+			// (floor(qty×precio/100), lo que el backend reserva) no cabe en el
+			// capital disponible local —o redondea a 0 centavos—, la orden de
+			// compra moriría con 422; se descarta sin gastar el request.
+			if act.Side == models.SideBuy {
+				cost := act.QtyCent * act.LimitPriceCents / 100
+				avail, _ := e.state.Capital()
+				if cost < 1 || cost > avail {
+					e.logger.Debug("skipping buy order: notional exceeds local available capital",
+						"product_id", act.ProductID,
+						"notional_cents", cost,
+						"capital_available", avail)
+					continue
+				}
+			}
 			req := models.PlaceOrderRequest{
 				ProductID:       act.ProductID,
 				Side:            act.Side,
@@ -403,6 +448,22 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 			// La cancelación del contexto es un apagado normal, no un error.
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				e.logger.Debug("action aborted by context cancellation", "type", action.Type(), "error", err)
+				return
+			}
+			// insufficient_capital confirmado por el servidor: el capital local
+			// venía inflado. Dormir el backoff (cede API/CPU al resto del
+			// enjambre), descartar el resto del lote (moriría igual) y rebasear
+			// el estado con un snapshot fresco.
+			var apiErr *client.APIError
+			if errors.As(err, &apiErr) && apiErr.HasCode(client.CodeInsufficientCapital) {
+				backoff := e.capitalBackoff()
+				e.logger.Debug("insufficient capital confirmed by server, backing off",
+					"type", action.Type(), "backoff_seconds", backoff.Seconds())
+				e.Lock()
+				e.sleepUntil = e.clock.Now().Add(backoff)
+				e.Unlock()
+				e.lowCapitalOnce.Do(func() { close(e.lowCapitalCh) })
+				go e.resyncSnapshot()
 				return
 			}
 			e.logger.Error("failed to execute action", "type", action.Type(), "error", err)
