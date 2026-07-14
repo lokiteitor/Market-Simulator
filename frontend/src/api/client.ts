@@ -22,13 +22,20 @@ const envBase: unknown = import.meta.env.VITE_API_BASE_URL;
 
 /**
  * Base URL del API sin slash final (ej. "http://localhost:9080/v1").
+ * Si no está definida en la compilación, deduce el host dinámicamente
+ * a partir de la barra de direcciones del navegador.
  * También la usa el WS de notificaciones para derivar `ws://…/v1/ws`.
  */
-export const API_BASE_URL: string = (
-  typeof envBase === "string" && envBase.trim() !== ""
-    ? envBase.trim()
-    : "http://localhost:9080/v1"
-).replace(/\/+$/, "");
+export const API_BASE_URL: string = (() => {
+  if (typeof envBase === "string" && envBase.trim() !== "") {
+    return envBase.trim();
+  }
+  if (typeof window !== "undefined" && window.location) {
+    const host = window.location.hostname;
+    return `http://${host}:9080/v1`;
+  }
+  return "http://localhost:9080/v1";
+})().replace(/\/+$/, "");
 
 // ---------------------------------------------------------------------------
 // Error tipado (RFC 7807)
