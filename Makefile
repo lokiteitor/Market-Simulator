@@ -1,5 +1,10 @@
 build:
+	cd frontend && bun run build
 	docker compose -f infra/docker-compose.yml build
+
+install:
+	cd backend && bun install
+	cd frontend && bun install
 
 run:
 	docker compose -f infra/docker-compose.yml up -d
