@@ -75,8 +75,11 @@ export const dbTransactionDuration = new Histogram({
 
 /**
  * Requests al cache de lecturas públicas (lib/read-cache), por clase de clave
- * y desenlace (hit | miss | error). El hit-rate por clase es la señal de que
- * el cache está absorbiendo el read-side de los bots.
+ * y desenlace: hit | miss (lidera un compute) | coalesced (comparte el
+ * compute en vuelo de otro request, single-flight) | error (GET a Redis
+ * falló; además se cuenta el miss/coalesced del compute de degradación). El
+ * hit-rate por clase es la señal de que el cache absorbe el read-side de los
+ * bots; misses/s ≈ claves/TTL es su techo sano.
  */
 export const readCacheRequestsTotal = new Counter({
   name: "read_cache_requests_total",

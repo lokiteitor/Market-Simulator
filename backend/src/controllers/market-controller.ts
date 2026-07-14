@@ -10,8 +10,10 @@ import { marketService, type TopOfBookSide } from "../services/market-service";
 // TTLs del read-cache: staleness acotada muy por debajo del cacheo que los
 // clientes ya aplican (los bots cachean el top 12 s) y, para órdenes limit,
 // cotizar contra un top ligeramente viejo solo puede ejecutar a mejor precio.
-const TOP_OF_BOOK_TTL_MS = 500;
-const RECENT_TRADES_TTL_MS = 1_000;
+// El techo de misses contra Postgres es ~155 productos / TTL: con 500 ms eran
+// hasta ~310 queries/s (estampida observada en vivo); con 2,5 s son ~62/s.
+const TOP_OF_BOOK_TTL_MS = 2_500;
+const RECENT_TRADES_TTL_MS = 2_500;
 
 /** Mapper compartido con el historial (history-controller lo reutiliza). */
 export function toTradeDto(row: TradeRow): TradeDto {
