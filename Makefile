@@ -15,7 +15,10 @@ run-bots: build-bots
 	cd bots-v1 && ./bots-v1-runner -config config.yaml
 
 run-swarm: build-bots
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 50000 -jitter 3600
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -jitter 900
 
 clean-docker:
 	docker compose -f infra/docker-compose.yml down --volumes --remove-orphans
+
+run-swarm-rpi: build-bots
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 100000 -jitter 60 -max-active 2500 -active-duration 4m
