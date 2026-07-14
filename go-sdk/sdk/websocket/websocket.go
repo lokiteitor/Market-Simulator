@@ -227,14 +227,24 @@ func (c *Client) invalidateToken() {
 	}
 }
 
+// readDeadline debe superar 2× el heartbeat del servidor (PING cada 30s):
+// tolera perder dos pings seguidos antes de dar la conexión por muerta.
+const readDeadline = 90 * time.Second
+
 // readLoop reads until the connection fails and returns the read error so the
 // connection loop can distinguish an auth rejection from a plain disconnect.
 func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
-	// Set read deadline and handle heartbeats
-	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	conn.SetPongHandler(func(appData string) error {
-		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
+	// El heartbeat lo envía el SERVIDOR (PING cada 30s). El deadline se
+	// refresca al recibir cada PING; al sobreescribir el ping handler hay que
+	// responder el PONG a mano (se pierde el handler por defecto de gorilla).
+	_ = conn.SetReadDeadline(time.Now().Add(readDeadline))
+	conn.SetPingHandler(func(appData string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(readDeadline))
+		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+		if err == websocket.ErrCloseSent {
+			return nil
+		}
+		return err
 	})
 
 	for {
@@ -243,6 +253,7 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			c.logger.Error("websocket read error", "error", err)
 			return err
 		}
+		_ = conn.SetReadDeadline(time.Now().Add(readDeadline))
 
 		event, err := c.parseWSEvent(message)
 		if err != nil {
