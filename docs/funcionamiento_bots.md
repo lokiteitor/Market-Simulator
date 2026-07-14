@@ -173,6 +173,9 @@ El engine parsea: `order_executed`, `order_expired`, `order_cancelled`,
 disparan re-cotización event-driven en los traders. Tras una reconexión WS se recarga el
 snapshot con jitter de 0–5 s.
 
+**Mitigación de Timeouts (`websocket read error: i/o timeout`):**
+Para evitar que la goroutine de lectura de WebSocket (`readLoop`) se bloquee cuando la cola pública `eventChan` se llena (debido a alta carga de red o retrasos en el procesamiento del bot al ejecutar llamadas API REST), el cliente del SDK utiliza un **buffer interno dinámico y asíncrono** (`bufferLoop`). Los eventos leídos se envían a un canal interno y se acumulan en un slice dinámico en memoria. Esto asegura que la lectura del socket nunca se bloquee, permitiendo procesar y responder pings a tiempo, lo que previene desconexiones por parte del cliente (read timeout de 60s) o del servidor/proxies intermedios (falta de pong tras 30s).
+
 ---
 
 ## 5. Estrategias por rol

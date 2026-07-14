@@ -46,6 +46,7 @@ type Client struct {
 	logger        *slog.Logger
 	conn          *websocket.Conn
 	eventChan     chan events.Event
+	rawEventChan  chan events.Event
 	ctx           context.Context
 	cancel        context.CancelFunc
 	running       bool
@@ -67,6 +68,7 @@ func NewClient(wsURL string, tokenProvider TokenProvider, logger *slog.Logger) *
 		tokenProvider: tokenProvider,
 		logger:        logger.With("system", "websocket"),
 		eventChan:     make(chan events.Event, 10000),
+		rawEventChan:  make(chan events.Event, 1000),
 		backoff:       util.NewBackoff(1*time.Second, 30*time.Second, 2.0),
 	}
 }
@@ -81,11 +83,14 @@ func (c *Client) Start(ctx context.Context) error {
 		c.Unlock()
 		return errors.New("websocket client is already running")
 	}
-	c.ctx, c.cancel = context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(ctx)
+	c.ctx = runCtx
+	c.cancel = cancel
 	c.running = true
 	c.Unlock()
 
-	go c.connectionLoop()
+	go c.bufferLoop(runCtx)
+	go c.connectionLoop(runCtx)
 	return nil
 }
 
@@ -105,25 +110,56 @@ func (c *Client) Stop() {
 	c.Unlock()
 }
 
-func (c *Client) connectionLoop() {
+func (c *Client) bufferLoop(ctx context.Context) {
+	c.logger.Debug("websocket event buffer loop started")
+	defer c.logger.Debug("websocket event buffer loop exiting")
+	var queue []events.Event
+	for {
+		if len(queue) == 0 {
+			select {
+			case ev, ok := <-c.rawEventChan:
+				if !ok {
+					return
+				}
+				queue = append(queue, ev)
+			case <-ctx.Done():
+				return
+			}
+		} else {
+			select {
+			case ev, ok := <-c.rawEventChan:
+				if !ok {
+					return
+				}
+				queue = append(queue, ev)
+			case c.eventChan <- queue[0]:
+				queue = queue[1:]
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) connectionLoop(ctx context.Context) {
 	attempt := 0
 	for {
 		c.Lock()
 		running := c.running
 		c.Unlock()
 
-		if !running || c.ctx.Err() != nil {
+		if !running || ctx.Err() != nil {
 			c.logger.Info("websocket connection loop exiting")
 			return
 		}
 
 		// Get access token for this connection attempt
-		token, err := c.tokenProvider.GetAccessToken(c.ctx)
+		token, err := c.tokenProvider.GetAccessToken(ctx)
 		if err != nil {
 			c.logger.Error("websocket failed to get access token for connection", "error", err)
 			// Wait and retry
 			attempt++
-			if err := c.backoff.Sleep(c.ctx, attempt); err != nil {
+			if err := c.backoff.Sleep(ctx, attempt); err != nil {
 				return
 			}
 			continue
@@ -143,7 +179,7 @@ func (c *Client) connectionLoop() {
 		dialer := websocket.DefaultDialer
 		dialer.HandshakeTimeout = 10 * time.Second
 
-		conn, resp, err := dialer.DialContext(c.ctx, u.String(), nil)
+		conn, resp, err := dialer.DialContext(ctx, u.String(), nil)
 		if err != nil {
 			if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 				c.logger.Warn("websocket handshake rejected as unauthorized, discarding cached access token")
@@ -151,7 +187,7 @@ func (c *Client) connectionLoop() {
 			}
 			c.logger.Error("websocket dial failed", "error", err)
 			attempt++
-			if err := c.backoff.Sleep(c.ctx, attempt); err != nil {
+			if err := c.backoff.Sleep(ctx, attempt); err != nil {
 				return
 			}
 			continue
@@ -166,12 +202,12 @@ func (c *Client) connectionLoop() {
 
 		// Dispatch connected event to channel
 		select {
-		case c.eventChan <- events.WSConnected{ConnectedAt: time.Now()}:
+		case c.rawEventChan <- events.WSConnected{ConnectedAt: time.Now()}:
 		default:
 		}
 
 		// Run the read loop
-		readErr := c.readLoop(conn)
+		readErr := c.readLoop(ctx, conn)
 		if websocket.IsCloseError(readErr, closeUnauthorized) {
 			c.logger.Warn("websocket closed as unauthorized, discarding cached access token")
 			c.invalidateToken()
@@ -193,7 +229,7 @@ func (c *Client) invalidateToken() {
 
 // readLoop reads until the connection fails and returns the read error so the
 // connection loop can distinguish an auth rejection from a plain disconnect.
-func (c *Client) readLoop(conn *websocket.Conn) error {
+func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	// Set read deadline and handle heartbeats
 	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(appData string) error {
@@ -215,8 +251,8 @@ func (c *Client) readLoop(conn *websocket.Conn) error {
 		}
 
 		select {
-		case c.eventChan <- event:
-		case <-c.ctx.Done():
+		case c.rawEventChan <- event:
+		case <-ctx.Done():
 			return nil
 		}
 	}
