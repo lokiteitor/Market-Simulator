@@ -43,6 +43,37 @@ export const workerJobsFailed = new Counter({
 });
 
 /**
+ * Transacciones de Postgres en curso, contadas desde que withTransaction se
+ * invoca (incluye la espera por una conexión del pool). Señal de saturación:
+ * si vive clavada en db_pool_max con db_transaction_duration_seconds
+ * creciendo, las tx están encolando por falta de conexiones.
+ */
+export const dbTransactionsInFlight = new Gauge({
+  name: "db_transactions_in_flight",
+  help: "Transacciones withTransaction en curso (incluida la espera de conexión del pool)",
+  registers: [register],
+});
+
+/** Tamaño configurado del pool (DB_POOL_MAX); referencia para el gauge anterior. */
+export const dbPoolMax = new Gauge({
+  name: "db_pool_max",
+  help: "Conexiones máximas del pool de Postgres configuradas en este proceso",
+  registers: [register],
+});
+
+/**
+ * Duración de withTransaction de la invocación al commit/rollback: incluye la
+ * espera de conexión, así el encolamiento del pool se ve como corrimiento de
+ * los percentiles aunque las queries sigan siendo rápidas.
+ */
+export const dbTransactionDuration = new Histogram({
+  name: "db_transaction_duration_seconds",
+  help: "Duración de withTransaction en segundos (espera de pool incluida)",
+  buckets: [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [register],
+});
+
+/**
  * Requests al cache de lecturas públicas (lib/read-cache), por clase de clave
  * y desenlace (hit | miss | error). El hit-rate por clase es la señal de que
  * el cache está absorbiendo el read-side de los bots.

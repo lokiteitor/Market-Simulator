@@ -19,6 +19,11 @@ const nonNegIntFromEnv = (def: number) => z.coerce.number().int().nonnegative().
 const EnvSchema = z
   .object({
     DATABASE_URL: z.string().min(1).default("postgres://market:market@localhost:5432/market"),
+    // Conexiones máximas del pool de postgres.js POR PROCESO (core y worker
+    // tienen cada uno el suyo). Subirlo solo si db_transactions_in_flight
+    // vive clavado en este valor con la latencia de tx creciendo; el óptimo
+    // ronda 2–4× los cores de Postgres, no el número de bots.
+    DB_POOL_MAX: posIntFromEnv(10),
     REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
     REDIS_PUBSUB_DB: nonNegIntFromEnv(0),
     REDIS_BULLMQ_DB: nonNegIntFromEnv(1),
@@ -112,6 +117,8 @@ export interface Config {
   nodeEnv: (typeof NODE_ENVS)[number];
   logLevel: (typeof LOG_LEVELS)[number];
   databaseUrl: string;
+  /** Conexiones máximas del pool de Postgres por proceso. */
+  dbPoolMax: number;
   /** URL base de Redis SIN db lógica resuelta. */
   redisUrl: string;
   redisPubSubDb: number;
@@ -184,6 +191,7 @@ function loadConfig(): Config {
     nodeEnv: e.NODE_ENV,
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
+    dbPoolMax: e.DB_POOL_MAX,
     redisUrl: e.REDIS_URL,
     redisPubSubDb: e.REDIS_PUBSUB_DB,
     redisBullmqDb: e.REDIS_BULLMQ_DB,
