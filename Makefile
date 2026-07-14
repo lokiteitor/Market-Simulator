@@ -31,4 +31,4 @@ run-swarm-rpi: build-bots
 
 run-swarm-lite: build-bots
 	ulimit -n 65535	
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 2500 -jitter 60 -max-active 500 -active-duration 4m -no-persist -quiet
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 10000 -jitter 60 -max-active 1000 -active-duration 4m -no-persist -quiet
