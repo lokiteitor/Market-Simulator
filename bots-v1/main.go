@@ -29,6 +29,7 @@ type BotRunnerConfig struct {
 	Username            string                  `yaml:"username"`
 	Password            string                  `yaml:"password"`
 	Role                models.AgentRole        `yaml:"role"`
+	Strategy            string                  `yaml:"strategy"`
 	PersistPath         string                  `yaml:"persist_path"`
 	AutoRegister        bool                    `yaml:"auto_register"`
 	TickIntervalSeconds int                     `yaml:"tick_interval_seconds"`
@@ -94,15 +95,19 @@ func main() {
 
 	if scaleVal > 0 {
 		log.Printf("Scale mode active. Generating %d bots programmatically for runner '%s'...", scaleVal, runnerVal)
-		roles := []models.AgentRole{"primary_producer", "transformer", "consumer", "trader"}
+		strats := []string{"primary_producer", "miner", "farmer", "transformer", "consumer", "trader"}
 
 		// Fixed namespace UUID for deterministic UUID v5 generation
 		namespace := uuid.MustParse("8c478718-9e01-4841-8870-fdf6d9c4f592")
 
 		for i := 1; i <= scaleVal; i++ {
-			// Round-robin distribution of roles
-			role := roles[(i-1)%len(roles)]
-			data := []byte(fmt.Sprintf("%s-%s-%d", runnerVal, role, i))
+			// Round-robin distribution of strategies
+			stratName := strats[(i-1)%len(strats)]
+			role := models.AgentRole(stratName)
+			if stratName == "miner" || stratName == "farmer" {
+				role = "primary_producer"
+			}
+			data := []byte(fmt.Sprintf("%s-%s-%d", runnerVal, stratName, i))
 			username := uuid.NewSHA1(namespace, data).String()
 
 			// Sin requested_capacities: el backend asigna a cada agente las
@@ -113,6 +118,7 @@ func main() {
 				Username:            username,
 				Password:            "dev-password-123", // standard dev password
 				Role:                role,
+				Strategy:            stratName,
 				PersistPath:         fmt.Sprintf("./sessions/%s.json", username),
 				AutoRegister:        true,
 				TickIntervalSeconds: 5,
@@ -235,9 +241,18 @@ func main() {
 
 func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine {
 	var strat strategy.Strategy
-	switch botCfg.Role {
+	stratName := botCfg.Strategy
+	if stratName == "" {
+		stratName = string(botCfg.Role)
+	}
+
+	switch stratName {
 	case "primary_producer":
 		strat = NewPrimaryProducerStrategy()
+	case "miner":
+		strat = NewMinerStrategy()
+	case "farmer":
+		strat = NewFarmerStrategy()
 	case "transformer":
 		strat = NewTransformerStrategy()
 	case "consumer":
@@ -245,7 +260,7 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 	case "trader":
 		strat = NewTraderStrategy()
 	default:
-		log.Printf("Warning: Unknown bot role '%s' for user '%s'. Skipping.", botCfg.Role, botCfg.Username)
+		log.Printf("Warning: Unknown bot strategy '%s' for user '%s'. Skipping.", stratName, botCfg.Username)
 		return nil
 	}
 

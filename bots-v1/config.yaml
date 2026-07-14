@@ -229,6 +229,22 @@ bots:
       - recipe_id: "germinado_rapido"
         installations: 1
 
+  - username: "miner_1"
+    password: "dev-password-123"
+    role: "primary_producer"
+    strategy: "miner"
+    tick_interval_seconds: 5
+    persist_path: "./.session_miner_1.json"
+    auto_register: true
+
+  - username: "farmer_1"
+    password: "dev-password-123"
+    role: "primary_producer"
+    strategy: "farmer"
+    tick_interval_seconds: 5
+    persist_path: "./.session_farmer_1.json"
+    auto_register: true
+
   - username: "transformer_1"
     password: "dev-password-123"
     role: "transformer"

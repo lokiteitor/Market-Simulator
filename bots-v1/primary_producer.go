@@ -26,6 +26,7 @@ type PrimaryProducerStrategy struct {
 	simTimeFactor     float64
 	maxRecipesPerTick int
 	p                 producerParams
+	recipeFilter      func(recipeID string) bool
 }
 
 type producerParams struct {
@@ -111,6 +112,9 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		capStatus := capacities[idx]
 		recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
 		if !ok || len(recipe.Inputs) != 0 {
+			continue
+		}
+		if s.recipeFilter != nil && !s.recipeFilter(recipe.RecipeID) {
 			continue
 		}
 		recipeByOutput[recipe.OutputProductID] = recipe

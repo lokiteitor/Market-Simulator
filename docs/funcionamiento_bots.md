@@ -18,12 +18,14 @@ Un único binario (`bots-v1/bots-v1-runner`) lanza N agentes concurrentes, cada 
 goroutine con su propio `engine.Engine` del SDK. Hay cuatro roles, alineados con los
 `agent_role` del backend:
 
-| Rol | Estrategia | Qué hace |
-|-----|-----------|----------|
-| `primary_producer` | `primary_producer.go` | Ejecuta recetas sin insumos y vende lo producido; monetiza oro en la ventanilla del banco. |
-| `transformer` | `transformer.go` | Compra insumos, ejecuta recetas con insumos si son rentables, vende el output. |
-| `consumer` | `consumer.go` | Demanda final: compra productos de consumo con presupuesto y precio de reserva. |
-| `trader` | `trader.go` | Market maker: cotiza bid/ask alrededor del valor justo; arbitra oro contra el banco. |
+| Rol en BD | Estrategia (bot) | Archivo | Qué hace |
+|-----------|------------------|---------|----------|
+| `primary_producer` | `primary_producer` | `primary_producer.go` | Ejecuta recetas sin insumos y vende lo producido; monetiza oro en la ventanilla del banco. |
+| `primary_producer` | `miner` | `miner.go` | Sub-estrategia: solo ejecuta recetas de minería y extracción. |
+| `primary_producer` | `farmer` | `farmer.go` | Sub-estrategia: solo ejecuta recetas de cultivos, ganadería y otros recursos naturales. |
+| `transformer` | `transformer` | `transformer.go` | Compra insumos, ejecuta recetas con insumos si son rentables, vende el output. |
+| `consumer` | `consumer` | `consumer.go` | Demanda final: compra productos de consumo con presupuesto y precio de reserva. |
+| `trader` | `trader` | `trader.go` | Market maker: cotiza bid/ask alrededor del valor justo; arbitra oro contra el banco. |
 
 ```mermaid
 graph LR
@@ -48,7 +50,9 @@ graph LR
 |---------|-----------------|
 | `main.go` | CLI: parsea flags, lee `config.yaml`, genera bots (modo YAML o modo enjambre) y los lanza en goroutines. Cierre limpio en `SIGINT/SIGTERM`. |
 | `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 155 productos** (ancla de todas las heurísticas). |
-| `primary_producer.go` | Estrategia productor primario. |
+| `primary_producer.go` | Estrategia productor primario genérica (produce cualquier receta sin insumos). |
+| `miner.go` | Estrategia productor primario especializada en minería y extracción. |
+| `farmer.go` | Estrategia productor primario especializada en cultivos, ganadería y otros recursos naturales. |
 | `transformer.go` | Estrategia transformador. |
 | `consumer.go` | Estrategia consumidor. |
 | `trader.go` | Estrategia market maker. |
@@ -192,6 +196,13 @@ Ejecuta recetas **sin insumos** y vende la producción.
   `window_bid` como suelo del fair: minar oro siempre renta mientras el yacimiento dure.
 - Parámetros típicos: `minMargin` 0.05–0.15, `targetMargin` 0.25–0.6, `undercut` 0.01–0.03,
   `tranche` 0.3–0.7, `skipTickProb` 0.05–0.2.
+
+#### 5.1.1 Variaciones especializadas: Miner y Farmer
+
+Para favorecer la división del trabajo sin alterar los roles fundamentales de la base de datos (que restringen el registro dinámico a los 4 roles básicos), se implementaron dos sub-estrategias sobre la base del productor primario, filtrando las recetas que están dispuestos a iniciar:
+
+* **Miner (`miner.go`)**: Se registra como `primary_producer` pero solo ejecuta recetas de minería y extracción (cuyo ID comienza con `mineria_`, `extraccion_`, `cantera_` o `pozo_`). Esta estrategia incluye la producción de metales (hierro, cobre, aluminio, litio, níquel, oro, plata, uranio) y recursos básicos de construcción/energía (arena, piedra, caliza, arcilla, sal, fosfato, petróleo, gas).
+* **Farmer (`farmer.go`)**: Se registra como `primary_producer` pero solo ejecuta recetas de cultivo, ganadería y otros recursos biológicos/naturales básicos (cuyo ID comienza con `cultivo_`, `cosecha_`, `cria_`, o es igual a `ordena`, `germinado_rapido`, `captacion_agua`, `tala` o `esquila`).
 
 ### 5.2 Transformer (`transformer.go`)
 
