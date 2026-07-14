@@ -37,7 +37,8 @@ Para generar y ejecutar automáticamente una cantidad masiva de bots distribuido
 ./bots-v1-runner -config config.yaml -scale 5000 -jitter 120
 ```
 
-* **`-scale 5000`**: Genera 5000 bots llamados `scale_primary_producer_X`, `scale_transformer_Y`, etc. Ignora la lista manual en el archivo YAML de configuración.
+* **`-scale 5000`**: Genera 5000 bots utilizando UUIDs deterministas como username (evitando choques al ejecutar el binario en múltiples máquinas y permitiendo reanudar los mismos bots al reiniciar). Ignora la lista manual en el archivo YAML de configuración.
+* **`-runner-id maquina-1`**: Identificador único de este runner/máquina (por defecto se autodetecta el `hostname`). Se usa para generar los UUIDs v5 deterministas.
 * **`-jitter 120`**: Agrega un retardo aleatorio de inicio para cada bot entre 0 y 120 segundos. Esto distribuye las conexiones y solicitudes de registro e inicio de WebSocket para no saturar al servidor y evitar interbloqueos (deadlocks) o cuellos de botella en la base de datos.
 * **`-max-active 12000`**: Define la cantidad máxima de bots que pueden estar activos (conectados) simultáneamente. Si es 0 (valor por defecto) o no se especifica, todos los bots se ejecutarán al mismo tiempo sin rotación.
 * **`-active-duration 10m`**: Define la duración (p. ej., "10m", "600s", "1h") de la sesión activa de un bot antes de desconectarse, ir a dormir y ceder el turno al siguiente bot en la rotación.

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lokiteitor/market-simulator/sdk/engine"
 	"github.com/lokiteitor/market-simulator/sdk/logging"
 	"github.com/lokiteitor/market-simulator/sdk/models"
@@ -54,7 +55,15 @@ func main() {
 	jitterSec := flag.Int("jitter", 0, "max startup jitter in seconds to spread connection load (default: 0)")
 	maxActiveFlag := flag.Int("max-active", 0, "maximum number of active bots at the same time (0 = no limit)")
 	activeDurationFlag := flag.String("active-duration", "", "duration a bot remains active before sleeping (e.g. 10m, 600s)")
+	runnerID := flag.String("runner-id", "default", "unique identifier for this runner/machine to ensure deterministic and unique UUIDs")
 	flag.Parse()
+
+	runnerVal := *runnerID
+	if runnerVal == "default" || runnerVal == "" {
+		if host, err := os.Hostname(); err == nil {
+			runnerVal = host
+		}
+	}
 
 	// Load config
 	data, err := os.ReadFile(*configPath)
@@ -84,13 +93,17 @@ func main() {
 	}
 
 	if scaleVal > 0 {
-		log.Printf("Scale mode active. Generating %d bots programmatically...", scaleVal)
+		log.Printf("Scale mode active. Generating %d bots programmatically for runner '%s'...", scaleVal, runnerVal)
 		roles := []models.AgentRole{"primary_producer", "transformer", "consumer", "trader"}
+
+		// Fixed namespace UUID for deterministic UUID v5 generation
+		namespace := uuid.MustParse("8c478718-9e01-4841-8870-fdf6d9c4f592")
 
 		for i := 1; i <= scaleVal; i++ {
 			// Round-robin distribution of roles
 			role := roles[(i-1)%len(roles)]
-			username := fmt.Sprintf("scale_%s_%d", role, i)
+			data := []byte(fmt.Sprintf("%s-%s-%d", runnerVal, role, i))
+			username := uuid.NewSHA1(namespace, data).String()
 
 			// Sin requested_capacities: el backend asigna a cada agente las
 			// capacidades de su rol desde infra/seed-config.json y ademas exige

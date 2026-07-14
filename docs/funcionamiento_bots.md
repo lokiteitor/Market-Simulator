@@ -94,9 +94,10 @@ Flags de `main.go`:
 
 - `-config` — ruta del YAML (default `config.yaml`).
 - `-scale N` — **modo enjambre**: ignora la lista `bots:` del YAML y genera N bots
-  programáticamente, repartidos round-robin entre los 4 roles. Usernames `scale_<rol>_<i>`,
-  password compartida de desarrollo, `tick_interval` 5 s, sesión persistida en
-  `./sessions/<username>.json`.
+  programáticamente, repartidos round-robin entre los 4 roles. Los usernames son UUIDs v5 deterministas
+  (generados a partir del `-runner-id` y el índice del bot para evitar choques entre máquinas y permitir reanudación de sesiones),
+  password compartida de desarrollo, `tick_interval` 5 s, sesión persistida en `./sessions/<username>.json`.
+- `-runner-id ID` — Identificador único para el runner/máquina de ejecución (por defecto usa el `hostname` del sistema).
 - `-jitter S` — retardo aleatorio de arranque en `[0, S]` segundos por bot, para que 10.000
   registros/logins no golpeen el servidor a la vez.
 
