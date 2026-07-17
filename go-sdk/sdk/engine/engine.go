@@ -466,6 +466,18 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 				go e.resyncSnapshot()
 				return
 			}
+			// insufficient_inventory confirmado por el servidor: el inventario
+			// local venía adelantado (drift optimista: un fill/cancel que aún no
+			// procesamos, o una cancelación que falló). Rebasear con un snapshot
+			// fresco y descartar el resto del lote (se computó sobre el mismo
+			// estado stale y reventaría igual). Sin backoff: el inventario se
+			// corrige solo al resincronizar, no hace falta dormir al bot.
+			if errors.As(err, &apiErr) && apiErr.HasCode(client.CodeInsufficientInventory) {
+				e.logger.Debug("insufficient inventory confirmed by server, resyncing",
+					"type", action.Type())
+				go e.resyncSnapshot()
+				return
+			}
 			e.logger.Error("failed to execute action", "type", action.Type(), "error", err)
 		}
 	}

@@ -66,11 +66,16 @@ func sellAtMarket(
 		return nil
 	}
 
-	cancels, _, freed := cancelStale(ctx.State.ActiveOrders(), pos.ProductID, models.SideSell, price, p.requoteThresh)
+	cancels, _, _ := cancelStale(ctx.State.ActiveOrders(), pos.ProductID, models.SideSell, price, p.requoteThresh)
 	acts := cancels
-	// Vendible = disponible + lo que liberan las cancelaciones que van delante
-	// en este mismo lote (el engine ejecuta las acciones en orden).
-	sellable := pos.QtyAvailableCent + freed
+	// Vendible = SOLO lo disponible ahora. NO se suma la qty que liberarian las
+	// cancelaciones de este mismo lote: el cancel puede fallar en el servidor
+	// (la orden ya se cruzo/expiro) o el QtyPendingCent local venir inflado (un
+	// fill parcial cuyo order_executed aun no procesamos, WS es otra goroutine),
+	// y entonces el servidor libera menos de lo previsto -> la venta reventaria
+	// con insufficient_inventory. Lo liberado se re-lista en el proximo tick, ya
+	// devuelto a disponible por el order_cancelled (optimista local + servidor).
+	sellable := pos.QtyAvailableCent
 	if sellable <= 0 {
 		return acts
 	}

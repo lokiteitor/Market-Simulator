@@ -35,6 +35,12 @@ type APIError struct {
 // compra o pagar el salario de una transformación.
 const CodeInsufficientCapital = "insufficient_capital"
 
+// CodeInsufficientInventory es el código de sub-error que el backend devuelve
+// (422) cuando el pool disponible/reservado del agente no cubre la cantidad de
+// una orden de venta o el insumo de una transformación. Señala que el
+// inventario local venía adelantado respecto al servidor (drift optimista).
+const CodeInsufficientInventory = "insufficient_inventory"
+
 // HasCode indica si el Problem+JSON trae un sub-error con ese código.
 func (e *APIError) HasCode(code string) bool {
 	for _, err := range e.Problem.Errors {

@@ -217,7 +217,7 @@ func (s *TraderStrategy) quoteProduct(ctx *strategy.Context, pid string, capital
 
 	orders := ctx.State.ActiveOrders()
 	cancelBuys, liveBuy, _ := cancelStale(orders, pid, models.SideBuy, bid, s.p.requoteThresh)
-	cancelSells, _, freedSell := cancelStale(orders, pid, models.SideSell, ask, s.p.requoteThresh)
+	cancelSells, _, _ := cancelStale(orders, pid, models.SideSell, ask, s.p.requoteThresh)
 
 	var acts []actions.Action
 	acts = append(acts, cancelBuys...)
@@ -242,10 +242,12 @@ func (s *TraderStrategy) quoteProduct(ctx *strategy.Context, pid string, capital
 		}
 	}
 
-	// Punta de venta: una tranche del inventario vendible. Lo disponible ya
-	// excluye lo reservado por ventas vivas; las cancelaciones que van delante
-	// en este mismo lote liberan su qty antes de que el PlaceOrder llegue.
-	sellable := inv.QtyAvailableCent + freedSell
+	// Punta de venta: una tranche del inventario vendible. Solo lo disponible
+	// ahora; NO se suma lo que liberarian los cancelSells de este mismo lote (el
+	// cancel puede fallar o el pending local venir inflado por un fill aun no
+	// procesado -> insufficient_inventory). Lo liberado se re-lista al proximo
+	// tick, ya devuelto a disponible por el order_cancelled.
+	sellable := inv.QtyAvailableCent
 	if sellable > 0 {
 		qty := humanQty(s.rnd, int64(float64(sellable)*s.p.sellTranche))
 		if qty > sellable {
