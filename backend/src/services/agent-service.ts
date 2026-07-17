@@ -32,6 +32,7 @@ import { intervalToSimSeconds, realMsToSimSeconds } from "../lib/simtime";
 import { agentRepository } from "../repositories/agent-repository";
 import { bankRepository } from "../repositories/bank-repository";
 import type { AgentRegistrar, AgentRole } from "../types/contracts";
+import { bankService } from "./bank-service";
 import { inventoryService } from "./inventory-service";
 import { transformationService } from "./transformation-service";
 
@@ -340,6 +341,11 @@ export const agentService: AgentService = {
       let emission: { fromBankCents: number; mintedCents: number } | null = null;
 
       if (gs !== undefined) {
+        // Pliega primero los fees pendientes de fee_ledger al capital del banco
+        // (ADR-019), para que el débito condicional de abajo vea el saldo REAL
+        // y no rechace una financiación que el banco sí puede respaldar. Seguro
+        // y sin deadlock: reentra bajo la gold_standard ya bloqueada arriba.
+        await bankService.materializeFees(tx);
         const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
         const bankCapital = bankRow?.capitalAvailable ?? 0;
         const goldAvailable = await bankRepository.getGoldAvailable(

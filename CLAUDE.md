@@ -49,7 +49,7 @@ Invariantes que atraviesan todo:
 
 - **Toda mutación** corre en una transacción de Postgres abierta en el Service que valida invariantes, persiste y hace append al `event_log` **antes** del commit. Las notificaciones WS (Redis pub/sub, db 0) se publican solo **post-commit**.
 - **Dinero y cantidades son enteros** (`BIGINT`): centavos y centésimas de unidad. Toda aritmética de montos pasa por `lib/money.ts` / `lib/gold.ts` (BigInt con redondeo `floor`, sesgo conservador). La conversión a decimales ocurre solo en los bordes.
-- **Matching serializado por producto** con mutex in-process (una sola instancia del Core). El precio efectivo es el de la orden pasiva.
+- **Matching serializado por producto** en dos capas (ADR-019): un mutex in-process (`lib/locks.ts`, embuda la contención intra-proceso) más un **advisory lock de Postgres transaction-scoped** (`acquireProductAdvisoryLock`, primer lock de la tx) que serializa cluster-wide entre las **N réplicas del Core**. El precio efectivo es el de la orden pasiva.
 - **Tiempo simulado**: `SIM_TIME_FACTOR` (5×). Las duraciones de recetas y TTLs se declaran en tiempo simulado pero se persisten como `TIMESTAMPTZ` reales calculados a la creación. Sutileza recurrente: el salario corre en centavos por segundo **real** mientras la duración de la receta está en tiempo **simulado**.
 - **Materialización lazy + sweeper**: los procesos vencidos se materializan al leer el estado del agente o por el sweeper del Worker; ambos usan `FOR UPDATE SKIP LOCKED` y son idempotentes.
 - **Inventario FIFO por lotes** con trazabilidad de costo (`inventory_lot` + tablas `*_lot_consumption`).
@@ -58,9 +58,9 @@ Invariantes que atraviesan todo:
 
 Ver `docs/patron_oro_sistema_bancario.md`. Lo que hay que saber al tocar dinero:
 
-- Los **fees del matching se acreditan al banco central** (rol `bank`), no se evaporan.
-- El capital semilla de cada registro dinámico se financia con capital del banco + **acuñación respaldada por oro** (`agent-service.ts`); puede fallar con `insufficient_gold_backing`.
-- **Orden global de locks**: `gold_standard FOR UPDATE` siempre antes que cualquier lock de agente. La fila del banco solo la escribe el matching (crédito de fees, último lock de su tx).
+- Los **fees del matching se acreditan al banco central** (rol `bank`), no se evaporan. Para no crear una fila caliente global bajo N réplicas (ADR-019), el hot path los **anota en `fee_ledger`** (append-only) y un sweeper del Worker (`fee-ledger-sweeper`) los pliega al capital del banco; los lectores del saldo (GET `/bank`, métricas, snapshots, conservación) suman los pendientes de `fee_ledger`.
+- El capital semilla de cada registro dinámico se financia con capital del banco + **acuñación respaldada por oro** (`agent-service.ts`); puede fallar con `insufficient_gold_backing`. Materializa primero los fees pendientes para ver el saldo real del banco antes de debitar.
+- **Orden global de locks**: `gold_standard FOR UPDATE` siempre antes que cualquier lock de agente. La fila del banco ya **no** la escribe el matching (que ahora solo INSERTA en `fee_ledger`); la escriben el sweeper de fees y la financiación de semilla, ambos bajo `gold_standard`.
 - Roles de agente: los 4 de mercado (`primary_producer`, `transformer`, `consumer`, `trader`) más `admin` (panel, solo-monitoreo) y `bank` (banco central, sin credenciales); estos dos no son registrables ni cuentan en agregados de mercado (`NON_MARKET_ROLES` en `types/contracts.ts`).
 - La producción de oro se clampea contra un yacimiento finito (`resource_deposit`).
 

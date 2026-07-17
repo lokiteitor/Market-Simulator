@@ -67,7 +67,7 @@ El modelo cubre los siguientes dominios:
 ## 📊 Estadísticas Generales
 
 ```
-Total de Tablas: 21
+Total de Tablas: 22
 Total de Enums: 8
 Total de Índices: 19 (excluyendo PKs y UNIQUE de columnas)
 Total de Relaciones (FK): 31
@@ -80,7 +80,7 @@ Desglose por dominio:
 - Órdenes y trades: 2 tablas (`market_order`, `trade`)
 - Procesos: 1 tabla (`transformation_process`)
 - Inventario y trazabilidad: 4 tablas (`inventory_lot`, `trade_lot_consumption`, `transformation_lot_consumption`, `conversion_lot_consumption`)
-- Patrón oro: 3 tablas (`gold_standard`, `gold_conversion`, `resource_deposit`)
+- Patrón oro: 4 tablas (`gold_standard`, `gold_conversion`, `resource_deposit`, `fee_ledger`)
 - Event log: 1 tabla (`event_log`)
 - Snapshots: 3 tablas (`market_snapshot`, `market_snapshot_agent_capital`, `market_snapshot_product`)
 - Configuración: ninguna en BD — cargada desde `.env` al arranque del proceso.
@@ -578,7 +578,7 @@ ALTER TABLE market_order ADD CONSTRAINT order_product_fk FOREIGN KEY (product_id
 - **Matching precio-tiempo**: el mejor precio (mayor para compras, menor para ventas) tiene prioridad; en empates de precio gana la orden más antigua.
 - **Precio efectivo de ejecución**: precio de la orden pasiva (el que ya estaba en el libro). La orden agresora toma ese precio.
 - **Ejecuciones parciales permitidas**: una orden puede casarse con múltiples contrapartes a lo largo del tiempo hasta agotar `qty_pending`.
-- **Serialización por producto**: el matching engine procesa las órdenes de un producto de forma serializada para evitar condiciones de carrera.
+- **Serialización por producto**: el matching engine procesa las órdenes de un producto de forma serializada para evitar condiciones de carrera, mediante un mutex in-process **y** un advisory lock de Postgres (`pg_advisory_xact_lock`) que coordina entre las N réplicas del Core (ADR-019).
 - **Reservas en creación**: al crear una orden de compra se reserva `qty_original × limit_price_cents` del capital del agente; al crear una venta se reservan `qty_original` unidades del inventario.
 - **Liberación de reservas**: al cancelar/expirar se liberan las reservas residuales correspondientes a `qty_pending`.
 - **TTL en tiempo simulado**: el campo es `TIMESTAMPTZ` real, pero el valor se calcula aplicando el factor de simulación (5× por defecto). Pausar la simulación mid-run no se soporta sin recalcular `expires_at`.
@@ -1070,9 +1070,44 @@ CREATE TABLE resource_deposit (
 
 ---
 
+### 18. fee_ledger
+
+**Descripción** (ADR-019): ledger append-only de los fees de matching acreditables al banco central. El hot path del matching INSERTA aquí un registro por trade con fees (en vez de hacer `UPDATE` de la fila caliente del agente banco, que serializaría todos los trades entre las N réplicas del Core). Un sweeper del Worker (`fee-ledger-sweeper`) reclama por lotes los registros no materializados, los suma y los pliega al `capital_available` del banco marcándolos `materialized`. El **saldo real del banco** = `agent.capital_available` de la fila del banco **+** `SUM(amount_cents) WHERE NOT materialized`; los lectores del saldo (GET `/bank`, métricas, snapshots) y el invariante de conservación suman ese pendiente.
+
+```sql
+CREATE TABLE fee_ledger (
+    fee_id          UUID            PRIMARY KEY DEFAULT uuidv7(),
+    trade_id        UUID            NOT NULL REFERENCES trade(trade_id) ON DELETE CASCADE,
+    amount_cents    BIGINT          NOT NULL CHECK (amount_cents > 0),
+    materialized    BOOLEAN         NOT NULL DEFAULT false,
+    occurred_at     TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+-- Índice parcial: el sweeper solo escanea lo pendiente de plegar.
+CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialized;
+```
+
+#### Diccionario de Campos
+
+| Campo          | Tipo          | Descripción                                                                 |
+| -------------- | ------------- | --------------------------------------------------------------------------- |
+| `fee_id`       | `UUID`        | Identificador del registro (UUIDv7, monotónico; el sweeper reclama por orden de `fee_id`). |
+| `trade_id`     | `UUID`        | Trade que generó el fee (`fee_buyer_cents + fee_seller_cents`).              |
+| `amount_cents` | `BIGINT`      | Fee total del trade acreditable al banco (`> 0`).                           |
+| `materialized` | `BOOLEAN`     | `true` una vez plegado al capital del banco por el sweeper.                  |
+| `occurred_at`  | `TIMESTAMPTZ` | Momento del INSERT (post-matching).                                         |
+
+#### Reglas de Negocio
+
+- Append-only: el hot path solo INSERTA; el único que hace `UPDATE` (a `materialized`) es el sweeper (worker `concurrency:1`, sin carreras).
+- Si la corrida no tiene `gold_standard` (sin banco), no se anota nada (los fees se evaporan como en el diseño previo).
+- La financiación de semilla (`agent-service.ts`) materializa primero los pendientes bajo `gold_standard FOR UPDATE` para que su débito condicional vea el saldo real del banco.
+
+---
+
 ## 📜 Event Log
 
-### 18. event_log
+### 19. event_log
 
 **Descripción**: log append-only de toda mutación de estado relevante. Cada evento se persiste **antes** de aplicarse al estado vivo. El estado actual es derivable reproduciendo eventos. Sirve a agentes de ML para entrenamiento histórico y al investigador para análisis post-mortem. **No particionado en v1**; se evaluará cuando crezca.
 
@@ -1163,7 +1198,7 @@ ALTER TABLE event_log ADD CONSTRAINT event_log_agent_fk FOREIGN KEY (agent_id) R
 
 ## 📸 Snapshots Agregados
 
-### 19. market_snapshot
+### 20. market_snapshot
 
 **Descripción**: foto agregada del estado global del mercado en un instante. Snapshots disparados manualmente (no se modela frecuencia automática en v1). Sirven para evitar reconstrucción costosa desde `event_log` en análisis.
 
@@ -1208,7 +1243,7 @@ ALTER TABLE market_snapshot ADD CONSTRAINT market_snapshot_taken_at_unique UNIQU
 
 ---
 
-### 20. market_snapshot_agent_capital
+### 21. market_snapshot_agent_capital
 
 **Descripción**: detalle por agente del capital total al momento del snapshot. Tabla hija de `market_snapshot`.
 
@@ -1247,7 +1282,7 @@ ALTER TABLE market_snapshot_agent_capital ADD CONSTRAINT msac_agent_fk FOREIGN K
 
 ---
 
-### 21. market_snapshot_product
+### 22. market_snapshot_product
 
 **Descripción**: detalle por producto del inventario total y mejor bid/ask al momento del snapshot.
 
@@ -1391,7 +1426,7 @@ Estimaciones preliminares para una corrida con ~100 agentes activos a velocidad 
 - **Índices del libro de órdenes**: los índices parciales `idx_orderbook_buy` e `idx_orderbook_sell` con `WHERE status IN ('active','partial')` son críticos. Mantienen su tamaño acotado al subconjunto vivo y permiten lookup de top-of-book en O(log n).
 - **Índice FIFO de lotes**: `idx_lot_fifo` con `WHERE qty_available > 0 OR qty_reserved > 0` mantiene fuera los lotes agotados, acelerando el descuento FIFO.
 - **Índices de expiración**: `idx_order_expiring` e `idx_process_running_expired` aceleran los sweepers de fondo.
-- **Serialización del matching engine por producto**: para evitar deadlocks, todas las operaciones de matching de un producto se serializan en la aplicación, no en la BD.
+- **Serialización del matching engine por producto**: se serializa en dos capas (ADR-019): un mutex in-process (primer filtro, intra-proceso) y un advisory lock de Postgres transaction-scoped (`pg_advisory_xact_lock(hashtext(product_id))`) que serializa entre las N réplicas del Core — es decir, la serialización cluster-wide sí ocurre en la BD. Los deadlocks cross-producto residuales sobre filas de agente se absorben con reintento sobre `40P01`.
 - **Transacciones atómicas**: cada operación de dominio (place_order, ejecución de match, start_transformation) debe ejecutarse en una única transacción de Postgres con nivel de aislamiento `READ COMMITTED` o superior según se vea necesario; el matching engine serializado evita la mayoría de los conflictos.
 - **JSONB en `event_log` y configuraciones**: usar índices GIN solo si surgen patrones de query frecuentes sobre el contenido del payload.
 

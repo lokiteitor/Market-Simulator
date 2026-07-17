@@ -15,6 +15,12 @@ const NODE_ENVS = ["development", "test", "production"] as const;
 const intFromEnv = (def: number) => z.coerce.number().int().default(def);
 const posIntFromEnv = (def: number) => z.coerce.number().int().positive().default(def);
 const nonNegIntFromEnv = (def: number) => z.coerce.number().int().nonnegative().default(def);
+// Booleano desde env: "false"/"0"/"no" ⇒ false; cualquier otro string ⇒ true.
+const boolFromEnv = (def: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? def : !["false", "0", "no", ""].includes(v.toLowerCase())));
 
 const EnvSchema = z
   .object({
@@ -24,6 +30,10 @@ const EnvSchema = z
     // vive clavado en este valor con la latencia de tx creciendo; el óptimo
     // ronda 2–4× los cores de Postgres, no el número de bots.
     DB_POOL_MAX: posIntFromEnv(10),
+    // Prepared statements de postgres.js. DEBE ser false detrás de PgBouncer en
+    // modo transaction (los prepared statements con nombre no sobreviven al
+    // reciclado de conexión por transacción). true en dev con Postgres directo.
+    DB_PREPARE: boolFromEnv(true),
     REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
     REDIS_PUBSUB_DB: nonNegIntFromEnv(0),
     REDIS_BULLMQ_DB: nonNegIntFromEnv(1),
@@ -66,6 +76,9 @@ const EnvSchema = z
     ADMIN_PASSWORD: z.string().min(12).max(256).default("change-me-admin-please"),
     TRANSFORMATION_SWEEP_INTERVAL_MS: posIntFromEnv(10000),
     ORDER_EXPIRY_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
+    // Sweeper que pliega fee_ledger al capital del banco (ADR-019). Frecuente
+    // para que el lag del saldo del banco sea pequeño.
+    FEE_LEDGER_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
     SWEEP_BATCH_SIZE: posIntFromEnv(100),
     IDEMPOTENCY_TTL_SECONDS: posIntFromEnv(600),
     RECONNECT_EVENTS_LIMIT: posIntFromEnv(100),
@@ -119,6 +132,8 @@ export interface Config {
   databaseUrl: string;
   /** Conexiones máximas del pool de Postgres por proceso. */
   dbPoolMax: number;
+  /** Prepared statements de postgres.js (false detrás de PgBouncer transaction). */
+  dbPrepare: boolean;
   /** URL base de Redis SIN db lógica resuelta. */
   redisUrl: string;
   redisPubSubDb: number;
@@ -160,6 +175,7 @@ export interface Config {
   sweeps: {
     transformationIntervalMs: number;
     orderExpiryIntervalMs: number;
+    feeLedgerIntervalMs: number;
     batchSize: number;
   };
   idempotencyTtlSeconds: number;
@@ -192,6 +208,7 @@ function loadConfig(): Config {
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     dbPoolMax: e.DB_POOL_MAX,
+    dbPrepare: e.DB_PREPARE,
     redisUrl: e.REDIS_URL,
     redisPubSubDb: e.REDIS_PUBSUB_DB,
     redisBullmqDb: e.REDIS_BULLMQ_DB,
@@ -247,6 +264,7 @@ function loadConfig(): Config {
     sweeps: {
       transformationIntervalMs: e.TRANSFORMATION_SWEEP_INTERVAL_MS,
       orderExpiryIntervalMs: e.ORDER_EXPIRY_SWEEP_INTERVAL_MS,
+      feeLedgerIntervalMs: e.FEE_LEDGER_SWEEP_INTERVAL_MS,
       batchSize: e.SWEEP_BATCH_SIZE,
     },
     idempotencyTtlSeconds: e.IDEMPOTENCY_TTL_SECONDS,

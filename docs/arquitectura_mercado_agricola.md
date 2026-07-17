@@ -77,7 +77,7 @@ Notas:
 | Contenedor | Tecnología | Responsabilidad |
 |-----------|------------|-----------------|
 | API Gateway | Caddy | TLS termination, ruteo, CORS, load balancing y proxy de WebSocket. Sin lógica de autenticación de dominio. |
-| Servidor de Simulación (Core) | Bun + TypeScript + Fastify | Servidor autoritativo: API REST, autenticación JWT, matching engine, ciclo de vida de órdenes y procesos, ventanilla del banco central (patrón oro), validación de invariantes, emisión de notificaciones. En v1 corre como **una sola instancia**. |
+| Servidor de Simulación (Core) | Bun + TypeScript + Fastify | Servidor autoritativo: API REST, autenticación JWT, matching engine, ciclo de vida de órdenes y procesos, ventanilla del banco central (patrón oro), validación de invariantes, emisión de notificaciones. Puede correr con **N réplicas** (ADR-019); el matching se serializa por producto con advisory locks de Postgres. |
 | Worker de Background Jobs | Bun + TypeScript + BullMQ | Sweeper de procesos de transformación vencidos, expirador de órdenes con TTL vencido, generador de snapshots agregados, limpieza periódica de refresh tokens expirados. |
 | Seed | Bun + TypeScript (`seed.ts`, `seed-admin.ts`) | Contenedores one-shot: siembran catálogo/recetas/capacidades desde `infra/seed-config.json`, crean el banco central, sortean el yacimiento de oro y fijan la paridad; `seed-admin` crea el usuario del panel de administración. |
 | Frontend Web | React + nginx | UI humana (dashboard, mercado, órdenes, transformaciones, historial) y **panel de administración** del operador. Consume la misma API que los bots. |
@@ -109,7 +109,7 @@ graph TB
 Caddy es la única puerta de entrada externa. Termina TLS, aplica CORS, balanceo (preparado para múltiples instancias del Core en v2) y rutea peticiones HTTP a Fastify. Adicionalmente sirve como proxy WebSocket transparente (`/v1/ws`), sin validar el JWT —la validación del handshake la hace Fastify. Caddy **no** valida JWT de la API REST: esa responsabilidad vive en Fastify, para mantener en un solo lugar la lógica de revocación (quiebra, cambio de contraseña). Esta elección está registrada en ADR-006.
 
 **Servidor de Simulación (Core).**
-Un proceso Bun ejecutando Fastify. Contiene todo lo crítico del dominio: matching engine, validación atómica de operaciones, emisión de notificaciones, gestión de tokens. En v1 corre como **una sola instancia** (ADR-004). El matching se serializa por producto mediante locks de aplicación in-process; al haber un único proceso, no se requiere coordinación distribuida.
+Un proceso Bun ejecutando Fastify. Contiene todo lo crítico del dominio: matching engine, validación atómica de operaciones, emisión de notificaciones, gestión de tokens. Puede correr con **N réplicas** tras PgBouncer (ADR-019, actualiza ADR-004). El matching se serializa por producto en dos capas: un mutex in-process (contención intra-proceso) más un advisory lock de Postgres transaction-scoped que coordina cluster-wide entre réplicas.
 
 **Worker de Background Jobs.**
 Proceso Bun separado que consume colas de BullMQ. Encapsula tres responsabilidades de fondo:
@@ -156,7 +156,7 @@ El Core sigue una arquitectura por capas estricta. Cada capa solo conoce a la in
 | Routes | Definición declarativa de rutas Fastify, validación de schemas de entrada/salida con Zod. | Cada ruta del `openapi.yaml` corresponde a un handler. |
 | Controllers | Orquestación: extraer parámetros del request, llamar al Service apropiado, mapear el resultado al schema de respuesta, mapear errores de dominio a Problem+JSON RFC 7807. | Sin lógica de negocio. |
 | Services | Lógica de dominio: validación de invariantes, transacciones atómicas, llamadas al matching engine, emisión de eventos al `event_log` y de notificaciones al Notifier. | Cada operación del diseño conceptual tiene su Service: `OrderService`, `TransformationService`, `AgentService`, `AuthService`, `MarketService`, `CatalogService`, `HistoryService`, `BankService` (ventanilla del patrón oro: `GET /bank`, `POST /bank/convert`; serializada con `gold_standard FOR UPDATE`). |
-| Matching Engine | Componente especializado del dominio que recibe una orden recién insertada y ejecuta el algoritmo de casado precio-tiempo contra el libro vigente. Aplicado como subcomponente de `OrderService`. | Serializado por producto mediante locks in-process (ADR-005). |
+| Matching Engine | Componente especializado del dominio que recibe una orden recién insertada y ejecuta el algoritmo de casado precio-tiempo contra el libro vigente. Aplicado como subcomponente de `OrderService`. | Serializado por producto en dos capas: mutex in-process + advisory lock de Postgres cluster-wide (ADR-019). |
 | Repositories | Acceso a datos vía Drizzle. Queries tipadas, transacciones, locking explícito (`FOR UPDATE`) donde sea necesario. | Sin lógica de negocio; solo persistencia. |
 | Notifier | Publica mensajes en Redis pub/sub para que el componente WebSocket los entregue a los clientes conectados. | Único punto donde se construye el envelope de notificación. |
 | WebSocket Hub | Gestiona conexiones WS de agentes, hace handshake con validación de JWT, se suscribe a Redis y reenvía mensajes al cliente correspondiente. | Misma instancia del Core; sin conexión bidireccional (servidor → cliente only). |
@@ -251,11 +251,11 @@ sequenceDiagram
 
 Notas críticas:
 
-- El `lock(product_id)` es un mutex in-process (ej. `async-mutex`). Toda la operación de matching para ese producto se serializa en aplicación. Sin esto, dos órdenes que llegan simultáneamente al mismo producto podrían producir ejecuciones inconsistentes.
+- El `lock(product_id)` serializa toda la operación de matching de ese producto en **dos capas** (ADR-019): un mutex in-process (`lib/locks.ts`) que ordena dentro de un proceso, más un **advisory lock de Postgres transaction-scoped** (`pg_advisory_xact_lock(hashtext(product_id))`, primer statement de la tx) que serializa cluster-wide entre las N réplicas del Core. Sin esto, dos órdenes simultáneas del mismo producto podrían producir ejecuciones inconsistentes.
 - La transacción de base de datos abarca **toda** la operación: validación, reservas, inserción de la orden, matching completo, registro en `event_log`. Si algo falla, todo revierte.
 - Las notificaciones se publican en Redis **después** del commit. Si la transacción falla, no se notifica nada falso.
 - Las contrapartes notificadas pueden estar desconectadas; el mensaje se publica igual, y al reconectarse el agente verá el estado actualizado en `GET /agents/me`.
-- **Patrón oro:** dentro de la misma transacción del matching, los fees de los trades ejecutados se **acreditan al banco central** (no se evaporan). Es la única escritura concurrente sobre el capital del banco fuera del mutex de `gold_standard`.
+- **Patrón oro (ADR-019):** dentro de la misma transacción del matching, los fees de los trades ejecutados se **anotan en `fee_ledger`** (append-only) en vez de escribir la fila del banco — así N réplicas no contienden por una fila caliente global. Un sweeper del Worker (`fee-ledger-sweeper`) los pliega al capital del banco; los lectores del saldo suman los pendientes. La fila del banco ya no la escribe el matching.
 
 ### 5.5 Flujo crítico: materialización lazy + sweeper
 
@@ -326,7 +326,7 @@ Notas:
 
 Como guía mínima para Prometheus:
 
-- **Core (Fastify):** latencia y tasa de cada endpoint, conteo de errores por status code, número de conexiones WebSocket activas, tamaño de las colas in-process de matching por producto, duración de transacciones de matching.
+- **Core (Fastify):** latencia y tasa de cada endpoint, conteo de errores por status code, número de conexiones WebSocket activas, tamaño de las colas in-process de matching por producto (primera capa del lock), reintentos por deadlock (`40P01`), duración de transacciones de matching. Con N réplicas, Prometheus las descubre por DNS.
 - **Worker:** conteo de jobs procesados y fallidos por tipo de cola, latencia de procesamiento, profundidad de cola en Redis, número de procesos de transformación materializados por intervalo, número de órdenes expiradas por intervalo.
 - **Negocio (ambos pueden contribuir):** número de agentes activos, masa monetaria total, número de órdenes vivas por producto, número de procesos en curso.
 
@@ -521,7 +521,7 @@ Aplicados a este sistema en particular:
 - **Servidor autoritativo único.** Toda decisión de estado se toma en el servidor. Los agentes no mantienen estado autoritativo. Esto elimina problemas de consistencia bajo concurrencia y reconexión.
 - **Separación disponible/reservado en capital e inventario.** Invariantes locales baratas: validar capital disponible no requiere escanear órdenes activas. Decisión heredada del diseño conceptual y ratificada aquí.
 - **Atomicidad en cada operación de dominio.** Toda mutación se ejecuta en una transacción PostgreSQL que valida invariantes, persiste el cambio y registra el evento en `event_log` antes de hacer commit. Si algo falla, todo revierte.
-- **Serialización por producto en el matching.** El matching engine procesa órdenes de un producto en orden estricto, mediante un mutex in-process. Esto evita race conditions sin requerir locks distribuidos en v1.
+- **Serialización por producto en el matching.** El matching engine procesa órdenes de un producto en orden estricto mediante dos capas (ADR-019): un mutex in-process y un advisory lock de Postgres transaction-scoped que serializa cluster-wide entre réplicas. Esto evita race conditions permitiendo escalar el Core horizontalmente.
 - **Materialización lazy + sweeper.** Los procesos de transformación se "completan" cuando alguien observa el estado del agente, o cuando el sweeper los procesa. Evita un scheduler complejo y mantiene la consistencia: el estado siempre está actualizado en el momento de la lectura.
 - **Inventario por lotes con FIFO.** Cada adquisición o producción crea un lote con costo unitario. Las ventas y consumos descuentan FIFO. Da trazabilidad de COGS por trade y costo real de producción por proceso.
 - **Event log append-only.** Toda mutación genera un evento persistido en la misma transacción. El estado es derivable reproduciendo eventos; sirve tanto a análisis post-mortem como a entrenamiento de agentes de ML.
@@ -552,8 +552,8 @@ Aplicados a este sistema en particular:
 | ADR-001 | 2026-05-26 | Aceptado | PostgreSQL 18+ como única fuente de verdad, con event log append-only embebido. |
 | ADR-002 | 2026-05-26 | Aceptado | Bun + TypeScript + Fastify como runtime, lenguaje y framework HTTP. |
 | ADR-003 | 2026-05-26 | Aceptado | Drizzle + drizzle-kit como capa de acceso a datos y migraciones. |
-| ADR-004 | 2026-05-26 | Aceptado | Una sola instancia del Core en v1 (sin replicación ni sharding). |
-| ADR-005 | 2026-05-26 | Aceptado | Matching engine directo contra Postgres, serializado por producto con locks in-process. |
+| ADR-004 | 2026-05-26 | Matizado por ADR-019 | Una sola instancia del Core en v1 (sin replicación ni sharding). |
+| ADR-005 | 2026-05-26 | Superado por ADR-019 | Matching engine directo contra Postgres, serializado por producto con locks in-process. |
 | ADR-006 | 2026-05-26 | Aceptado | Caddy como gateway delgado: TLS, ruteo, CORS, load balancing y WS proxy sin autenticación. JWT lo valida Fastify. |
 | ADR-007 | 2026-05-26 | Aceptado | BullMQ para todos los jobs de fondo (sweeper, expirador, snapshot, limpieza). |
 | ADR-008 | 2026-05-26 | Aceptado | Worker como proceso separado del Core, compartiendo código de dominio en monorepo. |
@@ -567,10 +567,11 @@ Aplicados a este sistema en particular:
 | ADR-016 | 2026-05-26 | Aceptado | Zod como única librería de validación de schemas (rutas, configuración de `.env`, tests). |
 | ADR-017 | 2026-07-13 | Aceptado | Patrón oro: banco central con ventanilla acuñadora, fees reciclados al banco, emisión de capital respaldada por oro, yacimiento finito por semilla. |
 | ADR-018 | 2026-07-13 | Aceptado | Sin migraciones incrementales: `specs/schema.sql` + `schema.ts` (Drizzle) como fuentes espejo; cambios de esquema recrean la BD (`clean-docker` + re-seed). |
+| ADR-019 | 2026-07-17 | Aceptado | Matching multiproceso: serialización por producto con advisory locks de Postgres (transaction-scoped) + mutex in-process como primer filtro; fees del matching a `fee_ledger` append-only con sweeper; N réplicas del Core tras PgBouncer. Supera ADR-005, matiza ADR-004. |
 
 ### 12.3 Detalle de ADRs clave
 
-**ADR-004 — Una sola instancia del Core en v1**
+**ADR-004 — Una sola instancia del Core en v1** *(matizado por ADR-019: el Core ya puede correr con N réplicas tras PgBouncer; el matching se serializa por producto con advisory locks de Postgres)*
 
 - *Contexto:* la simulación corre con ~100 agentes. La carga proyectada (~10K órdenes/día, ~5K trades/día) cabe holgadamente en un proceso Bun bien configurado. Múltiples instancias forzarían a resolver coordinación de matching (lock distribuido o sharding por producto).
 - *Decisión:* desplegar el Core como una sola instancia. Caddy se configura para balancing futuro, pero apunta a un único upstream.
@@ -580,7 +581,7 @@ Aplicados a este sistema en particular:
   - (−) Punto único de fallo. Aceptable en v1 (simulación, no producción).
   - (−) Techo de throughput limitado por un solo proceso. Si se rebasa, hay que ir a v2 con sharding por producto.
 
-**ADR-005 — Matching directo contra Postgres**
+**ADR-005 — Matching directo contra Postgres** *(la serialización por producto con locks in-process queda superada por ADR-019: ahora es un mutex in-process + advisory lock de Postgres cluster-wide; el matching directo contra Postgres sigue vigente)*
 
 - *Contexto:* dos diseños posibles: (a) libro de órdenes en memoria con persistencia eventual, (b) matching en cada request con queries directas y locks de fila.
 - *Decisión:* (b). Cada `POST /v1/orders` ejecuta una transacción que valida, inserta la orden, busca contrapartes con `SELECT ... FOR UPDATE` siguiendo `idx_orderbook_buy`/`idx_orderbook_sell`, ejecuta los matches y commita todo junto.
@@ -659,6 +660,17 @@ Aplicados a este sistema en particular:
   - (+) Los bots sobreviven al reset: se re-registran solos (`auto_register` + re-login).
   - (−) Todo cambio de esquema descarta la corrida en curso. Aceptable mientras no haya corridas largas que preservar.
 
+**ADR-019 — Matching multiproceso (supera ADR-005, matiza ADR-004)**
+
+- *Contexto:* ADR-004/005 asumían un Core de proceso único, donde el matching se serializaba por producto con un mutex in-process (`lib/locks.ts`) que solo es válido dentro de un proceso. Al querer escalar el Core horizontalmente aparecen dos obstáculos: (1) el mutex in-process deja de serializar entre procesos; (2) el crédito de fees al banco era un `UPDATE` de la fila del agente banco en **cada** trade — una fila caliente global que, con N réplicas, serializaría todos los trades de todos los productos, anulando el paralelismo. El resto de la arquitectura ya era multiproceso-safe: la correctitud de capital/inventario descansa en locks de fila de Postgres (`FOR UPDATE` + `UPDATE ... WHERE capital >= n`), y las notificaciones ya van por Redis pub/sub.
+- *Decisión:* (a) **Serialización por producto en dos capas.** Se conserva el mutex in-process como primer filtro (embuda la contención intra-proceso a 1 waiter por producto por proceso, evitando que decenas de requests bloqueadas retengan conexiones del pool) y se añade `pg_advisory_xact_lock(hashtext(product_id))` como **primer lock de la transacción** (antes que `gold_standard` y filas de agente), que serializa cluster-wide y se libera solo en commit/rollback. (b) **Fees a un ledger append-only.** El hot path del matching INSERTA en `fee_ledger` en vez de escribir la fila del banco; un sweeper del Worker (`fee-ledger-sweeper`, concurrency 1) pliega los pendientes al capital del banco bajo `gold_standard`. Los lectores del saldo (GET `/bank`, métricas, snapshots) y el invariante de conservación suman `SUM(fee_ledger WHERE NOT materialized)`. La financiación de semilla materializa primero para ver el saldo real. (c) **Infra.** N réplicas del Core tras PgBouncer en modo transaction (compatible con advisory locks transaction-scoped; `prepare:false` en postgres.js); Caddy balancea HTTP/WS con upstreams dinámicos por DNS (sin sticky sessions, gracias al pub/sub); Prometheus descubre las réplicas por DNS.
+- *Consecuencias:*
+  - (+) El Core escala horizontalmente sin violar invariantes ni serializar por una fila caliente.
+  - (+) La serialización por producto se preserva exactamente (misma semántica precio-tiempo), ahora cluster-wide.
+  - (+) `fee_ledger` da además trazabilidad por-trade de los fees reciclados.
+  - (−) El saldo del banco pasa a ser fila + ledger pendiente: cada lector y el invariante de conservación deben sumar los pendientes, y el sweeper introduce un componente más.
+  - (−) Deadlocks cross-producto sobre filas de agente siguen siendo posibles (dos productos, roles invertidos); se absorben con `retryOnDeadlock` (SQLSTATE `40P01`). El `hashtext` (int4) puede colisionar entre dos productos causando falsa contención, nunca incorrectitud.
+
 ---
 
 ## 13. Notas y Consideraciones Finales
@@ -677,7 +689,7 @@ Este documento es la **referencia arquitectónica**: cómo se distribuye el sist
 - *Throughput del matching:* la elección de matching directo contra Postgres es la decisión más sensible a la escala. Hay que monitorear la latencia del endpoint `POST /v1/orders` desde el día 1 y la duración de las transacciones de matching. Si supera umbrales razonables (p. ej. p95 > 200 ms), revisitar antes de v2.
 - *Crecimiento de `event_log`:* a ~30K eventos/día crece ~5.5 GB/año (estimación de `documentacion_base_datos.md`). En el horizonte de v1 está acotado; la decisión de no particionar en v1 (ADR-001 implícito) debe revisarse antes de que la tabla supere los ~50M de filas.
 - *Pausar/reanudar la simulación o cambiar el factor de tiempo mid-run:* no soportado en v1. `expires_at` y `expected_end_at` están calculados en `TIMESTAMPTZ` real aplicando el factor al momento de la creación. Cambiar el factor requeriría recalcular todos los timestamps vivos, lo cual no está implementado.
-- *Punto único de fallo:* el Core es una sola instancia. Una caída interrumpe la simulación; el estado en Postgres queda consistente y al reiniciar el Core el sistema puede seguir. Worker y Core son independientes y pueden reiniciarse por separado.
+- *Punto único de fallo:* con N réplicas del Core (ADR-019) la caída de una réplica ya no interrumpe la simulación (Caddy la saca del balanceo por DNS). Persisten como puntos únicos Postgres, Redis y el Worker (réplica única). El estado en Postgres queda siempre consistente. Worker y Core son independientes y se reinician por separado.
 - *Auditoría del paralelismo Core+Worker en operaciones idempotentes:* la materialización lazy en el Core y la del Worker pueden competir por los mismos procesos vencidos. Es crítico que ambos usen `FOR UPDATE SKIP LOCKED` y que la operación sea idempotente (un proceso ya `completed` no se vuelve a materializar).
 
 **Trabajo futuro relevante para v2 (alineado con el alcance v1 del diseño).**

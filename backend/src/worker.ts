@@ -25,8 +25,10 @@ import { closeNotifier } from "./notifier";
 import { logger } from "./observability/logger";
 import { register, workerJobsFailed, workerJobsProcessed } from "./observability/metrics";
 import { runOrderExpirySweep } from "./workers/order-expiry-sweeper";
+import { runFeeLedgerSweep } from "./workers/fee-ledger-sweeper";
 import {
   ORDER_EXPIRY_SWEEP_QUEUE,
+  FEE_LEDGER_SWEEP_QUEUE,
   REFRESH_TOKEN_CLEANUP_QUEUE,
   SNAPSHOT_QUEUE,
   TRANSFORMATION_SWEEP_QUEUE,
@@ -60,9 +62,16 @@ const repeatJobOpts: JobsOptions = {
 
 const transformationQueue = new Queue(TRANSFORMATION_SWEEP_QUEUE, { connection });
 const orderExpiryQueue = new Queue(ORDER_EXPIRY_SWEEP_QUEUE, { connection });
+const feeLedgerQueue = new Queue(FEE_LEDGER_SWEEP_QUEUE, { connection });
 const cleanupQueue = new Queue(REFRESH_TOKEN_CLEANUP_QUEUE, { connection });
 const goldIssuanceQueue = new Queue(GOLD_ISSUANCE_QUEUE, { connection });
-const queues = [transformationQueue, orderExpiryQueue, cleanupQueue, goldIssuanceQueue];
+const queues = [
+  transformationQueue,
+  orderExpiryQueue,
+  feeLedgerQueue,
+  cleanupQueue,
+  goldIssuanceQueue,
+];
 
 await transformationQueue.upsertJobScheduler(
   "transformation-sweep-every",
@@ -73,6 +82,11 @@ await orderExpiryQueue.upsertJobScheduler(
   "order-expiry-sweep-every",
   { every: config.sweeps.orderExpiryIntervalMs },
   { name: "order-expiry-sweep", opts: repeatJobOpts },
+);
+await feeLedgerQueue.upsertJobScheduler(
+  "fee-ledger-sweep-every",
+  { every: config.sweeps.feeLedgerIntervalMs },
+  { name: "fee-ledger-sweep", opts: repeatJobOpts },
 );
 await cleanupQueue.upsertJobScheduler(
   "refresh-token-cleanup-daily",
@@ -120,6 +134,14 @@ const orderExpiryWorker = instrument(
   ORDER_EXPIRY_SWEEP_QUEUE,
 );
 
+const feeLedgerWorker = instrument(
+  new Worker(FEE_LEDGER_SWEEP_QUEUE, async () => runFeeLedgerSweep(config.sweeps.batchSize), {
+    connection,
+    concurrency: 1,
+  }),
+  FEE_LEDGER_SWEEP_QUEUE,
+);
+
 const snapshotWorker = instrument(
   new Worker<SnapshotJobData, SnapshotResult>(
     SNAPSHOT_QUEUE,
@@ -151,6 +173,7 @@ const goldIssuanceWorker = instrument(
 const workers = [
   transformationWorker,
   orderExpiryWorker,
+  feeLedgerWorker,
   snapshotWorker,
   cleanupWorker,
   goldIssuanceWorker,
@@ -183,6 +206,7 @@ log.info(
     queues: {
       [TRANSFORMATION_SWEEP_QUEUE]: `${config.sweeps.transformationIntervalMs}ms`,
       [ORDER_EXPIRY_SWEEP_QUEUE]: `${config.sweeps.orderExpiryIntervalMs}ms`,
+      [FEE_LEDGER_SWEEP_QUEUE]: `${config.sweeps.feeLedgerIntervalMs}ms`,
       [SNAPSHOT_QUEUE]: "on-demand",
       [REFRESH_TOKEN_CLEANUP_QUEUE]: `${DAY_MS}ms`,
     },

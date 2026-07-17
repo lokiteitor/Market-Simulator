@@ -54,7 +54,8 @@ Agente único creado por el seed (`BANK_USERNAME`, default `central_bank`):
   ver `NON_MARKET_ROLES` en `backend/src/types/contracts.ts`). En particular, su capital
   **no** entra en el promedio que fija el capital semilla de los registros dinámicos.
 - Recibe: el **capital inicial** (`GOLD_BANK_INITIAL_CAPITAL_CENTS`, 13 M$ por defecto),
-  la **reserva inicial de oro** y, en runtime, **todos los fees de trading**.
+  la **reserva inicial de oro** y, en runtime, **todos los fees de trading** (anotados en
+  `fee_ledger` y plegados a su capital por el sweeper, ADR-019).
 
 ### 2.2 El yacimiento finito (`resource_deposit`)
 
@@ -147,7 +148,7 @@ Solo existen cuatro operaciones que cambian la masa monetaria o el capital del b
 
 | Flujo | Efecto | Dónde |
 |-------|--------|-------|
-| **Fees de trading** | Se acreditan al capital del banco en la misma transacción del matching. No cambian la masa (el dinero sigue en el circuito). | `order-service.ts` (post-matching) |
+| **Fees de trading** | Se **anotan en `fee_ledger`** (append-only) en la misma tx del matching; un sweeper del Worker los pliega al capital del banco (ADR-019). No cambian la masa (el dinero sigue en el circuito). | `order-service.ts` → `fee_ledger`; `fee-ledger-sweeper.ts` |
 | **`sell_gold`** | `money_issued += total`; el agente cobra dinero nuevo. | `bank-service.ts` |
 | **`buy_gold`** | `money_burned += total`; el pago del agente desaparece. | `bank-service.ts` |
 | **Registro dinámico** | Capital semilla financiado con capital del banco + acuñación respaldada (ver §5). | `agent-service.ts` |
@@ -198,18 +199,23 @@ Si aparecen errores `insufficient_gold_backing` en un despliegue masivo, los dia
 Regla única en todo el backend:
 
 ```
-gold_standard FOR UPDATE   (primero, si la operación toca dinero del sistema)
-  → fila del agente caller (FOR UPDATE)
-    → lotes FIFO
+advisory lock del producto (pg_advisory_xact_lock, solo en el matching)
+  → gold_standard FOR UPDATE   (si la operación toca dinero del sistema)
+    → fila del agente caller (FOR UPDATE)
+      → lotes FIFO
 ```
 
+- El **advisory lock por producto** (ADR-019) es el primer lock de una tx de matching y
+  serializa el casado por producto entre las N réplicas del Core. El matching **ya no** escribe
+  la fila del banco.
 - La fila de `gold_standard` es el **mutex de la ventanilla y de la emisión de registros**.
-- La fila del agente banco **nunca** se escribe dentro de la ventanilla (la acuñación no toca
-  su capital). El único escritor concurrente del capital del banco es el **matching** (crédito
-  de fees, como último lock de su transacción) — por eso el débito condicional del banco en la
-  emisión de registros no puede fallar bajo el mutex: los créditos solo suman.
+- La fila del agente banco **ya no** la escribe el matching. Sus dos escritores son el
+  **sweeper de fees** (`fee-ledger-sweeper`, que pliega `fee_ledger` al capital del banco) y la
+  **emisión de registros** (débito del capital semilla), ambos bajo `gold_standard FOR UPDATE`
+  y por tanto serializados entre sí. La emisión materializa primero los fees pendientes para
+  que su débito condicional vea el saldo real del banco.
 - El matching engine jamás toca `gold_standard`: el trading normal no compite con la
-  ventanilla.
+  ventanilla ni con el sweeper (solo INSERTA en `fee_ledger`, sin lock de fila del banco).
 
 ---
 

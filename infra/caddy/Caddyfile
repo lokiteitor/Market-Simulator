@@ -13,11 +13,21 @@
     }
     respond @options "" 204
 
-    # 2. Proxy Inverso a core:8000
+    # 2. Proxy inverso balanceado a las N réplicas del core (ADR-019).
+    #    `dynamic a` re-resuelve el DNS interno de Docker (que devuelve una IP
+    #    por réplica) cada 5s, así el balanceo se adapta al escalado sin listar
+    #    upstreams a mano. WS (/v1/ws) se balancea igual: NO hacen falta sticky
+    #    sessions porque el fan-out va por Redis pub/sub.
     @v1 {
         path /v1/*
     }
-    reverse_proxy @v1 core:8000 {
+    reverse_proxy @v1 {
+        dynamic a {
+            name core
+            port 8000
+            refresh 5s
+        }
+        lb_policy round_robin
         transport http {
             dial_timeout 60s
         }

@@ -594,6 +594,29 @@ export const conversionLotConsumption = pgTable(
   ],
 );
 
+// Ledger append-only de fees de matching acreditados al banco central (ADR-019).
+// El hot path INSERTA un registro por orden que genera fees; un sweeper del
+// Worker los pliega al capital del banco (materialized). Saldo del banco =
+// agent.capital_available + SUM(amount_cents) WHERE NOT materialized.
+export const feeLedger = pgTable(
+  "fee_ledger",
+  {
+    feeId: uuid("fee_id").primaryKey().default(sql`uuidv7()`),
+    tradeId: uuid("trade_id")
+      .notNull()
+      .references(() => trade.tradeId, { onDelete: "cascade" }),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    materialized: boolean("materialized").notNull().default(false),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("fee_ledger_amount_cents_check", sql`${t.amountCents} > 0`),
+    index("idx_fee_ledger_pending").on(t.feeId).where(sql`NOT ${t.materialized}`),
+  ],
+);
+
 // =============================================================================
 // 7. EVENT LOG (append-only, sin particionado en v1)
 // =============================================================================
@@ -791,6 +814,7 @@ export type AgentRefreshTokenRow = typeof agentRefreshToken.$inferSelect;
 export type AgentCapacityRow = typeof agentCapacity.$inferSelect;
 export type MarketOrderRow = typeof marketOrder.$inferSelect;
 export type TradeRow = typeof trade.$inferSelect;
+export type FeeLedgerRow = typeof feeLedger.$inferSelect;
 export type TransformationProcessRow =
   typeof transformationProcess.$inferSelect;
 export type InventoryLotRow = typeof inventoryLot.$inferSelect;

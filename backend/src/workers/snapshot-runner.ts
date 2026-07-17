@@ -35,6 +35,7 @@ import { appendEvent } from "../lib/event-log";
 import { logger } from "../observability/logger";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
+import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
 import { NON_MARKET_ROLES } from "../types/contracts";
 
 const log = logger.child({ component: "snapshot-runner" });
@@ -154,13 +155,19 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
           .from(transformationProcess);
         wagesPaidCents = num(wageAggRows[0]?.wages ?? 0);
         const bankRow = await bankRepository.findAgent(tx, gs.bankAgentId);
-        bankMoneyCents = (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0);
+        // Fees anotados en fee_ledger aún no plegados a la fila del banco por el
+        // sweeper (ADR-019): forman parte del saldo del banco Y de la masa
+        // monetaria del invariante de conservación.
+        const pendingFeesCents = await feeLedgerRepository.sumUnmaterialized(tx);
+        bankMoneyCents =
+          (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0) + pendingFeesCents;
         bankGoldQtyCent = await bankRepository.getGoldAvailable(tx, gs.bankAgentId, gs.productId);
         depositRemainingCent = (await depositRepository.getRemaining(tx, gs.productId)) ?? null;
         moneyIssuedCents = gs.moneyIssuedCents;
         moneyBurnedCents = gs.moneyBurnedCents;
         conservationDeltaCents =
           allMoneyCents +
+          pendingFeesCents +
           wagesPaidCents -
           gs.initialMoneyCents -
           gs.moneyIssuedCents +
@@ -170,6 +177,7 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
             {
               conservationDeltaCents,
               allMoneyCents,
+              pendingFeesCents,
               wagesPaidCents,
               initialMoneyCents: gs.initialMoneyCents,
               moneyIssuedCents,

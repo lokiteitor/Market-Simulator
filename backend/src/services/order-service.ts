@@ -8,7 +8,7 @@
 import { Redis } from "ioredis";
 import { eq } from "drizzle-orm";
 import { config } from "../config";
-import { withTransaction, type Tx } from "../db";
+import { acquireProductAdvisoryLock, withTransaction, type Tx } from "../db";
 import { agent, product, type MarketOrderRow, type TradeRow } from "../db/schema";
 import { decodeCursor } from "../lib/cursor";
 import { DomainError, domainError } from "../lib/errors";
@@ -40,8 +40,9 @@ import type { InventoryService, BankruptcyService } from "../types/contracts";
 import { inventoryService } from "./inventory-service";
 import { bankruptcyService } from "./bankruptcy-service";
 import { bankRepository } from "../repositories/bank-repository";
+import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
 import { matchOrder, type ExecutedTrade, type MatchOutcome } from "./matching/engine";
-import { creditAvailable, releaseReservedCapital, reserveBuyerCapital } from "./matching/capital";
+import { releaseReservedCapital, reserveBuyerCapital } from "./matching/capital";
 
 const log = logger.child({ module: "order-service" });
 
@@ -392,6 +393,9 @@ export const orderService = {
       outcome = await retryOnDeadlock(() =>
         withProductLock(input.productId, () =>
           withTransaction(async (tx) => {
+            // §10.2 (ADR-019): advisory lock por producto, cluster-wide, como
+            // PRIMER lock de la tx (antes que gold_standard y filas de agente).
+            await acquireProductAdvisoryLock(tx, input.productId);
             const ag = await getAgentSummary(tx, agentId);
             assertNotBankrupt(ag);
             await assertProductExists(tx, input.productId);
@@ -438,20 +442,23 @@ export const orderService = {
             // Matching (§10.1) dentro de la MISMA tx y lock.
             const matched = await matchOrder(tx, order);
 
-            // Patrón oro: los fees NO se evaporan — se acreditan al banco
-            // central en la MISMA tx. Un ÚNICO crédito por la suma de ambos
-            // lados de todos los fills, como ÚLTIMA escritura con lock de la
-            // tx (la fila del banco es el elemento MÁXIMO del orden global de
-            // locks; después solo quedan lecturas/commit). Si la corrida no
-            // tiene gold_standard (DB antigua), se evaporan como antes.
-            const totalFees = matched.trades.reduce(
-              (sum, t) => sum + t.trade.feeBuyerCents + t.trade.feeSellerCents,
-              0,
-            );
-            if (totalFees > 0) {
-              const bankAgentId = await bankRepository.getBankAgentId(tx);
-              if (bankAgentId !== null) {
-                await creditAvailable(tx, bankAgentId, totalFees);
+            // Patrón oro (ADR-019): los fees NO se evaporan, pero YA NO se
+            // acreditan con UPDATE de la fila del banco (fila caliente global que
+            // serializaría todos los trades de todas las réplicas). En su lugar
+            // se ANOTAN en fee_ledger (append-only, sin contención); el sweeper
+            // del Worker los pliega al capital del banco. Si la corrida no tiene
+            // gold_standard (DB antigua) no hay banco a quien acreditar ⇒ se
+            // comportan como antes (no se anotan; se evaporan).
+            const bankAgentId = await bankRepository.getBankAgentId(tx);
+            if (bankAgentId !== null) {
+              for (const t of matched.trades) {
+                const feeCents = t.trade.feeBuyerCents + t.trade.feeSellerCents;
+                if (feeCents > 0) {
+                  await feeLedgerRepository.insertFee(tx, {
+                    tradeId: t.trade.tradeId,
+                    amountCents: feeCents,
+                  });
+                }
               }
             }
             return matched;
@@ -509,36 +516,50 @@ export const orderService = {
       throw domainError("not_owner", "La orden pertenece a otro agente.");
     }
 
-    const result = await withProductLock(preview.productId, () =>
-      withTransaction(async (tx) => {
-        const ag = await getAgentSummary(tx, agentId);
-        assertNotBankrupt(ag);
+    const result = await retryOnDeadlock(() =>
+      withProductLock(preview.productId, () =>
+        withTransaction(async (tx) => {
+          // §10.2 (ADR-019): advisory lock por producto como primer lock de la tx.
+          await acquireProductAdvisoryLock(tx, preview.productId);
+          const ag = await getAgentSummary(tx, agentId);
+          assertNotBankrupt(ag);
 
-        const order = await orderRepository.getByIdForUpdate(tx, orderId);
-        if (order === undefined) {
-          throw domainError("unknown_order", `La orden ${orderId} no existe.`);
-        }
-        if (order.agentId !== agentId) {
-          throw domainError("not_owner", "La orden pertenece a otro agente.");
-        }
-        if (!isOpenStatus(order.status)) {
-          return { order, alreadyTerminal: true as const, wentBankrupt: false, username: ag.username };
-        }
+          const order = await orderRepository.getByIdForUpdate(tx, orderId);
+          if (order === undefined) {
+            throw domainError("unknown_order", `La orden ${orderId} no existe.`);
+          }
+          if (order.agentId !== agentId) {
+            throw domainError("not_owner", "La orden pertenece a otro agente.");
+          }
+          if (!isOpenStatus(order.status)) {
+            return {
+              order,
+              alreadyTerminal: true as const,
+              wentBankrupt: false,
+              username: ag.username,
+            };
+          }
 
-        await releaseOrderReserves(tx, order);
-        const updated = await orderRepository.markTerminal(tx, orderId, "cancelled");
+          await releaseOrderReserves(tx, order);
+          const updated = await orderRepository.markTerminal(tx, orderId, "cancelled");
 
-        const payload: OrderCancelledPayload = {
-          order_id: updated.orderId,
-          agent_id: updated.agentId,
-          product_id: updated.productId,
-          qty_pending_cent: updated.qtyPending,
-        };
-        await appendEvent(tx, { type: "order_cancelled", agentId, payload });
+          const payload: OrderCancelledPayload = {
+            order_id: updated.orderId,
+            agent_id: updated.agentId,
+            product_id: updated.productId,
+            qty_pending_cent: updated.qtyPending,
+          };
+          await appendEvent(tx, { type: "order_cancelled", agentId, payload });
 
-        const wentBankrupt = await bankruptcy.checkAndApply(tx, agentId);
-        return { order: updated, alreadyTerminal: false as const, wentBankrupt, username: ag.username };
-      }),
+          const wentBankrupt = await bankruptcy.checkAndApply(tx, agentId);
+          return {
+            order: updated,
+            alreadyTerminal: false as const,
+            wentBankrupt,
+            username: ag.username,
+          };
+        }),
+      ),
     );
 
     // ---- Post-commit ------------------------------------------------------

@@ -386,6 +386,24 @@ CREATE TABLE conversion_lot_consumption (
     PRIMARY KEY (conversion_id, lot_id)
 );
 
+-- Ledger append-only de fees de matching acreditados al banco central (ADR-019).
+-- El hot path del matching INSERTA aquí un registro por orden que genera fees
+-- (suma de ambos lados) en vez de hacer UPDATE de la fila caliente del banco,
+-- eliminando la contención global entre las N réplicas del Core. Un sweeper del
+-- Worker pliega periódicamente los registros no materializados al capital del
+-- banco (marcándolos materialized). El saldo real del banco =
+-- agent.capital_available + SUM(amount_cents) WHERE NOT materialized.
+CREATE TABLE fee_ledger (
+    fee_id          UUID            PRIMARY KEY DEFAULT uuidv7(),
+    trade_id        UUID            NOT NULL REFERENCES trade(trade_id) ON DELETE CASCADE,
+    amount_cents    BIGINT          NOT NULL CHECK (amount_cents > 0),
+    materialized    BOOLEAN         NOT NULL DEFAULT false,
+    occurred_at     TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+-- Índice parcial para el sweeper: solo escanea lo pendiente de materializar.
+CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialized;
+
 
 -- =============================================================================
 -- 7. EVENT LOG (append-only, sin particionado en v1)

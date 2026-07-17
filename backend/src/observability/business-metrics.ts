@@ -15,6 +15,7 @@ import { withTransaction, type Tx } from "../db";
 import { agent, transformationProcess } from "../db/schema";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
+import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
 import {
   monitoringRepository,
   type AgentsByRoleView,
@@ -60,17 +61,26 @@ async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
     .from(transformationProcess);
   const allMoney = Number(moneyRows[0]?.allMoney ?? 0);
   const wages = Number(wageRows[0]?.wages ?? 0);
+  // Fees anotados en fee_ledger aún no plegados a la fila del banco (ADR-019):
+  // parte del saldo del banco y de la masa monetaria del invariante.
+  const pendingFees = await feeLedgerRepository.sumUnmaterialized(tx);
   return {
     parityCentsPerUnit: gs.parityCentsPerUnit,
     windowBidCents: gs.windowBidCents,
     windowAskCents: gs.windowAskCents,
-    bankCapitalCents: (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0),
+    bankCapitalCents:
+      (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0) + pendingFees,
     bankGoldQtyCent,
     depositRemainingCent,
     moneyIssuedCents: gs.moneyIssuedCents,
     moneyBurnedCents: gs.moneyBurnedCents,
     conservationDeltaCents:
-      allMoney + wages - gs.initialMoneyCents - gs.moneyIssuedCents + gs.moneyBurnedCents,
+      allMoney +
+      pendingFees +
+      wages -
+      gs.initialMoneyCents -
+      gs.moneyIssuedCents +
+      gs.moneyBurnedCents,
   };
 }
 

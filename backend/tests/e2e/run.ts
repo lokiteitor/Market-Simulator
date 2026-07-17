@@ -351,7 +351,20 @@ async function main(): Promise<void> {
     assertEqual(body.token_type, "Bearer", "token_type");
     assert(!Number.isNaN(Date.parse(body.access_expires_at)), "access_expires_at es fecha ISO");
     assert(!Number.isNaN(Date.parse(body.refresh_expires_at)), "refresh_expires_at es fecha ISO");
-    const snap = body.agent;
+    // El capital semilla se acredita de forma ASÍNCRONA (cola gold-issuance del
+    // Worker), así que la respuesta del registro trae capital 0; se espera con
+    // poll a GET /agents/me hasta verlo acreditado.
+    const snap = await pollUntil(
+      `capital semilla de ${label} acreditado`,
+      async () => {
+        const s = expectStatus<AgentSnapshot>(
+          await api.get("/agents/me", { token: body.access_token }),
+          200,
+          `GET /agents/me (${label})`,
+        );
+        return s.capital_available_cents > 0 ? s : undefined;
+      },
+    );
     assertEqual(snap.agent.username, username, "username del snapshot");
     assertEqual(snap.agent.role, role, "role del snapshot");
     assertEqual(snap.agent.status, "active", "status del snapshot");
@@ -633,10 +646,18 @@ async function main(): Promise<void> {
   );
 
   await step("16. mercado: top-of-book muestra el ask de ALICE", async () => {
-    const top = expectStatus<TopOfBook>(
-      await api.get(`/market/${germProduct.product_id}/top`, { token: bob.accessToken }),
-      200,
-      "GET /market/{id}/top",
+    // El top-of-book se sirve con read-cache (TOP_OF_BOOK_TTL_MS ~2.5s); tras
+    // colocar la sell se poll-ea hasta que el ask entra al cachear de nuevo.
+    const top = await pollUntil(
+      "best_ask de ALICE visible en el top-of-book",
+      async () => {
+        const t = expectStatus<TopOfBook>(
+          await api.get(`/market/${germProduct.product_id}/top`, { token: bob.accessToken }),
+          200,
+          "GET /market/{id}/top",
+        );
+        return t.best_ask !== null && t.best_ask !== undefined ? t : undefined;
+      },
     );
     assertEqual(top.product_id, germProduct.product_id, "product_id del top");
     assert((top.best_bid ?? null) === null, "sin bids");
@@ -654,6 +675,14 @@ async function main(): Promise<void> {
     async () => {
       const aliceBefore = await me(alice);
       const bobBefore = await me(bob);
+      // Saldo del banco ANTES: los fees deben acreditarse al banco (vía
+      // fee_ledger, ADR-019). GET /bank suma los fees pendientes, así que el
+      // delta es visible de inmediato sin esperar al sweeper.
+      const bankBefore = expectStatus<{ bank_capital_available_cents: number }>(
+        await api.get("/bank", { token: alice.accessToken }),
+        200,
+        "GET /bank (antes del trade)",
+      );
       const o = await placeOrder(
         bob,
         {
@@ -696,6 +725,20 @@ async function main(): Promise<void> {
         totalCapital(aliceAfter),
         totalCapital(aliceBefore) + tradeExp.sellerCapitalDeltaCents,
         "capital vendedor: +cost − fee",
+      );
+
+      // Los fees de AMBOS lados se acreditan al banco central (ADR-019): el
+      // saldo del banco sube exactamente fee_buyer + fee_seller (fee_ledger +
+      // suma de pendientes en GET /bank, sin esperar al sweeper).
+      const bankAfter = expectStatus<{ bank_capital_available_cents: number }>(
+        await api.get("/bank", { token: alice.accessToken }),
+        200,
+        "GET /bank (tras el trade)",
+      );
+      assertEqual(
+        bankAfter.bank_capital_available_cents,
+        bankBefore.bank_capital_available_cents + trade.fee_buyer_cents + trade.fee_seller_cents,
+        "capital del banco: + (fee_buyer + fee_seller)",
       );
 
       // Orden pasiva queda partial con el resto.

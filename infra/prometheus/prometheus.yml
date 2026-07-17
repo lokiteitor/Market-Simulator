@@ -6,9 +6,15 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  # Core replicado (ADR-019): descubre una IP por réplica vía el DNS interno de
+  # Docker (registro A del nombre de servicio `core`), en vez de un target fijo
+  # que solo raspa una réplica.
   - job_name: core
-    static_configs:
-      - targets: ["core:8001"]
+    dns_sd_configs:
+      - names: ["core"]
+        type: A
+        port: 8001
+        refresh_interval: 15s
 
   - job_name: worker
     static_configs:

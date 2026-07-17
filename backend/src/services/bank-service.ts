@@ -16,6 +16,7 @@
  *
  * Notificación personal `gold_converted` SOLO post-commit (patrón safePublish).
  */
+import { config } from "../config";
 import { withTransaction, type Tx } from "../db";
 import type { GoldConversionRow, GoldStandardRow } from "../db/schema";
 import { DomainError, domainError } from "../lib/errors";
@@ -26,6 +27,7 @@ import { publishToAgent } from "../notifier";
 import { logger } from "../observability/logger";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
+import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
 import type { BankInfoDto, ConvertRequestDto, GoldConversionDto } from "../schemas/bank";
 import { inventoryService } from "./inventory-service";
 import { creditAvailable } from "./matching/capital";
@@ -69,6 +71,8 @@ async function getBankInfo(): Promise<BankInfoDto> {
     const bank = await bankRepository.findAgent(tx, gs.bankAgentId);
     const goldAvailable = await bankRepository.getGoldAvailable(tx, gs.bankAgentId, gs.productId);
     const depositRemaining = await depositRepository.getRemaining(tx, gs.productId);
+    // Saldo real = fila del banco + fees aún no plegados por el sweeper (ADR-019).
+    const pendingFeesCents = await feeLedgerRepository.sumUnmaterialized(tx);
     return {
       bank_agent_id: gs.bankAgentId,
       product_id: gs.productId,
@@ -85,7 +89,7 @@ async function getBankInfo(): Promise<BankInfoDto> {
         gs.coverageRatioBps,
       ),
       bank_gold_available_cent: goldAvailable,
-      bank_capital_available_cents: bank?.capitalAvailable ?? 0,
+      bank_capital_available_cents: (bank?.capitalAvailable ?? 0) + pendingFeesCents,
       deposit_remaining_cent: depositRemaining ?? null,
     };
   });
@@ -225,7 +229,26 @@ async function convert(agentId: string, input: ConvertRequestDto): Promise<GoldC
   return result;
 }
 
+/**
+ * Pliega un lote de fees no materializados de `fee_ledger` al capital del banco
+ * (ADR-019). Reentrante bajo `lockGoldStandard` (orden global de locks:
+ * gold_standard → fila del banco), de modo que puede invocarse tanto desde el
+ * sweeper del Worker como desde `fundAgentSeedCapital` (que ya tiene la
+ * gold_standard bloqueada) sin riesgo de deadlock. Devuelve los centavos
+ * acreditados. Idempotente por lotes: `materializePending` marca lo reclamado.
+ */
+async function materializeFees(tx: Tx, limit: number = config.sweeps.batchSize): Promise<number> {
+  const gs = await bankRepository.lockGoldStandard(tx);
+  if (gs === undefined) return 0; // corrida sin patrón oro: nada a quien acreditar.
+  const claimedCents = await feeLedgerRepository.materializePending(tx, limit);
+  if (claimedCents > 0) {
+    await creditAvailable(tx, gs.bankAgentId, claimedCents);
+  }
+  return claimedCents;
+}
+
 export const bankService = {
   getBankInfo,
   convert,
+  materializeFees,
 };

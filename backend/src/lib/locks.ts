@@ -6,9 +6,15 @@
  * cadenas de promesas (FIFO) por clave. Las entradas sin trabajo pendiente
  * se eliminan del mapa para no crecer sin límite.
  *
- * Nota: es un lock IN-PROCESS (el Core corre como proceso único, ADR de
- * arquitectura). El worker de expiración NO usa este lock: sus transacciones
- * cortas por orden con FOR UPDATE de la fila bastan.
+ * Nota: es un lock IN-PROCESS y es la PRIMERA de dos capas de serialización
+ * (ADR-019). Solo ordena dentro de un mismo proceso; la serialización por
+ * producto CLUSTER-WIDE (entre las N réplicas del Core) la da el advisory lock
+ * `acquireProductAdvisoryLock` (db/index.ts), tomado dentro de la tx. Conservar
+ * este mutex embuda la contención intra-proceso a 1 waiter por producto por
+ * proceso, evitando que decenas de requests bloqueadas en el advisory lock
+ * retengan conexiones del pool. El worker de expiración NO usa ninguna de las
+ * dos capas: sus transacciones cortas por orden con FOR UPDATE de la fila
+ * bastan.
  */
 
 interface ChainEntry {

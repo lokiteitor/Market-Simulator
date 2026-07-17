@@ -181,7 +181,7 @@ Agente ──< Proceso transformación >── Receta
 - Política: **prioridad precio-tiempo**. Mejor precio primero; en empate, la orden más antigua.
 - Política de pricing: **el precio del que ya estaba en el libro** (la orden agresora toma el precio de la orden pasiva).
 - Política de ejecución: **se permiten ejecuciones parciales**. Una orden puede casarse con múltiples contrapartes.
-- El matching engine procesa por producto de forma serializada para evitar condiciones de carrera.
+- El matching engine procesa por producto de forma serializada para evitar condiciones de carrera (mutex in-process + advisory lock de Postgres cluster-wide entre las N réplicas del Core; ADR-019).
 
 **Ejecución de una transacción casada:**
 1. Calcular cantidad efectiva (mínimo entre las cantidades pendientes de ambas órdenes).
@@ -252,7 +252,7 @@ Para todo agente activo:
 ### Reglas de modificación
 
 - Toda operación que modifique estado del agente se ejecuta como **transacción atómica** que valida invariantes antes de aplicar el cambio.
-- El matching engine serializa el procesamiento por producto.
+- El matching engine serializa el procesamiento por producto (cluster-wide vía advisory locks de Postgres; ADR-019).
 - Las modificaciones que tocan a dos agentes simultáneamente (una transacción casada) se aplican como una sola unidad atómica.
 
 ### Representación numérica

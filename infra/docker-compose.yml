@@ -44,6 +44,33 @@ services:
     restart: unless-stopped
     networks: [market]
 
+  # Pool de conexiones entre las N réplicas del core/worker y Postgres, en modo
+  # transaction (ADR-019). Los advisory locks del matching son transaction-scoped
+  # y por tanto compatibles con transaction pooling. Acota las conexiones reales
+  # a Postgres (DEFAULT_POOL_SIZE) aunque cada proceso abra su propio pool.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: market
+      DB_PASSWORD: market
+      DB_NAME: market
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      LISTEN_PORT: "6432"
+      # MAX_CLIENT_CONN ≥ DB_POOL_MAX × (nº réplicas core + worker); holgado.
+      MAX_CLIENT_CONN: "1000"
+      # Conexiones reales a Postgres por (db,user); ≤ max_connections de Postgres.
+      DEFAULT_POOL_SIZE: "50"
+    expose:
+      - "6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [market]
+
   core:
     build: &app-build
       context: ..
@@ -53,12 +80,22 @@ services:
     command: ["bun", "src/server.ts"]
     env_file:
       - .env.docker
+    # 8 réplicas del Core (matching multiproceso, ADR-019). La serialización por
+    # producto es cluster-wide vía advisory locks de Postgres; las notificaciones
+    # WS van por Redis pub/sub, así que NO hacen falta sticky sessions. Escalar
+    # con `docker compose up -d --scale core=N` o cambiando replicas aquí.
+    # Dimensionado de conexiones: 8 × DB_POOL_MAX(10) = 80 conexiones cliente a
+    # PgBouncer (≪ MAX_CLIENT_CONN=1000), multiplexadas a DEFAULT_POOL_SIZE=50
+    # conexiones reales de Postgres. Nota de sizing: 8 procesos core saturan una
+    # máquina de ~8 cores (más worker/postgres/redis); ajustar según el host.
+    deploy:
+      replicas: 8
     expose:
-      - "8000" # API HTTP/WS (interno; se accede vía APISIX)
+      - "8000" # API HTTP/WS (interno; se accede vía Caddy)
       - "8001" # métricas Prometheus
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
@@ -85,9 +122,11 @@ services:
       - .env.docker
     expose:
       - "8002" # métricas Prometheus del worker
+    # Réplica ÚNICA (BullMQ concurrency:1 por cola garantiza no-solape de sweeps,
+    # incluido el fee-ledger-sweep). NO escalar sin revisar esa garantía.
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -102,8 +141,8 @@ services:
     profiles: ["seed"]
     restart: "no"
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
     networks: [market]
@@ -120,8 +159,8 @@ services:
     profiles: ["seed"]
     restart: "no"
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
     networks: [market]
 
   caddy:
@@ -130,9 +169,12 @@ services:
       - "9080:9080"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    # Con réplicas + upstreams dinámicos basta con que el core haya arrancado:
+    # Caddy re-resuelve el DNS cada 5s y absorbe réplicas que tarden en estar
+    # sanas (esperar a TODAS las réplicas healthy bloquearía el arranque).
     depends_on:
       core:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     networks: [market]
 
