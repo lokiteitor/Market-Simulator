@@ -22,16 +22,21 @@ type StateManager struct {
 	inventory        map[string]models.InventoryPosition
 	activeOrders     map[string]models.Order
 	runningProcesses map[string]models.TransformationProcess
-	capacities       map[string]models.CapacityStatus
-	products         map[string]models.Product
-	productsByKey    map[string]models.Product
-	recipes          map[string]models.Recipe
-	publicAgents     map[string]models.AgentPublic
+	// Instalaciones compradas, keyed por installation_type (key). El nivel es el
+	// presupuesto de concurrencia COMPARTIDO por las recetas del tipo (ADR-021).
+	installations map[string]models.InstallationStatus
+	// Catálogo de tipos comprables, keyed por installation_type_id (UUID): permite
+	// mapear recipe.InstallationTypeID → key del tipo, y conocer el precio base.
+	installationTypes map[string]models.InstallationType
+	products          map[string]models.Product
+	productsByKey     map[string]models.Product
+	recipes           map[string]models.Recipe
+	publicAgents      map[string]models.AgentPublic
 
 	cachedInventory        []models.InventoryPosition
 	cachedActiveOrders     []models.Order
 	cachedRunningProcesses []models.TransformationProcess
-	cachedCapacities       []models.CapacityStatus
+	cachedInstallations    []models.InstallationStatus
 	cachedProducts         []models.Product
 	cachedRecipes          []models.Recipe
 	cachedPublicAgents     []models.AgentPublic
@@ -39,7 +44,7 @@ type StateManager struct {
 	inventoryDirty        bool
 	activeOrdersDirty     bool
 	runningProcessesDirty bool
-	capacitiesDirty       bool
+	installationsDirty    bool
 	productsDirty         bool
 	recipesDirty          bool
 	publicAgentsDirty     bool
@@ -50,7 +55,8 @@ func NewStateManager() *StateManager {
 		inventory:             make(map[string]models.InventoryPosition),
 		activeOrders:          make(map[string]models.Order),
 		runningProcesses:      make(map[string]models.TransformationProcess),
-		capacities:            make(map[string]models.CapacityStatus),
+		installations:         make(map[string]models.InstallationStatus),
+		installationTypes:     make(map[string]models.InstallationType),
 		products:              make(map[string]models.Product),
 		productsByKey:         make(map[string]models.Product),
 		recipes:               make(map[string]models.Recipe),
@@ -58,7 +64,7 @@ func NewStateManager() *StateManager {
 		inventoryDirty:        true,
 		activeOrdersDirty:     true,
 		runningProcessesDirty: true,
-		capacitiesDirty:       true,
+		installationsDirty:    true,
 		productsDirty:         true,
 		recipesDirty:          true,
 		publicAgentsDirty:     true,
@@ -95,14 +101,14 @@ func (s *StateManager) Rebuild(snap *models.AgentSnapshot) {
 		s.runningProcesses[proc.ProcessID] = proc
 	}
 
-	s.capacities = make(map[string]models.CapacityStatus)
-	for _, capStatus := range snap.Capacities {
-		s.capacities[capStatus.RecipeID] = capStatus
+	s.installations = make(map[string]models.InstallationStatus)
+	for _, inst := range snap.Installations {
+		s.installations[inst.InstallationType] = inst
 	}
 	s.inventoryDirty = true
 	s.activeOrdersDirty = true
 	s.runningProcessesDirty = true
-	s.capacitiesDirty = true
+	s.installationsDirty = true
 }
 
 // SetCatalog sets the static catalog data.
@@ -177,18 +183,22 @@ func (s *StateManager) AddProcess(proc models.TransformationProcess) {
 	defer s.Unlock()
 	s.runningProcesses[proc.ProcessID] = proc
 	s.runningProcessesDirty = true
-	s.capacitiesDirty = true
+	s.installationsDirty = true
 	s.inventoryDirty = true
 
-	// Adjust capacities and reservations
+	// Adjust installations and reservations
 	recipe, ok := s.recipes[proc.RecipeID]
 	if ok {
-		// Decrease available capacity slots
-		capStatus, exists := s.capacities[proc.RecipeID]
-		if exists {
-			capStatus.Running += proc.ExecutionsPlanned
-			capStatus.AvailableSlots -= proc.ExecutionsPlanned
-			s.capacities[proc.RecipeID] = capStatus
+		// Decrease available slots of the recipe's installation type (compartido).
+		if typeKey, tok := s.installationKeyForRecipeLocked(recipe); tok {
+			if inst, exists := s.installations[typeKey]; exists {
+				inst.Running += proc.ExecutionsPlanned
+				inst.AvailableSlots -= proc.ExecutionsPlanned
+				if inst.AvailableSlots < 0 {
+					inst.AvailableSlots = 0
+				}
+				s.installations[typeKey] = inst
+			}
 		}
 
 		// Subtract wages
@@ -306,21 +316,24 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 
 	case events.TransformationCompleted:
 		s.runningProcessesDirty = true
-		s.capacitiesDirty = true
+		s.installationsDirty = true
 		s.inventoryDirty = true
 		proc, ok := s.runningProcesses[e.ProcessID]
 		if ok {
 			delete(s.runningProcesses, e.ProcessID)
 
-			// Free capacity slots
-			capStatus, exists := s.capacities[e.RecipeID]
-			if exists {
-				capStatus.Running -= proc.ExecutionsPlanned
-				if capStatus.Running < 0 {
-					capStatus.Running = 0
+			// Free slots of the recipe's installation type
+			if recipe, rok := s.recipes[e.RecipeID]; rok {
+				if typeKey, tok := s.installationKeyForRecipeLocked(recipe); tok {
+					if inst, exists := s.installations[typeKey]; exists {
+						inst.Running -= proc.ExecutionsPlanned
+						if inst.Running < 0 {
+							inst.Running = 0
+						}
+						inst.AvailableSlots = inst.Level - inst.Running
+						s.installations[typeKey] = inst
+					}
 				}
-				capStatus.AvailableSlots = capStatus.Installations - capStatus.Running
-				s.capacities[e.RecipeID] = capStatus
 			}
 
 			// Add produced item to inventory
@@ -537,31 +550,60 @@ func (s *StateManager) Recipe(recipeID string) (models.Recipe, bool) {
 	return r, ok
 }
 
-func (s *StateManager) Capacities() []models.CapacityStatus {
+func (s *StateManager) Installations() []models.InstallationStatus {
 	s.RLock()
-	if !s.capacitiesDirty {
-		res := s.cachedCapacities
+	if !s.installationsDirty {
+		res := s.cachedInstallations
 		s.RUnlock()
 		return res
 	}
 	s.RUnlock()
 	s.Lock()
 	defer s.Unlock()
-	if s.capacitiesDirty {
-		s.cachedCapacities = make([]models.CapacityStatus, 0, len(s.capacities))
-		for _, x := range s.capacities {
-			s.cachedCapacities = append(s.cachedCapacities, x)
+	if s.installationsDirty {
+		s.cachedInstallations = make([]models.InstallationStatus, 0, len(s.installations))
+		for _, x := range s.installations {
+			s.cachedInstallations = append(s.cachedInstallations, x)
 		}
-		s.capacitiesDirty = false
+		s.installationsDirty = false
 	}
-	return s.cachedCapacities
+	return s.cachedInstallations
 }
 
-func (s *StateManager) Capacity(recipeID string) (models.CapacityStatus, bool) {
+// Installation devuelve la instalación comprada del tipo (key), si la posee.
+func (s *StateManager) Installation(installationType string) (models.InstallationStatus, bool) {
 	s.RLock()
 	defer s.RUnlock()
-	c, ok := s.capacities[recipeID]
+	c, ok := s.installations[installationType]
 	return c, ok
+}
+
+// InstallationTypeByID resuelve un tipo del catálogo por su UUID.
+func (s *StateManager) InstallationTypeByID(id string) (models.InstallationType, bool) {
+	s.RLock()
+	defer s.RUnlock()
+	t, ok := s.installationTypes[id]
+	return t, ok
+}
+
+// SetInstallationTypes carga el catálogo de tipos comprables (keyed por UUID).
+func (s *StateManager) SetInstallationTypes(types []models.InstallationType) {
+	s.Lock()
+	defer s.Unlock()
+	s.installationTypes = make(map[string]models.InstallationType, len(types))
+	for _, t := range types {
+		s.installationTypes[t.InstallationTypeID] = t
+	}
+}
+
+// installationKeyForRecipeLocked mapea recipe → key de su tipo de instalación.
+// Requiere que el caller tenga el lock tomado.
+func (s *StateManager) installationKeyForRecipeLocked(r models.Recipe) (string, bool) {
+	t, ok := s.installationTypes[r.InstallationTypeID]
+	if !ok {
+		return "", false
+	}
+	return t.Key, true
 }
 
 func (s *StateManager) PublicAgents() []models.AgentPublic {

@@ -113,6 +113,7 @@ Dos diferencias esenciales con `bots-v1`:
 La estrategia nunca llama a la API directamente para mutar estado: **devuelve acciones** y el
 engine las ejecuta (`PlaceOrder` → `POST /orders`, `CancelOrder` → `DELETE /orders/{id}`,
 `StartTransformation` → `POST /transformations`, `ConvertGold` → `POST /bank/convert`,
+`AcquireInstallation` → `POST /agents/me/installations` (comprar/mejorar instalación, ADR-021),
 `Sleep` → pausa local).
 
 ---
@@ -161,9 +162,10 @@ Detalles de escala dentro del proceso:
 ### 4.1 Arranque (`engine.Start`)
 
 1. **Autenticación** (`AuthManager.PerformAuth`, ver 4.2).
-2. Descarga el **catálogo** (`GET /catalog/products`, `GET /catalog/recipes`).
+2. Descarga el **catálogo** (`GET /catalog/products`, `GET /catalog/recipes`,
+   `GET /catalog/installation-types` — para mapear `recipe.installation_type_id` → tipo y precios).
 3. Descarga el **snapshot** del agente (`GET /agents/me?events_limit=100`) y reconstruye el
-   estado local: capital, inventario, capacidades, órdenes activas, procesos.
+   estado local: capital, inventario, **instalaciones**, órdenes activas, procesos.
 4. `strategy.Initialize()` — cada bot **muestrea sus parámetros individuales** (márgenes,
    spreads, probabilidades) para que la población sea heterogénea y no una masa de clones.
 5. Conecta el **WebSocket** (token en query string).
@@ -177,9 +179,9 @@ Detalles de escala dentro del proceso:
 2. **Login** (`POST /auth/login`) con username/password; luego `GET /agents/me` para obtener
    `agent_id` y rol.
 3. **Registro** (`POST /auth/register`) si el login falla y `auto_register: true`.
-   El backend ignora las capacidades solicitadas: asigna todas las capacidades del rol según
-   `infra/seed-config.json`, y el capital semilla se financia con **emisión respaldada por
-   oro** (ver `docs/diseno_mercado_agricola.md` §11).
+   El agente nace **sin instalaciones** (ADR-021): las estrategias las compran/mejoran por tipo
+   con su capital. El capital semilla se financia con **emisión respaldada por oro** (ver
+   `docs/diseno_mercado_agricola.md` §11).
 
 **Re-login** (commit `39338f25`): los refresh tokens son de un solo uso (el servidor los rota
 y revoca). Si un refresh falla —por ejemplo porque otro proceso/reinicio consumió el token del
@@ -272,8 +274,14 @@ Ejecuta recetas **sin insumos** y vende la producción.
 - **Coste unitario:** `unitCost = wage_rate × duration × sim_time_factor / output_qty`
   (el salario se paga en tiempo real, la duración está en tiempo simulado; de ahí el factor).
 - **Oferta elástica:** solo produce si `fair ≥ coste × (1 + minMargin)`. Si el producto se
-  abarata por debajo del coste, deja de producir. Recorre sus capacidades en orden aleatorio,
-  acotado por `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena capacidad.
+  abarata por debajo del coste, deja de producir. Recorre las recetas producibles de su rol en
+  orden aleatorio, acotado por `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena
+  capacidad.
+- **Instalaciones (ADR-021):** para producir una receta debe haber **comprado** la instalación
+  de su tipo. Si una receta es rentable pero no tiene instalación (o está saturada) y hay capital
+  de sobra (colchón `capitalReserveFactor×` sobre el precio), emite `AcquireInstallation` para
+  comprar/mejorar el tipo (compra ≤ `maxBuysPerTick` por tick, hasta `maxDesiredLevel`). El nivel
+  del tipo es el presupuesto de concurrencia compartido por sus recetas.
 - **Venta:** `sellAtMarket` por posición de inventario — undercut del mejor ask (1–3%),
   con **suelo de coste** (`coste × (1 + minMargin)`), en tranches del 30–70% del inventario,
   cancelando asks viejos (cancel/replace).

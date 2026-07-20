@@ -21,7 +21,6 @@ import { and, asc, desc, eq, gte, inArray, ne, notInArray, or, sql } from "drizz
 import type { Tx } from "../db";
 import {
   agent,
-  agentCapacity,
   eventLog,
   marketOrder,
   recipe,
@@ -39,13 +38,6 @@ export interface RunningProcessWithDuration {
   process: TransformationProcessRow;
   /** INTERVAL de la receta tal como lo devuelve postgres.js (tiempo simulado). */
   duration: string;
-}
-
-/** Capacidad instalada + conteo de procesos running de esa receta. */
-export interface CapacityWithRunning {
-  recipeId: string;
-  installations: number;
-  running: number;
 }
 
 function assertNonNegativeInt(value: number, name: string): void {
@@ -123,21 +115,6 @@ export const agentRepository = {
       throw new Error("agent insert returned no rows");
     }
     return row;
-  },
-
-  async insertCapacities(
-    tx: Tx,
-    agentId: string,
-    capacities: Array<{ recipeId: string; installations: number }>,
-  ): Promise<void> {
-    if (capacities.length === 0) return;
-    await tx.insert(agentCapacity).values(
-      capacities.map((c) => ({
-        agentId,
-        recipeId: c.recipeId,
-        installations: c.installations,
-      })),
-    );
   },
 
   async updateAgentCapitalAndSeed(tx: Tx, agentId: string, cents: number): Promise<void> {
@@ -278,52 +255,6 @@ export const agentRepository = {
       .update(agent)
       .set({ status: "bankrupt", bankruptAt: new Date() })
       .where(eq(agent.agentId, agentId));
-  },
-
-  // -------------------------------------------------------------------------
-  // Capacidades (con conteo de procesos running por receta)
-  // -------------------------------------------------------------------------
-
-  async getCapacityStatus(tx: Tx, agentId: string): Promise<CapacityWithRunning[]> {
-    const caps = await tx
-      .select()
-      .from(agentCapacity)
-      .where(eq(agentCapacity.agentId, agentId))
-      .orderBy(asc(agentCapacity.recipeId));
-    if (caps.length === 0) return [];
-    const counts = await tx
-      .select({
-        recipeId: transformationProcess.recipeId,
-        running: sql<number>`count(*)::int`,
-      })
-      .from(transformationProcess)
-      .where(
-        and(
-          eq(transformationProcess.agentId, agentId),
-          eq(transformationProcess.status, "running"),
-        ),
-      )
-      .groupBy(transformationProcess.recipeId);
-    const runningByRecipe = new Map(counts.map((c) => [c.recipeId, c.running]));
-    return caps.map((c) => ({
-      recipeId: c.recipeId,
-      installations: c.installations,
-      running: runningByRecipe.get(c.recipeId) ?? 0,
-    }));
-  },
-
-  // -------------------------------------------------------------------------
-  // Catálogo (resolución de capacidades del seed-config §10.12)
-  // -------------------------------------------------------------------------
-
-  /** Mapa name → recipe_id para los nombres dados (los que existan). */
-  async findRecipeIdsByNames(tx: Tx, names: string[]): Promise<Map<string, string>> {
-    if (names.length === 0) return new Map();
-    const rows = await tx
-      .select({ recipeId: recipe.recipeId, name: recipe.name })
-      .from(recipe)
-      .where(inArray(recipe.name, names));
-    return new Map(rows.map((r) => [r.name, r.recipeId]));
   },
 
   // -------------------------------------------------------------------------

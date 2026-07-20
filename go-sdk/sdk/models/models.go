@@ -33,13 +33,13 @@ type AgentPublic struct {
 type ProductCategory string
 
 const (
-	CategoryRawPrimary        ProductCategory = "raw_primary"
-	CategoryIntermediate      ProductCategory = "intermediate"
-	CategoryFinalConsumption  ProductCategory = "final_consumption"
+	CategoryRawPrimary       ProductCategory = "raw_primary"
+	CategoryIntermediate     ProductCategory = "intermediate"
+	CategoryFinalConsumption ProductCategory = "final_consumption"
 )
 
 type Product struct {
-	ProductID string          `json:"product_id"`
+	ProductID string `json:"product_id"`
 	// Key es el identificador estable del catálogo (ej. "trigo"); a diferencia
 	// de ProductID (UUID regenerado en cada seed) es constante entre despliegues.
 	Key       string          `json:"key"`
@@ -55,21 +55,40 @@ type RecipeInput struct {
 }
 
 type Recipe struct {
-	RecipeID             string        `json:"recipe_id"`
-	Name                 string        `json:"name"`
-	OutputProductID      string        `json:"output_product_id"`
-	OutputQtyCent        int64         `json:"output_qty_cent"`
-	DurationSeconds      int64         `json:"duration_seconds"`
-	WageRateCentsPerSec  int64         `json:"wage_rate_cents_per_sec"`
-	Inputs               []RecipeInput `json:"inputs"`
-	CreatedAt            time.Time     `json:"created_at"`
+	RecipeID            string `json:"recipe_id"`
+	Name                string `json:"name"`
+	OutputProductID     string `json:"output_product_id"`
+	OutputQtyCent       int64  `json:"output_qty_cent"`
+	DurationSeconds     int64  `json:"duration_seconds"`
+	WageRateCentsPerSec int64  `json:"wage_rate_cents_per_sec"`
+	// Tipo de instalación requerido para ejecutar la receta (ADR-021).
+	InstallationTypeID string        `json:"installation_type_id"`
+	Inputs             []RecipeInput `json:"inputs"`
+	CreatedAt          time.Time     `json:"created_at"`
 }
 
-type CapacityStatus struct {
-	RecipeID      string `json:"recipe_id"`
-	Installations int    `json:"installations"`
-	Running       int    `json:"running"`
-	AvailableSlots int   `json:"available_slots"`
+// InstallationStatus: una instalación comprada por el agente (ADR-021). El nivel
+// es el presupuesto de concurrencia COMPARTIDO por todas las recetas del tipo.
+type InstallationStatus struct {
+	InstallationType      string `json:"installation_type"`
+	Name                  string `json:"name"`
+	UnitLabel             string `json:"unit_label"`
+	Level                 int    `json:"level"`
+	Running               int    `json:"running"`
+	AvailableSlots        int    `json:"available_slots"`
+	NextUpgradePriceCents *int64 `json:"next_upgrade_price_cents"`
+}
+
+// InstallationType: un tipo comprable del catálogo (GET /catalog/installation-types).
+type InstallationType struct {
+	InstallationTypeID string `json:"installation_type_id"`
+	Key                string `json:"key"`
+	Name               string `json:"name"`
+	Role               string `json:"role"`
+	UnitLabel          string `json:"unit_label"`
+	BasePriceCents     int64  `json:"base_price_cents"`
+	GrowthBps          int    `json:"growth_bps"`
+	MaxLevel           int    `json:"max_level"`
 }
 
 type InventoryPosition struct {
@@ -117,17 +136,17 @@ const (
 )
 
 type Order struct {
-	OrderID          string      `json:"order_id"`
-	AgentID          string      `json:"agent_id"`
-	ProductID        string      `json:"product_id"`
-	Side             OrderSide   `json:"side"`
-	QtyOriginalCent  int64       `json:"qty_original_cent"`
-	QtyPendingCent   int64       `json:"qty_pending_cent"`
-	LimitPriceCents  int64       `json:"limit_price_cents"`
-	Status           OrderStatus `json:"status"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
-	ExpiresAt        time.Time   `json:"expires_at"`
+	OrderID         string      `json:"order_id"`
+	AgentID         string      `json:"agent_id"`
+	ProductID       string      `json:"product_id"`
+	Side            OrderSide   `json:"side"`
+	QtyOriginalCent int64       `json:"qty_original_cent"`
+	QtyPendingCent  int64       `json:"qty_pending_cent"`
+	LimitPriceCents int64       `json:"limit_price_cents"`
+	Status          OrderStatus `json:"status"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	ExpiresAt       time.Time   `json:"expires_at"`
 }
 
 type OrderPage struct {
@@ -220,30 +239,30 @@ type TransformationPage struct {
 type EventType string
 
 const (
-	EventAgentRegistered      EventType = "agent_registered"
-	EventAgentBankrupt        EventType = "agent_bankrupt"
-	EventOrderPlaced          EventType = "order_placed"
-	EventOrderCancelled       EventType = "order_cancelled"
-	EventOrderExpired         EventType = "order_expired"
-	EventTradeExecuted        EventType = "trade_executed"
-	EventProcessStarted       EventType = "process_started"
-	EventProcessCompleted     EventType = "process_completed"
-	EventProcessCancelled     EventType = "process_cancelled"
-	EventSnapshotTaken        EventType = "snapshot_taken"
+	EventAgentRegistered  EventType = "agent_registered"
+	EventAgentBankrupt    EventType = "agent_bankrupt"
+	EventOrderPlaced      EventType = "order_placed"
+	EventOrderCancelled   EventType = "order_cancelled"
+	EventOrderExpired     EventType = "order_expired"
+	EventTradeExecuted    EventType = "trade_executed"
+	EventProcessStarted   EventType = "process_started"
+	EventProcessCompleted EventType = "process_completed"
+	EventProcessCancelled EventType = "process_cancelled"
+	EventSnapshotTaken    EventType = "snapshot_taken"
 
 	// Websocket-specific events
-	EventOrderExecuted        EventType = "order_executed"
+	EventOrderExecuted           EventType = "order_executed"
 	EventTransformationCompleted EventType = "transformation_completed"
-	EventBankruptcyNotice     EventType = "bankruptcy_notice"
-	EventAgentJoined          EventType = "agent_joined"
+	EventBankruptcyNotice        EventType = "bankruptcy_notice"
+	EventAgentJoined             EventType = "agent_joined"
 )
 
 type Event struct {
-	EventID   string                 `json:"event_id"`
-	EventType EventType              `json:"event_type"`
-	AgentID   *string                `json:"agent_id"`
+	EventID    string                 `json:"event_id"`
+	EventType  EventType              `json:"event_type"`
+	AgentID    *string                `json:"agent_id"`
 	OccurredAt time.Time              `json:"occurred_at"`
-	Payload   map[string]interface{} `json:"payload"`
+	Payload    map[string]interface{} `json:"payload"`
 }
 
 type EventPage struct {
@@ -255,25 +274,31 @@ type AgentSnapshot struct {
 	Agent                 AgentPublic             `json:"agent"`
 	CapitalAvailableCents int64                   `json:"capital_available_cents"`
 	CapitalReservedCents  int64                   `json:"capital_reserved_cents"`
-	Inventory             []InventoryPosition    `json:"inventory"`
+	Inventory             []InventoryPosition     `json:"inventory"`
 	ActiveOrders          []Order                 `json:"active_orders"`
 	RunningProcesses      []TransformationProcess `json:"running_processes"`
-	Capacities            []CapacityStatus        `json:"capacities"`
+	Installations         []InstallationStatus    `json:"installations"`
 	RecentEvents          []Event                 `json:"recent_events"`
 }
 
 // Request and Response helper structures
 
-type RequestedCapacity struct {
-	RecipeID      string `json:"recipe_id"`
-	Installations int    `json:"installations"`
+type RegisterAgentRequest struct {
+	Username string    `json:"username"`
+	Password string    `json:"password"`
+	Role     AgentRole `json:"role"`
 }
 
-type RegisterAgentRequest struct {
-	Username            string              `json:"username"`
-	Password            string              `json:"password"`
-	Role                AgentRole           `json:"role"`
-	RequestedCapacities []RequestedCapacity `json:"requested_capacities,omitempty"`
+// AcquireInstallationRequest: body de POST /agents/me/installations (ADR-021).
+type AcquireInstallationRequest struct {
+	InstallationType     string `json:"installation_type"`
+	ExpectedCurrentLevel *int   `json:"expected_current_level,omitempty"`
+}
+
+// AcquireInstallationResponse: InstallationStatus + lo cobrado.
+type AcquireInstallationResponse struct {
+	InstallationStatus
+	AmountChargedCents int64 `json:"amount_charged_cents"`
 }
 
 type RegisterAgentResponse struct {

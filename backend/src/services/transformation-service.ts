@@ -372,8 +372,8 @@ async function materializeExpiredGlobal(limit: number): Promise<number> {
  * Inicia un proceso (§10.4, openapi POST /transformations), en UNA transacción:
  *   1. Lock del agente (FOR UPDATE) — serializa por agente; bankrupt ⇒ 403.
  *   2. Receta existe ⇒ si no, 404 unknown_recipe.
- *   3. Capacidad: sin fila ⇒ insufficient_capacity; COUNT(running) >=
- *      installations ⇒ recipe_capacity_saturated.
+ *   3. Instalación del tipo (ADR-021): no comprada ⇒ insufficient_capacity;
+ *      COUNT(running del tipo) >= level ⇒ recipe_capacity_saturated.
  *   4. Salario upfront (§4) con UPDATE condicional (§10.3) ⇒ insufficient_capital.
  *   5. Insumos × executions consumidos vía consumeAvailableFifo (⇒
  *      insufficient_inventory) con trazabilidad en transformation_lot_consumption.
@@ -425,19 +425,26 @@ async function startTransformation(
       );
     }
 
-    const installations = await repo.getInstallations(tx, agentId, recipeId);
-    if (installations === undefined) {
+    // Capacidad por TIPO de instalación (ADR-021): la receta pertenece a un tipo;
+    // el agente debe haberlo comprado y su `level` (hectáreas/líneas) es el
+    // presupuesto de concurrencia COMPARTIDO por todas las recetas del tipo.
+    const installation = await repo.getInstallationForRecipe(tx, agentId, recipeId);
+    if (installation === undefined || installation.level === undefined) {
       throw domainError(
         "insufficient_capacity",
-        `El agente no tiene capacidad instalada para la receta ${recipeId}.`,
+        `El agente no tiene una instalación comprada para la receta ${recipeId}.`,
         { field: "recipe_id" },
       );
     }
-    const running = await repo.countRunning(tx, agentId, recipeId);
-    if (running >= installations) {
+    const running = await repo.countRunningByType(
+      tx,
+      agentId,
+      installation.installationTypeId,
+    );
+    if (running >= installation.level) {
       throw domainError(
         "recipe_capacity_saturated",
-        `Capacidad saturada para la receta: ${running}/${installations} procesos en curso.`,
+        `Capacidad de la instalación saturada: ${running}/${installation.level} procesos del tipo en curso.`,
         { field: "recipe_id" },
       );
     }

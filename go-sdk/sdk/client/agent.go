@@ -30,10 +30,31 @@ func (c *Client) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models
 	return &resp, nil
 }
 
-// GetCapacities retrieves the productive capacities of the authenticated agent.
-func (c *Client) GetCapacities(ctx context.Context) ([]models.CapacityStatus, error) {
-	var resp []models.CapacityStatus
-	err := c.do(ctx, http.MethodGet, "/agents/me/capacities", nil, &resp, true)
+// GetInstallations retrieves the installations bought by the authenticated
+// agent (economía de instalaciones, ADR-021).
+func (c *Client) GetInstallations(ctx context.Context) ([]models.InstallationStatus, error) {
+	var resp []models.InstallationStatus
+	err := c.do(ctx, http.MethodGet, "/agents/me/installations", nil, &resp, true)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// AcquireInstallation compra o mejora una instalación (POST /agents/me/installations).
+func (c *Client) AcquireInstallation(ctx context.Context, req models.AcquireInstallationRequest) (*models.AcquireInstallationResponse, error) {
+	var resp models.AcquireInstallationResponse
+	err := c.do(ctx, http.MethodPost, "/agents/me/installations", req, &resp, true)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListInstallationTypes retrieves the catalog of purchasable installation types.
+func (c *Client) ListInstallationTypes(ctx context.Context) ([]models.InstallationType, error) {
+	var resp []models.InstallationType
+	err := c.do(ctx, http.MethodGet, "/catalog/installation-types", nil, &resp, false)
 	if err != nil {
 		return nil, err
 	}

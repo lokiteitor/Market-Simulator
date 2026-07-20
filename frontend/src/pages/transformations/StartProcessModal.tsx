@@ -2,8 +2,9 @@
  * StartProcessModal [FE7] — Modal para iniciar un proceso de transformación
  * (design doc §4.3, POST /transformations).
  *
- * - Receta: solo las que el agente tiene capacidad instalada (self-state),
- *   mostrando huecos libres (installations − running).
+ * - Receta: solo las de tipos de instalación que el agente ha comprado
+ *   (self-state), mostrando los huecos libres del tipo (level − running,
+ *   presupuesto de concurrencia COMPARTIDO por las recetas del tipo, ADR-021).
  * - Ejecuciones: 1..N con preview de salario total upfront
  *   (rate × duración_sim × ejecuciones — ver transformMath.ts), insumos
  *   totales requeridos vs. inventario disponible (validación por fila) y
@@ -17,7 +18,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
 import type {
-  CapacityStatus,
+  InstallationStatus,
+  InstallationType,
   Problem,
   Product,
   ProductCategory,
@@ -88,9 +90,21 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
     staleTime: Infinity,
   });
 
+  // Catálogo de tipos de instalación: para mapear recipe.installation_type_id
+  // (UUID de la receta) → key del tipo (que es lo que expone self.installations).
+  const installationTypesQuery = useQuery({
+    queryKey: ["catalog", "installation-types"],
+    queryFn: ({ signal }) =>
+      api.get<InstallationType[]>("/catalog/installation-types", {
+        signal,
+        auth: false,
+      }),
+    staleTime: Infinity,
+  });
+
   const self = selfQuery.data ?? null;
   const bankrupt = self !== null && self.agent.status === "bankrupt";
-  const capacities = self?.capacities ?? [];
+  const installations = self?.installations ?? [];
 
   const recipeById = useMemo(() => {
     const map = new Map<string, Recipe>();
@@ -109,30 +123,52 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
   const productUnit = (productId: string): string | undefined =>
     productById.get(productId)?.unit;
 
-  // Capacidades agrupadas por la categoría del producto de salida (espejo del
-  // selector de MarketPage). El grupo "other" recoge recetas cuyo catálogo aún
-  // no cargó, para no perder nunca una opción del <select>.
-  const capacityGroups = useMemo(() => {
-    const byCategory = new Map<ProductCategory, CapacityStatus[]>();
-    const other: CapacityStatus[] = [];
-    for (const c of capacities) {
-      const recipe = recipeById.get(c.recipe_id);
-      const category = recipe
-        ? productById.get(recipe.output_product_id)?.category
-        : undefined;
+  // installation_type_id (UUID) → key del tipo.
+  const typeKeyById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of installationTypesQuery.data ?? [])
+      map.set(t.installation_type_id, t.key);
+    return map;
+  }, [installationTypesQuery.data]);
+
+  // key del tipo → instalación comprada por el agente (nivel + huecos).
+  const ownedByTypeKey = useMemo(() => {
+    const map = new Map<string, InstallationStatus>();
+    for (const i of installations) map.set(i.installation_type, i);
+    return map;
+  }, [installations]);
+
+  /** Instalación comprada que habilita la receta (o undefined si no la tiene). */
+  const installationForRecipe = (
+    recipe: Recipe | undefined,
+  ): InstallationStatus | undefined => {
+    if (recipe === undefined) return undefined;
+    const key = typeKeyById.get(recipe.installation_type_id);
+    return key === undefined ? undefined : ownedByTypeKey.get(key);
+  };
+
+  // Recetas ejecutables (de tipos comprados) agrupadas por la categoría del
+  // producto de salida (espejo del selector de MarketPage).
+  const recipeGroups = useMemo(() => {
+    const runnable = (recipesQuery.data ?? []).filter((r) => {
+      const key = typeKeyById.get(r.installation_type_id);
+      return key !== undefined && ownedByTypeKey.has(key);
+    });
+    const byCategory = new Map<ProductCategory, Recipe[]>();
+    const other: Recipe[] = [];
+    for (const r of runnable) {
+      const category = productById.get(r.output_product_id)?.category;
       if (category === undefined) {
-        other.push(c);
+        other.push(r);
       } else {
         const list = byCategory.get(category);
-        if (list === undefined) byCategory.set(category, [c]);
-        else list.push(c);
+        if (list === undefined) byCategory.set(category, [r]);
+        else list.push(r);
       }
     }
-    const recipeName = (c: CapacityStatus): string =>
-      recipeById.get(c.recipe_id)?.name ?? truncId(c.recipe_id);
-    const sortByName = (list: CapacityStatus[]): CapacityStatus[] =>
-      [...list].sort((a, b) => recipeName(a).localeCompare(recipeName(b), "es"));
-    const groups: Array<{ label: string; items: CapacityStatus[] }> = [];
+    const sortByName = (list: Recipe[]): Recipe[] =>
+      [...list].sort((a, b) => a.name.localeCompare(b.name, "es"));
+    const groups: Array<{ label: string; items: Recipe[] }> = [];
     for (const category of PRODUCT_CATEGORY_ORDER) {
       const list = byCategory.get(category);
       if (list && list.length > 0) {
@@ -146,7 +182,7 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
       groups.push({ label: "Otras", items: sortByName(other) });
     }
     return groups;
-  }, [capacities, recipeById, productById]);
+  }, [recipesQuery.data, typeKeyById, ownedByTypeKey, productById]);
 
   // ---- Estado del formulario ---------------------------------------------------
   const [recipeId, setRecipeId] = useState("");
@@ -165,8 +201,8 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
   }, [open]);
 
   // ---- Derivados / preview --------------------------------------------------------
-  const capacity = capacities.find((c) => c.recipe_id === recipeId) ?? null;
   const recipe = recipeById.get(recipeId) ?? null;
+  const installation = installationForRecipe(recipe ?? undefined) ?? null;
   const executions = useMemo(() => {
     const text = executionsText.trim();
     if (!/^\d+$/.test(text)) return null;
@@ -197,10 +233,11 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
 
     if (recipeId === "") {
       errors.recipe_id = "Selecciona una receta.";
-    } else if (capacity === null) {
-      errors.recipe_id = "No tienes capacidad instalada para esta receta.";
-    } else if (availableSlots(capacity) < 1) {
-      errors.recipe_id = `Capacidad saturada: ${capacity.running}/${capacity.installations} procesos en curso.`;
+    } else if (installation === null) {
+      errors.recipe_id =
+        "No tienes una instalación comprada para esta receta.";
+    } else if (availableSlots(installation) < 1) {
+      errors.recipe_id = `Instalación saturada: ${installation.running}/${installation.level} procesos del tipo en curso.`;
     }
 
     if (executions === null || executions < 1) {
@@ -301,30 +338,30 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
           label="Receta"
           error={fieldErrors.recipe_id ?? null}
           hint={
-            capacities.length === 0
-              ? "No tienes capacidad instalada para ninguna receta."
+            installations.length === 0
+              ? "No tienes ninguna instalación comprada; compra una para producir."
               : undefined
           }
         >
           <select
             value={recipeId}
             onChange={(e) => setRecipeId(e.target.value)}
-            disabled={recipesQuery.isPending || capacities.length === 0}
+            disabled={recipesQuery.isPending || installations.length === 0}
           >
             <option value="">
               {recipesQuery.isPending
                 ? "Cargando recetas…"
                 : "Selecciona una receta"}
             </option>
-            {capacityGroups.map((group) => (
+            {recipeGroups.map((group) => (
               <optgroup key={group.label} label={group.label}>
-                {group.items.map((c) => {
-                  const r = recipeById.get(c.recipe_id);
-                  const slots = availableSlots(c);
+                {group.items.map((r) => {
+                  const inst = installationForRecipe(r);
+                  const slots = inst ? availableSlots(inst) : 0;
+                  const level = inst?.level ?? 0;
                   return (
-                    <option key={c.recipe_id} value={c.recipe_id}>
-                      {r?.name ?? truncId(c.recipe_id)} — {slots}/
-                      {c.installations}{" "}
+                    <option key={r.recipe_id} value={r.recipe_id}>
+                      {r.name} — {slots}/{level}{" "}
                       {slots === 1 ? "hueco libre" : "huecos libres"}
                     </option>
                   );
@@ -469,7 +506,7 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
             type="submit"
             className={`${styles["btn"]} ${styles["btnPrimary"]}`}
             disabled={
-              startProcess.isPending || bankrupt || capacities.length === 0
+              startProcess.isPending || bankrupt || installations.length === 0
             }
           >
             {startProcess.isPending ? "Iniciando…" : "Iniciar proceso"}

@@ -32,9 +32,10 @@ import { config, type AgentRoleKey, type SeedCapitalRange } from "./config";
 import { closeDb, withTransaction } from "./db";
 import {
   agent,
-  agentCapacity,
   agentCredentials,
+  agentRole,
   goldStandard,
+  installationType,
   inventoryLot,
   product,
   productCategory,
@@ -68,6 +69,8 @@ const SeedRecipeSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
   output: z.string().min(1),
+  /** Tipo de instalación requerido para ejecutar la receta (ADR-021). */
+  installation_type: z.string().min(1),
   output_qty_cent: z.number().int().positive(),
   /** Duración de UNA ejecución, en segundos SIMULADOS. */
   duration_sim_seconds: z.number().int().positive(),
@@ -75,19 +78,27 @@ const SeedRecipeSchema = z.object({
   inputs: z.array(SeedRecipeInputSchema),
 });
 
+// Tipo de instalación comprable/mejorable (ADR-021). Agrupa recetas afines; el
+// nivel es el presupuesto de concurrencia compartido entre ellas.
+const SeedInstallationTypeSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  role: z.enum(agentRole.enumValues),
+  unit_label: z.string().min(1),
+  base_price_cents: z.number().int().positive(),
+  growth_bps: z.number().int().positive(),
+  max_level: z.number().int().positive(),
+  recipes: z.array(z.string().min(1)),
+});
+
 const SeedRoleSchema = z.object({
   initial_agents: z.number().int().nonnegative(),
-  capacities: z.array(
-    z.object({
-      recipe: z.string().min(1),
-      installations: z.number().int().positive(),
-    }),
-  ),
 });
 
 const SeedConfigSchema = z.object({
   products: z.array(SeedProductSchema).min(1),
   recipes: z.array(SeedRecipeSchema),
+  installation_types: z.array(SeedInstallationTypeSchema).min(1),
   roles: z.object({
     primary_producer: SeedRoleSchema,
     transformer: SeedRoleSchema,
@@ -174,20 +185,47 @@ export function parseSeedConfig(rawJson: string): SeedConfig {
     }
   }
 
-  for (const role of ROLE_ORDER) {
-    const seenRecipes = new Set<string>();
-    for (const cap of cfg.roles[role].capacities) {
-      if (!recipeKeys.has(cap.recipe)) {
+  // --- Tipos de instalación: keys únicas y cobertura receta→tipo exacta -------
+  const installationTypeKeys = new Set<string>();
+  const recipeToType = new Map<string, string>();
+  for (const it of cfg.installation_types) {
+    if (installationTypeKeys.has(it.key)) {
+      throw new Error(`seed-config: installation_type key duplicada: "${it.key}"`);
+    }
+    installationTypeKeys.add(it.key);
+    for (const rk of it.recipes) {
+      if (!recipeKeys.has(rk)) {
         throw new Error(
-          `seed-config: rol "${role}" referencia una receta desconocida: "${cap.recipe}"`,
+          `seed-config: installation_type "${it.key}" referencia una receta desconocida: "${rk}"`,
         );
       }
-      if (seenRecipes.has(cap.recipe)) {
+      const prev = recipeToType.get(rk);
+      if (prev !== undefined) {
         throw new Error(
-          `seed-config: rol "${role}" repite la capacidad "${cap.recipe}"`,
+          `seed-config: receta "${rk}" asignada a dos tipos ("${prev}" y "${it.key}")`,
         );
       }
-      seenRecipes.add(cap.recipe);
+      recipeToType.set(rk, it.key);
+    }
+  }
+  // Cada receta debe declarar un installation_type existente y coincidir con el
+  // tipo que la lista en `recipes` (cobertura total, sin recetas huérfanas).
+  for (const r of cfg.recipes) {
+    if (!installationTypeKeys.has(r.installation_type)) {
+      throw new Error(
+        `seed-config: recipe "${r.key}" declara un installation_type desconocido: "${r.installation_type}"`,
+      );
+    }
+    const owner = recipeToType.get(r.key);
+    if (owner === undefined) {
+      throw new Error(
+        `seed-config: recipe "${r.key}" no está listada en las recipes de ningún installation_type`,
+      );
+    }
+    if (owner !== r.installation_type) {
+      throw new Error(
+        `seed-config: recipe "${r.key}" declara tipo "${r.installation_type}" pero está listada en "${owner}"`,
+      );
     }
   }
 
@@ -475,6 +513,30 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       productIdByKey.set(p.key, row.productId);
     }
 
+    // --- Tipos de instalación (ADR-021) --------------------------------------
+    const installationTypeIdByKey = new Map<string, string>();
+    for (const it of cfg.installation_types) {
+      const rows = await tx
+        .insert(installationType)
+        .values({
+          key: it.key,
+          name: it.name,
+          role: it.role,
+          unitLabel: it.unit_label,
+          basePriceCents: it.base_price_cents,
+          growthBps: it.growth_bps,
+          maxLevel: it.max_level,
+        })
+        .returning({ installationTypeId: installationType.installationTypeId });
+      const row = rows[0];
+      if (row === undefined) {
+        throw new Error(
+          `seed: insert de installation_type "${it.key}" no devolvió fila`,
+        );
+      }
+      installationTypeIdByKey.set(it.key, row.installationTypeId);
+    }
+
     // --- Recetas + insumos ---------------------------------------------------
     const recipeIdByKey = new Map<string, string>();
     let recipeInputCount = 0;
@@ -487,6 +549,11 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
           // duration_sim_seconds → INTERVAL de Postgres (string '<n> seconds').
           duration: `${r.duration_sim_seconds} seconds`,
           wageRateCentsPerSec: r.wage_rate_cents_per_sec,
+          installationTypeId: mustGet(
+            installationTypeIdByKey,
+            r.installation_type,
+            "tipo de instalación",
+          ),
           name: r.name,
         })
         .returning({ recipeId: recipe.recipeId });
@@ -508,20 +575,9 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       }
     }
 
-    // Capacidades por rol resueltas a recipe_id (una vez, no por agente).
-    const capacitiesByRole = new Map<
-      MarketRole,
-      Array<{ recipeId: string; installations: number }>
-    >();
-    for (const role of ROLE_ORDER) {
-      capacitiesByRole.set(
-        role,
-        cfg.roles[role].capacities.map((cap) => ({
-          recipeId: mustGet(recipeIdByKey, cap.recipe, "receta"),
-          installations: cap.installations,
-        })),
-      );
-    }
+    // Los agentes NO reciben instalaciones al sembrarse (ADR-021): nacen sin
+    // filas en agent_installation y deben comprar/subir de nivel vía
+    // POST /agents/me/installations.
 
     // --- Agentes iniciales ---------------------------------------------------
     const byRole: SeedSummary["byRole"] = {
@@ -556,17 +612,6 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
         agentId,
         passwordHash: entry.passwordHash,
       });
-
-      const capacities = capacitiesByRole.get(entry.role) ?? [];
-      if (capacities.length > 0) {
-        await tx.insert(agentCapacity).values(
-          capacities.map((cap) => ({
-            agentId,
-            recipeId: cap.recipeId,
-            installations: cap.installations,
-          })),
-        );
-      }
 
       const payload: SeedAgentRegisteredPayload = {
         agent_id: agentId,

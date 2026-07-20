@@ -33,7 +33,6 @@ import {
 import type {
   AgentRole,
   RegisterAgentResponse,
-  RequestedCapacity,
   SelfState,
   TokenPair,
 } from "../api/types";
@@ -52,8 +51,6 @@ export interface RegisterParams {
   username: string;
   password: string;
   role: AgentRole;
-  /** Opcional: capacidades solicitadas al registrarse (openapi). */
-  requested_capacities?: RequestedCapacity[];
 }
 
 export interface AuthContextValue {

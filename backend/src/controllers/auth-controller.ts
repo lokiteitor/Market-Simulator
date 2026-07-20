@@ -44,16 +44,12 @@ function toRegisterResponseJson(r: RegisterResult): RegisterAgentResponseJson {
       },
       capital_available_cents: a.capitalAvailable,
       capital_reserved_cents: a.capitalReserved,
-      // Agente recién nacido: sin inventario, sin órdenes, sin procesos.
+      // Agente recién nacido (ADR-021): sin inventario, sin órdenes, sin
+      // procesos y SIN instalaciones (las compra después).
       inventory: [],
       active_orders: [],
       running_processes: [],
-      capacities: r.capacities.map((c) => ({
-        recipe_id: c.recipeId,
-        installations: c.installations,
-        running: 0,
-        available_slots: c.installations,
-      })),
+      installations: [],
       recent_events: [],
     },
   };

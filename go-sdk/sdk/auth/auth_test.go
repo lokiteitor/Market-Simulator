@@ -234,7 +234,7 @@ func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
 
 	a1 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
 	a1.SetRefresher(client.refresh)
-	if err := a1.PerformAuth(context.Background(), client, false, nil); err != nil {
+	if err := a1.PerformAuth(context.Background(), client, false); err != nil {
 		t.Fatalf("PerformAuth (primera activación): %v", err)
 	}
 	if client.logins != 1 {
@@ -244,7 +244,7 @@ func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
 	// Segunda activación: AuthManager nuevo, como lo crea la rotación del swarm.
 	a2 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
 	a2.SetRefresher(client.refresh)
-	if err := a2.PerformAuth(context.Background(), client, false, nil); err != nil {
+	if err := a2.PerformAuth(context.Background(), client, false); err != nil {
 		t.Fatalf("PerformAuth (segunda activación): %v", err)
 	}
 	if client.logins != 1 {

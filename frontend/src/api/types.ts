@@ -56,16 +56,10 @@ export interface RefreshRequest {
   refresh_token: string;
 }
 
-export interface RequestedCapacity {
-  recipe_id: string;
-  installations: number;
-}
-
 export interface RegisterAgentRequest {
   username: string;
   password: string;
   role: AgentRole;
-  requested_capacities?: RequestedCapacity[];
 }
 
 /** Respuesta de registro: par de tokens + snapshot inicial del agente. */
@@ -105,6 +99,8 @@ export interface Recipe {
   /** Duración de UNA ejecución en segundos reales (no simulados). */
   duration_seconds: number;
   wage_rate_cents_per_sec: number;
+  /** Tipo de instalación requerido para ejecutarla (ADR-021). */
+  installation_type_id: string;
   /** Vacía para recetas de producción primaria desde cero. */
   inputs: RecipeInput[];
   created_at: string;
@@ -135,14 +131,32 @@ export interface AgentPublic {
   bankrupt_at?: string | null;
 }
 
-export interface CapacityStatus {
-  recipe_id: string;
-  /** Procesos paralelos máximos para esta receta. */
-  installations: number;
-  /** Procesos `running` actualmente para esta receta. */
+/** Instalación comprada por el agente (economía de instalaciones, ADR-021). */
+export interface InstallationStatus {
+  installation_type: string;
+  name: string;
+  /** Unidad del nivel: `hectareas`, `lineas_produccion`, … */
+  unit_label: string;
+  /** Nivel comprado = presupuesto de concurrencia compartido del tipo. */
+  level: number;
+  /** Procesos `running` del tipo actualmente. */
   running: number;
-  /** `installations - running` (calculado por el servidor). */
-  available_slots?: number;
+  /** `level - running` (calculado por el servidor). */
+  available_slots: number;
+  /** Precio de la siguiente mejora, o null si ya está en nivel máximo. */
+  next_upgrade_price_cents: number | null;
+}
+
+/** Tipo de instalación comprable (GET /catalog/installation-types). */
+export interface InstallationType {
+  installation_type_id: string;
+  key: string;
+  name: string;
+  role: AgentRole;
+  unit_label: string;
+  base_price_cents: number;
+  growth_bps: number;
+  max_level: number;
 }
 
 export interface InventoryPosition {
@@ -180,7 +194,7 @@ export interface SelfState {
   active_orders: Order[];
   /** Procesos `running` tras materialización lazy. */
   running_processes: TransformationProcess[];
-  capacities: CapacityStatus[];
+  installations: InstallationStatus[];
   /** Resumen acotado de eventos recientes (según `events_limit`). */
   recent_events?: EventEntry[];
 }

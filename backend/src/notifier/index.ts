@@ -33,7 +33,10 @@ export type NotificationType =
   | "gold_converted"
   // Personal (solo ciudades): ingreso recurrente acreditado por el
   // city-income-sweeper (flujo circular). Payload = { amount_cents }.
-  | "city_income";
+  | "city_income"
+  // Personal: el agente compró o mejoró una instalación (ADR-021).
+  // Payload = objeto InstallationStatus del openapi.
+  | "installation_purchased";
 
 export interface Notification {
   type: NotificationType;

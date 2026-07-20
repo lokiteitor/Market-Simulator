@@ -15,13 +15,11 @@
  * permitidas (el estado bankrupt solo bloquea escrituras de dominio); por eso
  * aquí no se rechaza a agentes en quiebra.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { z } from "zod";
 import { config } from "../config";
 import { withTransaction, type Tx } from "../db";
 import type { AgentRow, EventLogRow, InventoryLotRow, MarketOrderRow } from "../db/schema";
 import { domainError } from "../lib/errors";
+import { installationUpgradePriceCents } from "../lib/installations";
 import {
   appendEvent,
   type AgentRegisteredPayload,
@@ -31,60 +29,25 @@ import { issuanceCapacityCents } from "../lib/gold";
 import { intervalToSimSeconds, realMsToSimSeconds } from "../lib/simtime";
 import { agentRepository } from "../repositories/agent-repository";
 import { bankRepository } from "../repositories/bank-repository";
+import { installationRepository } from "../repositories/installation-repository";
 import type { AgentRegistrar, AgentRole } from "../types/contracts";
 import { bankService } from "./bank-service";
 import { inventoryService } from "./inventory-service";
 import { transformationService } from "./transformation-service";
 
 // ---------------------------------------------------------------------------
-// seed-config.json (capacidades por rol, §10.12 / §13)
-// ---------------------------------------------------------------------------
-
-const SeedConfigSchema = z.object({
-  recipes: z.array(z.object({ key: z.string(), name: z.string() })),
-  roles: z.record(
-    z.string(),
-    z.object({
-      capacities: z
-        .array(z.object({ recipe: z.string(), installations: z.number().int().positive() }))
-        .default([]),
-    }),
-  ),
-});
-
-type SeedConfig = z.infer<typeof SeedConfigSchema>;
-
-let seedConfigCache: SeedConfig | null = null;
-
-/**
- * Carga (y cachea) infra/seed-config.json desde config.seedConfigPath,
- * resuelto relativo al cwd (backend/ en dev; /app en docker).
- */
-function loadSeedConfig(): SeedConfig {
-  if (seedConfigCache === null) {
-    const resolved = path.resolve(process.cwd(), config.seedConfigPath);
-    let raw: string;
-    try {
-      raw = readFileSync(resolved, "utf8");
-    } catch (err) {
-      throw new Error(
-        `No se pudo leer seed-config en "${resolved}" (SEED_CONFIG_PATH=${config.seedConfigPath}): ${String(err)}`,
-      );
-    }
-    seedConfigCache = SeedConfigSchema.parse(JSON.parse(raw));
-  }
-  return seedConfigCache;
-}
-
-// ---------------------------------------------------------------------------
 // Vistas de dominio (camelCase; el controller las convierte a snake_case)
 // ---------------------------------------------------------------------------
 
-export interface CapacityStatusView {
-  recipeId: string;
-  installations: number;
+/** Estado de una instalación del agente en el snapshot (ADR-021). */
+export interface InstallationStatusView {
+  installationType: string;
+  name: string;
+  unitLabel: string;
+  level: number;
   running: number;
   availableSlots: number;
+  nextUpgradePriceCents: number | null;
 }
 
 export interface InventoryPositionView {
@@ -115,7 +78,7 @@ export interface AgentSelfState {
   inventory: InventoryPositionView[];
   activeOrders: MarketOrderRow[];
   runningProcesses: RunningProcessView[];
-  capacities: CapacityStatusView[];
+  installations: InstallationStatusView[];
   recentEvents: EventLogRow[];
 }
 
@@ -145,7 +108,6 @@ export interface AgentService extends AgentRegistrar {
    * los procesos vencidos del agente (abre su propia tx, §8).
    */
   getSelfState(agentId: string, eventsLimit?: number): Promise<AgentSelfState>;
-  getCapacities(agentId: string): Promise<CapacityStatusView[]>;
   /** Inventario agregado por producto (openapi InventoryPosition). */
   getInventory(agentId: string, productId?: string): Promise<InventoryPositionView[]>;
   /** Detalle por lote, orden FIFO (acquired_at ASC, lot_id ASC). */
@@ -181,35 +143,8 @@ export const agentService: AgentService = {
       seedCapitalCents,
     });
 
-    // Capacidades del rol desde seed-config: keys de receta → name → recipe_id.
-    const seedConfig = loadSeedConfig();
-    const roleCapacities = seedConfig.roles[p.role]?.capacities ?? [];
-    if (roleCapacities.length > 0) {
-      const nameByKey = new Map(seedConfig.recipes.map((r) => [r.key, r.name]));
-      const wanted = roleCapacities.map((c) => {
-        const name = nameByKey.get(c.recipe);
-        if (name === undefined) {
-          throw new Error(
-            `seed-config inconsistente: la capacidad del rol ${p.role} referencia la receta "${c.recipe}" que no existe en recipes[]`,
-          );
-        }
-        return { name, installations: c.installations };
-      });
-      const idsByName = await agentRepository.findRecipeIdsByNames(
-        tx,
-        wanted.map((w) => w.name),
-      );
-      const capacities = wanted.map((w) => {
-        const recipeId = idsByName.get(w.name);
-        if (recipeId === undefined) {
-          throw new Error(
-            `Catálogo incompleto: la receta "${w.name}" del seed-config no existe en la tabla recipe (¿falta ejecutar el seed?)`,
-          );
-        }
-        return { recipeId, installations: w.installations };
-      });
-      await agentRepository.insertCapacities(tx, row.agentId, capacities);
-    }
+    // ADR-021: el agente NACE SIN instalaciones. Debe comprarlas/mejorarlas vía
+    // POST /agents/me/installations antes de poder producir.
 
     const payload: AgentRegisteredPayload = {
       agent_id: row.agentId,
@@ -235,7 +170,10 @@ export const agentService: AgentService = {
       const inventory = await inventoryService.getPositions(tx, agentId);
       const activeOrders = await agentRepository.listActiveOrders(tx, agentId);
       const processRows = await agentRepository.listRunningProcessesWithDuration(tx, agentId);
-      const capacityRows = await agentRepository.getCapacityStatus(tx, agentId);
+      const installationRows = await installationRepository.listForAgentWithRunning(
+        tx,
+        agentId,
+      );
       const recentEvents = await agentRepository.getRecentEventsForAgent(
         tx,
         agentId,
@@ -268,26 +206,20 @@ export const agentService: AgentService = {
         inventory,
         activeOrders,
         runningProcesses,
-        capacities: capacityRows.map((c) => ({
-          recipeId: c.recipeId,
-          installations: c.installations,
-          running: c.running,
-          availableSlots: Math.max(0, c.installations - c.running),
+        installations: installationRows.map((i) => ({
+          installationType: i.key,
+          name: i.name,
+          unitLabel: i.unitLabel,
+          level: i.level,
+          running: i.running,
+          availableSlots: Math.max(0, i.level - i.running),
+          nextUpgradePriceCents:
+            i.level >= i.maxLevel
+              ? null
+              : installationUpgradePriceCents(i.basePriceCents, i.growthBps, i.level),
         })),
         recentEvents,
       };
-    });
-  },
-
-  async getCapacities(agentId) {
-    return withTransaction(async (tx) => {
-      const rows = await agentRepository.getCapacityStatus(tx, agentId);
-      return rows.map((c) => ({
-        recipeId: c.recipeId,
-        installations: c.installations,
-        running: c.running,
-        availableSlots: Math.max(0, c.installations - c.running),
-      }));
     });
   },
 

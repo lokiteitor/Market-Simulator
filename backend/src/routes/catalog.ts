@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { catalogController } from "../controllers/catalog-controller";
+import { installationController } from "../controllers/installation-controller";
 import {
   ListRecipesQuerySchema,
   ProductIdParamsSchema,
@@ -17,6 +18,7 @@ import {
   RecipeIdParamsSchema,
   RecipeSchema,
 } from "../schemas/catalog";
+import { InstallationTypeListSchema } from "../schemas/installations";
 
 export async function registerCatalogRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -64,5 +66,16 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     },
     // 404 unknown_recipe lo lanza el service.
     async (req) => catalogController.getRecipe(req.params.recipe_id),
+  );
+
+  // Catálogo de tipos de instalación comprables (ADR-021).
+  r.get(
+    "/catalog/installation-types",
+    {
+      schema: {
+        response: { 200: InstallationTypeListSchema },
+      },
+    },
+    installationController.getCatalog,
   );
 }

@@ -67,7 +67,7 @@ El modelo cubre los siguientes dominios:
 ## 📊 Estadísticas Generales
 
 ```
-Total de Tablas: 23
+Total de Tablas: 24
 Total de Enums: 9
 Total de Índices: 20 (excluyendo PKs y UNIQUE de columnas)
 Total de Relaciones (FK): 33
@@ -75,8 +75,8 @@ Total de Relaciones (FK): 33
 
 Desglose por dominio:
 
-- Catálogo: 3 tablas (`product`, `recipe`, `recipe_input`)
-- Agentes y auth: 4 tablas (`agent`, `agent_credentials`, `agent_refresh_token`, `agent_capacity`)
+- Catálogo: 4 tablas (`product`, `recipe`, `recipe_input`, `installation_type`)
+- Agentes y auth: 4 tablas (`agent`, `agent_credentials`, `agent_refresh_token`, `agent_installation`)
 - Órdenes y trades: 2 tablas (`market_order`, `trade`)
 - Procesos: 1 tabla (`transformation_process`)
 - Inventario y trazabilidad: 4 tablas (`inventory_lot`, `trade_lot_consumption`, `transformation_lot_consumption`, `conversion_lot_consumption`)
@@ -175,6 +175,7 @@ CREATE TABLE recipe (
     output_qty               BIGINT          NOT NULL CHECK (output_qty > 0),
     duration                 INTERVAL        NOT NULL CHECK (duration > INTERVAL '0'),
     wage_rate_cents_per_sec  BIGINT          NOT NULL CHECK (wage_rate_cents_per_sec >= 0),
+    installation_type_id     UUID            NOT NULL REFERENCES installation_type(installation_type_id),
     name                     TEXT            NOT NULL UNIQUE,
     created_at               TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
@@ -201,6 +202,7 @@ ALTER TABLE recipe ADD CONSTRAINT recipe_output_product_fk FOREIGN KEY (output_p
 | `output_qty`              | `BIGINT`      | Cantidad producida por ejecución, en centésimas de la unidad del producto.                                                               |
 | `duration`                | `INTERVAL`    | Duración de una ejecución de la receta en tiempo real. Para procesos con N ejecuciones, la duración total es `duration × N`.             |
 | `wage_rate_cents_per_sec` | `BIGINT`      | Tasa de salario en centavos por segundo. Salario total upfront = `wage_rate_cents_per_sec × EXTRACT(EPOCH FROM duration) × executions`.  |
+| `installation_type_id`    | `UUID`        | Tipo de instalación requerido para ejecutar la receta (ADR-021). El agente debe haber comprado ese tipo (`agent_installation`).          |
 | `name`                    | `TEXT`        | Nombre único de la receta (ej. "molienda_trigo", "siembra_maiz").                                                                        |
 | `created_at`              | `TIMESTAMPTZ` | Fecha de registro de la receta.                                                                                                          |
 
@@ -208,8 +210,34 @@ ALTER TABLE recipe ADD CONSTRAINT recipe_output_product_fk FOREIGN KEY (output_p
 
 - Una receta con `recipe_input` vacío modela **producción primaria desde cero** (siembra, ganadería). La duración representa el ciclo productivo.
 - El salario se **calcula en la capa de aplicación al iniciar el proceso** y se persiste en `transformation_process.wage_paid_cents`, para evitar drift si `wage_rate_cents_per_sec` cambia después.
-- Las ejecuciones dentro de un proceso son **secuenciales**. El paralelismo lo determina `agent_capacity.installations`.
+- Las ejecuciones dentro de un proceso son **secuenciales**. El paralelismo lo determina el `level` de la instalación del tipo de la receta (`agent_installation`, ADR-021).
 - El sistema valida toda transformación contra la receta canónica, nunca contra una copia local del agente.
+
+---
+
+### 2b. installation_type
+
+**Descripción**: catálogo de **tipos de instalación** comprables (economía de instalaciones, ADR-021). Cada tipo agrupa varias recetas afines (un `campo` cubre los cultivos; una `metalurgia` cubre acero/inox/viga/lámina) y define su nomenclatura de nivel y su curva de precios. Sembrado desde `infra/seed-config.json` (`installation_types[]`); estático durante la corrida.
+
+```sql
+CREATE TABLE installation_type (
+    installation_type_id UUID          PRIMARY KEY DEFAULT uuidv7(),
+    key                  TEXT          NOT NULL UNIQUE,   -- 'campo', 'metalurgia', …
+    name                 TEXT          NOT NULL UNIQUE,
+    role                 agent_role    NOT NULL,          -- rol que puede comprarlo
+    unit_label           TEXT          NOT NULL,          -- 'hectareas' | 'lineas_produccion' | …
+    base_price_cents     BIGINT        NOT NULL CHECK (base_price_cents > 0),  -- precio nivel 0→1
+    growth_bps           INT           NOT NULL CHECK (growth_bps > 0),        -- escalado por nivel (10000 = ×1)
+    max_level            INT           NOT NULL CHECK (max_level > 0),
+    created_at           TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+```
+
+#### Reglas de Negocio
+
+- `role` restringe qué rol de agente puede comprar el tipo (`installation_role_mismatch` si no coincide).
+- Precio de subir del nivel `k` al `k+1`: `floor(base_price_cents × (growth_bps/10000)^k)`; tope en `max_level` (`installation_max_level`).
+- El mapeo tipo→recetas vive en el seed y se valida (cobertura total de las 155 recetas, sin solapes).
 
 ---
 
@@ -436,44 +464,33 @@ ALTER TABLE agent_refresh_token ADD CONSTRAINT agent_refresh_token_agent_fk FORE
 
 ---
 
-### 7. agent_capacity
+### 7. agent_installation
 
-**Descripción**: capacidad productiva instalada del agente por receta. Cada fila indica cuántos procesos paralelos de esa receta puede correr simultáneamente. Modela conceptualmente campos para productores primarios o líneas de producción para transformadores. **Estática en v1.**
+**Descripción**: instalaciones que el agente ha **comprado** (economía de instalaciones, ADR-021). Una fila por `(agente, tipo de instalación)`. Reemplaza a la antigua `agent_capacity` (que era un grant estático por receta). El `level` (nº de hectáreas / líneas de producción) es el **presupuesto de concurrencia COMPARTIDO** por todas las recetas del tipo. **No hay grant inicial**: los agentes nacen sin filas y compran/suben de nivel vía `POST /agents/me/installations`.
 
 ```sql
 -- Tabla
-CREATE TABLE agent_capacity (
-    agent_id        UUID    NOT NULL REFERENCES agent(agent_id),
-    recipe_id       UUID    NOT NULL REFERENCES recipe(recipe_id),
-    installations   INT     NOT NULL CHECK (installations > 0),
-    PRIMARY KEY (agent_id, recipe_id)
+CREATE TABLE agent_installation (
+    agent_id             UUID   NOT NULL REFERENCES agent(agent_id),
+    installation_type_id UUID   NOT NULL REFERENCES installation_type(installation_type_id),
+    level                INT    NOT NULL CHECK (level > 0),
+    PRIMARY KEY (agent_id, installation_type_id)
 );
-```
-
-#### DDL de Índices y Constraints
-
-```sql
--- Índice automático por PK compuesto.
-
--- Constraints
-ALTER TABLE agent_capacity ADD CONSTRAINT agent_capacity_installations_positive CHECK (installations > 0);
-ALTER TABLE agent_capacity ADD CONSTRAINT agent_capacity_agent_fk FOREIGN KEY (agent_id) REFERENCES agent(agent_id);
-ALTER TABLE agent_capacity ADD CONSTRAINT agent_capacity_recipe_fk FOREIGN KEY (recipe_id) REFERENCES recipe(recipe_id);
 ```
 
 #### Diccionario de Campos
 
-| Campo           | Tipo     | Descripción                                                                                                                            |
-| --------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent_id`      | `UUID`   | Agente dueño de la capacidad.                                                                                                          |
-| `recipe_id`     | `UUID`   | Receta para la cual el agente tiene instalaciones.                                                                                     |
-| `installations` | `INT`    | Número de procesos paralelos de esta receta que puede correr el agente simultáneamente.                                                |
+| Campo                  | Tipo   | Descripción                                                                                          |
+| ---------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| `agent_id`             | `UUID` | Agente dueño de la instalación.                                                                       |
+| `installation_type_id` | `UUID` | Tipo de instalación comprado (`installation_type`).                                                   |
+| `level`                | `INT`  | Nivel = nº de hectáreas / líneas = procesos paralelos que el agente puede correr entre las recetas del tipo. |
 
 #### Reglas de Negocio
 
-- Si un agente tiene `installations = 2` para "molienda_trigo", puede tener simultáneamente 2 `transformation_process` con `status='running'` para esa receta.
-- Las ejecuciones secuenciales dentro de un mismo proceso **no** consumen capacidad adicional.
-- En v2 se permitirá expandir `installations` mediante inversión de capital; en v1 es estática desde el setup.
+- `startTransformation` valida por **tipo**: sin fila para el tipo de la receta ⇒ `insufficient_capacity`; `COUNT(procesos running de recetas del tipo) >= level` ⇒ `recipe_capacity_saturated`.
+- Con `level = 3` en un `campo`, el agente puede repartir 3 procesos simultáneos entre sus cultivos (p.ej. 2 trigo + 1 maíz).
+- Comprar/mejorar cuesta `floor(base_price × (growth_bps/10000)^nivel)` (ver `installation_type`); el pago se acredita al banco vía `fee_ledger` (`trade_id` NULL).
 
 ---
 
@@ -747,7 +764,7 @@ ALTER TABLE transformation_process ADD CONSTRAINT process_recipe_fk FOREIGN KEY 
 - **Materialización lazy**: al leer el estado del agente, los procesos cuyo `expected_end_at <= now()` se materializan antes de devolver el snapshot.
 - **Materialización por sweeper**: un proceso de fondo de baja frecuencia recorre `idx_process_running_expired` para materializar procesos vencidos cuyo agente no consulta, garantizando que las notificaciones se disparen oportunamente.
 - **Resultado de la materialización**: se crea un `inventory_lot` con `origin='production'` y cantidad `recipe.output_qty × executions_planned`; se marca el proceso como `completed`, se llena `actual_end_at`, se notifica al agente con `transformation_completed`.
-- **Paralelismo limitado por capacidad**: el número de procesos `running` por receta y agente está limitado por `agent_capacity.installations`.
+- **Paralelismo limitado por instalación**: el número de procesos `running` de las recetas de un tipo, por agente, está limitado por `agent_installation.level` (concurrencia compartida del tipo, ADR-021).
 
 ---
 
@@ -1080,12 +1097,13 @@ CREATE TABLE resource_deposit (
 
 ### 18. fee_ledger
 
-**Descripción** (ADR-019): ledger append-only de los fees de matching acreditables al banco central. El hot path del matching INSERTA aquí un registro por trade con fees (en vez de hacer `UPDATE` de la fila caliente del agente banco, que serializaría todos los trades entre las N réplicas del Core). Un sweeper del Worker (`fee-ledger-sweeper`) reclama por lotes los registros no materializados, los suma y los pliega al `capital_available` del banco marcándolos `materialized`. El **saldo real del banco** = `agent.capital_available` de la fila del banco **+** `SUM(amount_cents) WHERE NOT materialized`; los lectores del saldo (GET `/bank`, métricas, snapshots) y el invariante de conservación suman ese pendiente.
+**Descripción** (ADR-019): ledger append-only de dinero acreditable al banco central. Dos fuentes: (a) los **fees de matching** (un registro por trade con fees, `trade_id` set) y (b) los **pagos de compra/mejora de instalaciones** (ADR-021; `trade_id` NULL). El hot path INSERTA aquí (en vez de hacer `UPDATE` de la fila caliente del agente banco, que serializaría todos los trades entre las N réplicas del Core). Un sweeper del Worker (`fee-ledger-sweeper`) reclama por lotes los registros no materializados, los suma y los pliega al `capital_available` del banco marcándolos `materialized`. El **saldo real del banco** = `agent.capital_available` de la fila del banco **+** `SUM(amount_cents) WHERE NOT materialized`; los lectores del saldo (GET `/bank`, métricas, snapshots) y el invariante de conservación suman ese pendiente.
 
 ```sql
 CREATE TABLE fee_ledger (
     fee_id          UUID            PRIMARY KEY DEFAULT uuidv7(),
-    trade_id        UUID            NOT NULL REFERENCES trade(trade_id) ON DELETE CASCADE,
+    -- NULL cuando el ingreso no proviene de un trade (pago de instalación, ADR-021).
+    trade_id        UUID            REFERENCES trade(trade_id) ON DELETE CASCADE,
     amount_cents    BIGINT          NOT NULL CHECK (amount_cents > 0),
     materialized    BOOLEAN         NOT NULL DEFAULT false,
     occurred_at     TIMESTAMPTZ     NOT NULL DEFAULT now()
@@ -1100,7 +1118,7 @@ CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialize
 | Campo          | Tipo          | Descripción                                                                 |
 | -------------- | ------------- | --------------------------------------------------------------------------- |
 | `fee_id`       | `UUID`        | Identificador del registro (UUIDv7, monotónico; el sweeper reclama por orden de `fee_id`). |
-| `trade_id`     | `UUID`        | Trade que generó el fee (`fee_buyer_cents + fee_seller_cents`).              |
+| `trade_id`     | `UUID`        | Trade que generó el fee (`fee_buyer_cents + fee_seller_cents`), o **NULL** para pagos de instalación (ADR-021). |
 | `amount_cents` | `BIGINT`      | Parte del fee del trade acreditable al banco (`> 0`). **No** es el fee total: `CITY_FEE_SHARE_BPS` se desvía a `income_ledger` (tasa de consumo del flujo circular). |
 | `materialized` | `BOOLEAN`     | `true` una vez plegado al capital del banco por el sweeper.                  |
 | `occurred_at`  | `TIMESTAMPTZ` | Momento del INSERT (post-matching).                                         |
@@ -1398,8 +1416,9 @@ erDiagram
 
     agent              ||--|| agent_credentials : "1-a-1"
     agent              ||--o{ agent_refresh_token : "emite"
-    agent              ||--o{ agent_capacity : "tiene capacidad"
-    recipe             ||--o{ agent_capacity : "puede ser instalada"
+    agent              ||--o{ agent_installation : "compra"
+    installation_type  ||--o{ agent_installation : "instanciado por"
+    installation_type  ||--o{ recipe : "habilita"
 
     agent              ||--o{ market_order : "coloca"
     product            ||--o{ market_order : "se opera"
@@ -1453,7 +1472,8 @@ Estimaciones preliminares para una corrida con ~100 agentes activos a velocidad 
 | `agent`                          | bajo (~10/día)           | permanente       | ~200 B                       | ~700 KB                    |
 | `agent_credentials`              | bajo                     | permanente       | ~150 B                       | ~500 KB                    |
 | `agent_refresh_token`            | medio                    | hasta expiración | ~150 B                       | ~50 MB                     |
-| `agent_capacity`                 | bajo                     | permanente       | ~50 B                        | despreciable               |
+| `installation_type`              | bajo (seed)              | permanente       | ~120 B                       | despreciable               |
+| `agent_installation`             | bajo                     | permanente       | ~50 B                        | despreciable               |
 | `market_order`                   | alto (~10 K/día)         | permanente       | ~250 B                       | ~900 MB                    |
 | `trade`                          | medio (~5 K/día)         | permanente       | ~300 B                       | ~550 MB                    |
 | `transformation_process`         | medio (~2 K/día)         | permanente       | ~250 B                       | ~180 MB                    |

@@ -23,8 +23,12 @@ type ReadOnlyState interface {
 	ProductByKey(key string) (models.Product, bool)
 	CatalogRecipes() []models.Recipe
 	Recipe(recipeID string) (models.Recipe, bool)
-	Capacities() []models.CapacityStatus
-	Capacity(recipeID string) (models.CapacityStatus, bool)
+	// Installations: instalaciones compradas por el agente (ADR-021), keyed por
+	// tipo. Installation resuelve una por su key de tipo. InstallationTypeByID
+	// resuelve un tipo del catálogo por el UUID que trae cada receta.
+	Installations() []models.InstallationStatus
+	Installation(installationType string) (models.InstallationStatus, bool)
+	InstallationTypeByID(id string) (models.InstallationType, bool)
 	PublicAgents() []models.AgentPublic
 	PublicAgent(agentID string) (models.AgentPublic, bool)
 }

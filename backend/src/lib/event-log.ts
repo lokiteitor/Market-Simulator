@@ -161,6 +161,16 @@ export interface CityIncomeDistributedPayload {
   city_count: number;
 }
 
+export interface InstallationPurchasedPayload {
+  agent_id: string;
+  installation_type_id: string;
+  installation_type: string;
+  /** Nivel alcanzado tras la compra/mejora. */
+  level: number;
+  /** Precio cobrado por esta compra/mejora (centavos, al banco vía fee_ledger). */
+  amount_cents: number;
+}
+
 /** Mapa tipo de evento → payload, para uso genérico por los módulos. */
 export interface EventPayloads {
   agent_registered: AgentRegisteredPayload;
@@ -177,4 +187,5 @@ export interface EventPayloads {
   money_issued: MoneyIssuedPayload;
   deposit_depleted: DepositDepletedPayload;
   city_income_distributed: CityIncomeDistributedPayload;
+  installation_purchased: InstallationPurchasedPayload;
 }

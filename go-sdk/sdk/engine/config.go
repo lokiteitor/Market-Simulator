@@ -14,13 +14,12 @@ type ServerConfig struct {
 }
 
 type BotConfig struct {
-	Username            string                     `yaml:"username"`
-	Password            string                     `yaml:"password"`
-	Role                models.AgentRole           `yaml:"role"`
-	PersistPath         string                     `yaml:"persist_path"`
-	AutoRegister        bool                       `yaml:"auto_register"`
-	TickIntervalSeconds int                        `yaml:"tick_interval_seconds"`
-	RequestedCapacities []models.RequestedCapacity `yaml:"requested_capacities"`
+	Username            string           `yaml:"username"`
+	Password            string           `yaml:"password"`
+	Role                models.AgentRole `yaml:"role"`
+	PersistPath         string           `yaml:"persist_path"`
+	AutoRegister        bool             `yaml:"auto_register"`
+	TickIntervalSeconds int              `yaml:"tick_interval_seconds"`
 	// InsufficientCapitalBackoffSeconds: cuánto duerme el bot (segundos
 	// reales) tras recibir un 422 insufficient_capital del servidor, para
 	// dejar de martillar la API mientras se recupera capital (crítico en modo

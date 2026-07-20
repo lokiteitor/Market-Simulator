@@ -41,11 +41,18 @@ export interface AgentPublic {
   bankrupt_at?: string | null;
 }
 
-export interface CapacityStatus {
-  recipe_id: string;
-  installations: number;
+export interface InstallationStatus {
+  installation_type: string;
+  name: string;
+  unit_label: string;
+  level: number;
   running: number;
-  available_slots?: number;
+  available_slots: number;
+  next_upgrade_price_cents: number | null;
+}
+
+export interface AcquireInstallationResponse extends InstallationStatus {
+  amount_charged_cents: number;
 }
 
 export interface InventoryPosition {
@@ -182,7 +189,7 @@ export interface AgentSnapshot {
   inventory: InventoryPosition[];
   active_orders: Order[];
   running_processes: TransformationProcess[];
-  capacities: CapacityStatus[];
+  installations: InstallationStatus[];
   recent_events?: EventItem[];
 }
 

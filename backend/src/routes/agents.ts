@@ -12,11 +12,11 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { agentController } from "../controllers/agent-controller";
+import { installationController } from "../controllers/installation-controller";
 import {
   AgentIdParamsSchema,
   AgentPublicSchema,
   AgentSnapshotSchema,
-  CapacityStatusListSchema,
   InventoryLotListSchema,
   InventoryLotsQuerySchema,
   InventoryPositionListSchema,
@@ -24,6 +24,11 @@ import {
   SelfStateQuerySchema,
 } from "../schemas/agents";
 import { ProblemSchema } from "../schemas/common";
+import {
+  AcquireInstallationRequestSchema,
+  AcquireInstallationResponseSchema,
+  InstallationStatusListSchema,
+} from "../schemas/installations";
 
 export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -41,16 +46,35 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     agentController.getMe,
   );
 
-  // GET /agents/me/capacities — capacidades instaladas + slots libres.
+  // GET /agents/me/installations — instalaciones compradas (nivel + slots).
   r.get(
-    "/agents/me/capacities",
+    "/agents/me/installations",
     {
       preHandler: [app.authenticate],
       schema: {
-        response: { 200: CapacityStatusListSchema },
+        response: { 200: InstallationStatusListSchema },
       },
     },
-    agentController.getMyCapacities,
+    installationController.getMine,
+  );
+
+  // POST /agents/me/installations — comprar/mejorar una instalación (ADR-021).
+  r.post(
+    "/agents/me/installations",
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        body: AcquireInstallationRequestSchema,
+        response: {
+          201: AcquireInstallationResponseSchema,
+          403: ProblemSchema,
+          404: ProblemSchema,
+          409: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    installationController.acquire,
   );
 
   // GET /agents/me/inventory — posiciones agregadas por producto.

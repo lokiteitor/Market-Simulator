@@ -121,6 +121,7 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
       outputQty: 50_000,
       duration: "00:01:00",
       wageRateCentsPerSec: 1,
+      installationTypeId: UUID_D,
       name: "Germinado rápido",
       createdAt,
       inputs: [{ recipeId: UUID_B, productId: UUID_C, qtyRequired: 150 }],
@@ -132,6 +133,7 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
       output_qty_cent: 50_000,
       duration_seconds: Math.max(1, Math.round(60 / config.simTimeFactor)),
       wage_rate_cents_per_sec: 1,
+      installation_type_id: UUID_D,
       inputs: [{ product_id: UUID_C, qty_required_cent: 150 }],
       created_at: "2026-07-01T10:00:00.000Z",
     });

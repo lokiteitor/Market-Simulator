@@ -56,13 +56,13 @@ Las recetas son entidades canónicas del catálogo. Múltiples agentes pueden ej
 - Capital reservado (en órdenes de compra activas)
 - Estado: activo / en quiebra
 - Timestamp de registro
-- Capacidades productivas (ver más abajo)
+- Instalaciones compradas (ver más abajo)
 
-**Capacidad productiva**
-- Relación (agente, receta, número de instalaciones paralelas)
-- Determina cuántos procesos simultáneos de esa receta puede ejecutar el agente
-- **Estática en v1.** En v2 se permitirá expansión mediante inversión de capital.
-- Conceptualmente modela: campos para productores primarios, líneas de producción para transformadores.
+**Instalaciones (economía de instalaciones, ADR-021)**
+- Un **tipo de instalación** (`campo`, `mina`, `metalurgia`, `electrónica`, …) agrupa varias recetas afines; cada receta pertenece a exactamente un tipo.
+- El agente **compra** una instalación de un tipo y la **sube de nivel**; el `level` (nº de hectáreas / líneas de producción) es el número de procesos simultáneos que puede repartir entre **todas las recetas del tipo** (presupuesto de concurrencia compartido).
+- **Nadie recibe instalaciones al inicio**: el agente nace sin producción y compra/mejora con su capital (`POST /agents/me/installations`). El precio crece por nivel (`base_price × growth^nivel`) y se acredita al banco central.
+- Conceptualmente modela: campos/hectáreas para productores primarios, industrias/líneas de producción para transformadores.
 
 **Posición de inventario**
 - Relación (agente, producto)
@@ -110,14 +110,14 @@ Una vez creada, la transacción es inmutable.
 - Snapshot de insumos consumidos al iniciar
 - Salario pagado upfront
 
-> Nota sobre ejecuciones: las recetas se ejecutan secuencialmente. La capacidad instalada del agente determina cuántos procesos **distintos** puede correr en paralelo, no cuántas ejecuciones de la misma receta dentro de un proceso.
+> Nota sobre ejecuciones: las recetas se ejecutan secuencialmente. El **nivel de la instalación del tipo** de la receta determina cuántos procesos puede correr en paralelo (compartido entre las recetas del tipo), no cuántas ejecuciones de la misma receta dentro de un proceso.
 
 ### 2.4 Diagrama relacional
 
 ```
 Producto ──< Receta (resultado)
 Producto ──< Insumo de receta
-Receta ──< Capacidad productiva >── Agente
+Receta >── Tipo de instalación ──< Instalación comprada >── Agente
 Producto ──< Posición inventario >── Agente
 Agente ──< Orden >── Producto
 Orden ──< Transacción >── Orden
@@ -130,19 +130,20 @@ Agente ──< Proceso transformación >── Receta
 
 ### 3.1 Lectura
 
-- `get_self_state`: snapshot completo del agente (capital, inventario, órdenes activas, procesos en curso, capacidades). Usado en reconexión.
-- `get_catalog`: lista de productos y recetas disponibles.
+- `get_self_state`: snapshot completo del agente (capital, inventario, órdenes activas, procesos en curso, instalaciones compradas). Usado en reconexión.
+- `get_catalog`: lista de productos, recetas y tipos de instalación disponibles.
 - `get_top_of_book(producto)`: mejor orden de compra y mejor orden de venta para un producto, con identidad del agente que la colocó. Si hay varias órdenes al mismo precio, se muestra solo la primera en cola precio-tiempo.
 - `get_recent_transactions(producto, ventana)`: transacciones recientes de un producto.
 - `get_my_history(filtros)`: historial propio del agente (sus órdenes, transacciones, procesos).
 
 ### 3.2 Acción
 
-- `register_agent(rol, capacidades_solicitadas)`: registro dinámico, disponible siempre durante la simulación. Devuelve identidad y estado inicial.
+- `register_agent(rol)`: registro dinámico, disponible siempre durante la simulación. Devuelve identidad y estado inicial (sin instalaciones, ADR-021).
 - `place_order(producto, lado, cantidad, precio_limite, ttl)`: coloca una orden.
 - `cancel_order(orden_id)`: cancela una orden propia activa.
 - `start_transformation(receta_id, ejecuciones)`: inicia un proceso de transformación.
 - `cancel_transformation(proceso_id)`: cancela un proceso en curso (sin reembolso de insumos ni salario).
+- `acquire_installation(tipo)`: compra o mejora una instalación del tipo dado (ADR-021).
 
 ### 3.3 Notificaciones (push del servidor al agente)
 
@@ -214,7 +215,7 @@ Agente ──< Proceso transformación >── Receta
 
 **Solicitud y validación atómica:**
 1. Validar existencia de agente, receta y que el agente no esté en quiebra.
-2. Validar capacidad disponible: el agente tiene capacidad instalada para esta receta y no está ya saturado de procesos paralelos de la misma receta.
+2. Validar instalación (ADR-021): el agente ha **comprado** la instalación del tipo de esta receta (si no, `insufficient_capacity`) y su nivel no está saturado por los procesos en curso de las recetas del tipo (si no, `recipe_capacity_saturated`).
 3. Validar insumos: el agente tiene en inventario disponible todos los insumos × ejecuciones planificadas.
 4. Validar capital: el agente tiene capital disponible suficiente para pagar el salario completo upfront.
 5. Si pasa todas las validaciones, atómicamente:
@@ -234,7 +235,7 @@ Agente ──< Proceso transformación >── Receta
 
 **Capacidad y paralelismo:**
 - Las ejecuciones dentro de un mismo proceso son **secuenciales**. Un proceso con 3 ejecuciones dura 3 × duración de la receta.
-- El paralelismo está limitado por la capacidad instalada del agente para esa receta. Si un agente tiene 2 instalaciones para "molienda de trigo", puede tener 2 procesos de molienda corriendo al mismo tiempo.
+- El paralelismo está limitado por el `level` de la instalación del **tipo** de la receta, **compartido** por todas las recetas del tipo (ADR-021). Con un `campo` de nivel 3 el agente puede tener 3 procesos de cultivo simultáneos repartidos como quiera (p.ej. 2 trigo + 1 maíz).
 
 ---
 
@@ -352,7 +353,7 @@ El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total 
 - Identidad fresca (nunca reciclada).
 - **Capital semilla objetivo = promedio actual del capital total de los agentes activos del mercado** al momento del registro. Esto mantiene a los recién llegados competitivos.
 - **Financiamiento del capital semilla (patrón oro, 2026-07):** el grant se cubre **primero con capital del banco central** (fees reciclados) y el resto se **acuña** solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro se rechaza con `insufficient_gold_backing`. Cada acuñación emite el evento `money_issued`. Ver sección 18.
-- Capacidades instaladas según el rol (todas las capacidades del rol definidas en `infra/seed-config.json`; las capacidades solicitadas por el cliente se ignoran).
+- **Sin instalaciones** (ADR-021): el agente nace sin capacidad productiva y debe comprar instalaciones con su capital semilla (que se subió para cubrir la 1ª compra).
 - Sin fee de entrada.
 
 **Notificación:**
@@ -446,9 +447,9 @@ Estos son los valores que deben quedar expuestos como configuración del sistema
 - Factor de tiempo simulado (default: 5×)
 - TTL mínimo y máximo de órdenes (1 minuto y 1 semana simulados)
 - Rangos de capital semilla por rol
-- Capacidades instaladas iniciales por rol
+- Catálogo de tipos de instalación (mapeo receta→tipo, precios base, escalado, nivel máximo)
 - Catálogo de productos
-- Catálogo de recetas (con duraciones, cantidades, salarios)
+- Catálogo de recetas (con duraciones, cantidades, salarios, tipo de instalación)
 - Fee de transacción: componente fijo y componente proporcional
 - Fórmula de salario por duración de proceso
 - Semilla maestra
@@ -465,7 +466,7 @@ Estos son los valores que deben quedar expuestos como configuración del sistema
 - **Participación humana:** la API debe ser capaz de aceptar participantes humanos además de agentes automatizados. El sistema no distingue entre clientes humanos y agentes programáticos: ambos consumen el mismo conjunto de operaciones (sección 3) y están sujetos a las mismas reglas de validación, fees, quiebra y notificaciones. Cualquier interfaz humana (UI web, cliente de escritorio, etc.) se construye sobre la misma API que usan los agentes.
 
 **Diferido a v2 o posterior:**
-- Expansión de capacidad instalada por inversión de capital.
+- ~~Expansión de capacidad instalada por inversión de capital.~~ **Implementado** (economía de instalaciones, ADR-021).
 - Producción primaria con insumos del entorno (agua, energía).
 - Subastas de inventario de agentes quebrados.
 - Variantes de calidad de productos.

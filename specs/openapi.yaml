@@ -292,6 +292,24 @@ paths:
               schema: { $ref: '#/components/schemas/Recipe' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /catalog/installation-types:
+    get:
+      tags: [catalog]
+      summary: Catálogo de tipos de instalación comprables
+      description: |
+        Tipos de instalación (economía de instalaciones, ADR-021) que los agentes
+        pueden comprar y mejorar. Cada tipo agrupa varias recetas afines; su nivel
+        es el presupuesto de concurrencia compartido por ellas.
+      security: []
+      responses:
+        '200':
+          description: Lista de tipos de instalación.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InstallationType' }
+
   # --------------------------------------------------------------------------
   # AGENT (estado propio)
   # --------------------------------------------------------------------------
@@ -304,7 +322,7 @@ paths:
         Devuelve **todo** lo que el agente necesita para reanudar operación tras
         una reconexión: capital (disponible y reservado), inventario por
         producto (disponible y reservado), órdenes activas, procesos en curso,
-        capacidades instaladas y un resumen acotado de eventos recientes.
+        instalaciones compradas y un resumen acotado de eventos recientes.
 
         Antes de responder, el servidor **materializa lazy** cualquier proceso
         de transformación del agente cuyo `expected_end_at <= now()`.
@@ -333,23 +351,76 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
-  /agents/me/capacities:
+  /agents/me/installations:
     get:
       tags: [agent]
-      summary: Capacidades productivas instaladas
+      summary: Instalaciones compradas del agente
       description: |
-        Devuelve las recetas para las que el agente tiene instalaciones, junto
-        con el número de procesos paralelos permitido y el conteo actual de
-        procesos en curso por receta (para saber capacidad libre).
+        Devuelve las instalaciones que el agente ha comprado (economía de
+        instalaciones, ADR-021), cada una con su nivel (nº de hectáreas / líneas
+        de producción = presupuesto de concurrencia COMPARTIDO por las recetas
+        del tipo), los procesos del tipo en curso, los huecos libres y el precio
+        de la siguiente mejora.
       responses:
         '200':
-          description: Lista de capacidades.
+          description: Lista de instalaciones.
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/CapacityStatus' }
+                items: { $ref: '#/components/schemas/InstallationStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [agent]
+      summary: Comprar o mejorar una instalación
+      description: |
+        Compra la instalación (si no la posee, la crea en nivel 1) o la sube un
+        nivel. El precio de pasar del nivel `k` al `k+1` es
+        `floor(base_price_cents × (growth_bps/10000)^k)`. El pago se debita del
+        capital del agente y se **acredita al banco central** vía el ledger
+        append-only (ADR-021), sin sumidero: la conservación monetaria se mantiene.
+
+        `expected_current_level` (opcional) da concurrencia optimista: si se envía
+        y no coincide con el nivel actual, falla con `conflict_state` sin cobrar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcquireInstallationRequest' }
+      responses:
+        '201':
+          description: Instalación comprada/mejorada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcquireInstallationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            Prohibido. Causas vía `errors[*].code`: `agent_bankrupt`,
+            `installation_role_mismatch` (el tipo no corresponde al rol).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: |
+            `unknown_installation_type`: el `installation_type` no existe.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: |
+            `conflict_state`: `expected_current_level` no coincide con el nivel actual.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            Validación de dominio. Causas vía `errors[*].code`:
+            `insufficient_capital` (no alcanza para el precio),
+            `installation_max_level` (ya en nivel máximo).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /agents/me/inventory:
     get:
@@ -1102,18 +1173,6 @@ components:
           writeOnly: true
         role:
           $ref: '#/components/schemas/RegisterableRole'
-        requested_capacities:
-          type: array
-          description: |
-            Capacidades solicitadas. El servidor las acepta o ajusta según los
-            parámetros configurados para el rol (`agent_capacity.installations`
-            por receta).
-          items:
-            type: object
-            required: [recipe_id, installations]
-            properties:
-              recipe_id: { type: string, format: uuid }
-              installations: { type: integer, minimum: 1 }
 
     RegisterAgentResponse:
       allOf:
@@ -1198,6 +1257,7 @@ components:
         - output_qty_cent
         - duration_seconds
         - wage_rate_cents_per_sec
+        - installation_type_id
         - inputs
         - created_at
       properties:
@@ -1218,6 +1278,10 @@ components:
           type: integer
           format: int64
           minimum: 0
+        installation_type_id:
+          type: string
+          format: uuid
+          description: Tipo de instalación requerido para ejecutar la receta (ADR-021).
         inputs:
           type: array
           description: Lista de insumos. Vacía para recetas de producción primaria desde cero.
@@ -1275,7 +1339,7 @@ components:
         - inventory
         - active_orders
         - running_processes
-        - capacities
+        - installations
         - recent_events
       properties:
         agent: { $ref: '#/components/schemas/AgentPublic' }
@@ -1298,9 +1362,9 @@ components:
           type: array
           description: Procesos `running` tras materialización lazy.
           items: { $ref: '#/components/schemas/TransformationProcess' }
-        capacities:
+        installations:
           type: array
-          items: { $ref: '#/components/schemas/CapacityStatus' }
+          items: { $ref: '#/components/schemas/InstallationStatus' }
         recent_events:
           type: array
           description: |
@@ -1311,23 +1375,88 @@ components:
             agentes quebrados).
           items: { $ref: '#/components/schemas/Event' }
 
-    CapacityStatus:
+    InstallationStatus:
       type: object
-      required: [recipe_id, installations, running, available_slots]
+      description: |
+        Instalación comprada por el agente (economía de instalaciones, ADR-021).
+      required: [installation_type, name, unit_label, level, running, available_slots, next_upgrade_price_cents]
       properties:
-        recipe_id: { type: string, format: uuid }
-        installations:
+        installation_type:
+          type: string
+          description: '`key` estable del tipo de instalación (ej. `campo`, `metalurgia`).'
+        name: { type: string }
+        unit_label:
+          type: string
+          description: Unidad del nivel (ej. `hectareas`, `lineas_produccion`).
+        level:
           type: integer
           minimum: 1
-          description: Procesos paralelos máximos para esta receta.
+          description: |
+            Nivel comprado = presupuesto de concurrencia COMPARTIDO por todas las
+            recetas del tipo (nº de hectáreas / líneas de producción).
         running:
           type: integer
           minimum: 0
-          description: Procesos `running` actualmente para esta receta.
+          description: Procesos `running` del tipo actualmente.
         available_slots:
           type: integer
           minimum: 0
-          description: '`installations - running`. Calculado por el servidor.'
+          description: '`level - running`. Calculado por el servidor.'
+        next_upgrade_price_cents:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: Precio de la siguiente mejora, o `null` si ya está en nivel máximo.
+
+    InstallationType:
+      type: object
+      description: Tipo de instalación comprable del catálogo (ADR-021).
+      required: [installation_type_id, key, name, role, unit_label, base_price_cents, growth_bps, max_level]
+      properties:
+        installation_type_id: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/AgentRole' }
+        unit_label: { type: string }
+        base_price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Precio de la compra inicial (nivel 0→1).
+        growth_bps:
+          type: integer
+          minimum: 1
+          description: Factor de escalado por nivel en base 10000 (10000 = ×1, 17000 = ×1.7).
+        max_level:
+          type: integer
+          minimum: 1
+
+    AcquireInstallationRequest:
+      type: object
+      required: [installation_type]
+      properties:
+        installation_type:
+          type: string
+          description: '`key` del tipo a comprar/mejorar.'
+        expected_current_level:
+          type: integer
+          minimum: 0
+          description: |
+            Opcional (concurrencia optimista): si se envía y no coincide con el
+            nivel actual, la operación falla con `conflict_state` sin cobrar.
+
+    AcquireInstallationResponse:
+      allOf:
+        - $ref: '#/components/schemas/InstallationStatus'
+        - type: object
+          required: [amount_charged_cents]
+          properties:
+            amount_charged_cents:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Precio cobrado por esta compra/mejora (acreditado al banco).
 
     InventoryPosition:
       type: object
@@ -1691,6 +1820,7 @@ components:
         - money_issued
         - deposit_depleted
         - city_income_distributed
+        - installation_purchased
 
     Event:
       type: object

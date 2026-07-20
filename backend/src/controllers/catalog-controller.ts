@@ -53,6 +53,7 @@ export function toRecipeDto(row: RecipeWithInputs): RecipeDto {
     output_qty_cent: row.outputQty,
     duration_seconds: recipeDurationRealSeconds(row.duration),
     wage_rate_cents_per_sec: row.wageRateCentsPerSec,
+    installation_type_id: row.installationTypeId,
     inputs: row.inputs.map(toRecipeInputDto),
     created_at: row.createdAt.toISOString(),
   };

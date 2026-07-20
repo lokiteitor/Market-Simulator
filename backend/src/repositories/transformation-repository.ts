@@ -15,7 +15,7 @@ import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
-  agentCapacity,
+  agentInstallation,
   inventoryLot,
   recipe,
   recipeInput,
@@ -106,30 +106,57 @@ export const transformationRepository = {
   },
 
   /**
-   * Instalaciones del agente para la receta. `undefined` = sin fila de
-   * capacidad (⇒ insufficient_capacity en el service, §10.4).
+   * Instalación del agente para el TIPO que agrupa la receta (ADR-021). Devuelve
+   * el `installationTypeId` de la receta y el `level` que el agente tiene en ese
+   * tipo (`undefined` = no comprado ⇒ insufficient_capacity en el service). El
+   * nivel es el presupuesto de concurrencia COMPARTIDO por todas las recetas del
+   * tipo. Asume que la receta existe (el service ya validó unknown_recipe).
    */
-  async getInstallations(
+  async getInstallationForRecipe(
     tx: Tx,
     agentId: string,
     recipeId: string,
-  ): Promise<number | undefined> {
+  ): Promise<{ installationTypeId: string; level: number | undefined } | undefined> {
     const rows = await tx
-      .select({ installations: agentCapacity.installations })
-      .from(agentCapacity)
-      .where(and(eq(agentCapacity.agentId, agentId), eq(agentCapacity.recipeId, recipeId)));
-    return rows[0]?.installations;
+      .select({
+        installationTypeId: recipe.installationTypeId,
+        level: agentInstallation.level,
+      })
+      .from(recipe)
+      .leftJoin(
+        agentInstallation,
+        and(
+          eq(agentInstallation.installationTypeId, recipe.installationTypeId),
+          eq(agentInstallation.agentId, agentId),
+        ),
+      )
+      .where(eq(recipe.recipeId, recipeId))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) return undefined;
+    return {
+      installationTypeId: row.installationTypeId,
+      level: row.level ?? undefined,
+    };
   },
 
-  /** COUNT de procesos running del (agent, recipe) — paralelismo por capacidad (§10.4). */
-  async countRunning(tx: Tx, agentId: string, recipeId: string): Promise<number> {
+  /**
+   * COUNT de procesos running del agente cuyas recetas pertenecen al tipo de
+   * instalación dado — concurrencia COMPARTIDA por tipo (ADR-021).
+   */
+  async countRunningByType(
+    tx: Tx,
+    agentId: string,
+    installationTypeId: string,
+  ): Promise<number> {
     const rows = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(transformationProcess)
+      .innerJoin(recipe, eq(transformationProcess.recipeId, recipe.recipeId))
       .where(
         and(
           eq(transformationProcess.agentId, agentId),
-          eq(transformationProcess.recipeId, recipeId),
+          eq(recipe.installationTypeId, installationTypeId),
           eq(transformationProcess.status, "running"),
         ),
       );

@@ -581,6 +581,7 @@ Aplicados a este sistema en particular:
 | ADR-018 | 2026-07-13 | Aceptado | Sin migraciones incrementales: `specs/schema.sql` + `schema.ts` (Drizzle) como fuentes espejo; cambios de esquema recrean la BD (`clean-docker` + re-seed). |
 | ADR-019 | 2026-07-17 | Aceptado | Matching multiproceso: serialización por producto con advisory locks de Postgres (transaction-scoped) + mutex in-process como primer filtro; fees del matching a `fee_ledger` append-only con sweeper; N réplicas del Core tras PgBouncer. Supera ADR-005, matiza ADR-004. |
 | ADR-020 | 2026-07-20 | Aceptado | Flujo circular de ingreso: rol `city` sembrado y no registrable (~50 capitales), salarios reciclados + fracción del fee a `income_ledger` con `city-income-sweeper` que reparte ponderado por población; invariante de conservación reformulado (sin término de salarios). Matiza ADR-017. |
+| ADR-021 | 2026-07-20 | Aceptado | Economía de instalaciones: la capacidad estática por receta se sustituye por instalaciones **comprables y mejorables** por *tipo* (`installation_type` agrupa recetas); el `level` es el presupuesto de concurrencia compartido; nadie recibe instalaciones al inicio; el pago va al banco vía `fee_ledger`. Reemplaza `agent_capacity` por `installation_type` + `agent_installation`. |
 
 ### 12.3 Detalle de ADRs clave
 
@@ -701,6 +702,21 @@ Aplicados a este sistema en particular:
   - (−) Un sweeper y una tabla más. Y el fee que recibe el banco baja según `CITY_FEE_SHARE_BPS`, lo que reduce su capacidad de financiar semillas sin acuñar (parámetro a tunear).
   - (−) Las ciudades necesitan la notificación WS `city_income` para que el bot vea su ingreso; sin ella el capital sube en la DB pero el bot no lo gasta hasta el siguiente snapshot.
 
+**ADR-021 — Economía de instalaciones: capacidad comprable y mejorable (reemplaza el grant estático)**
+
+- *Contexto:* la capacidad productiva era un **grant estático por receta** (`agent_capacity(agent_id, recipe_id, installations)`) que el seed y el registro asignaban íntegro según el rol; el agente no tenía ninguna decisión de inversión y `installations` solo limitaba la concurrencia por receta. El "trabajo futuro" del diseño ya anticipaba **expansión de capacidad por inversión de capital**.
+- *Decisión:* modelar **instalaciones que los agentes compran y suben de nivel**:
+  (a) **Instalación por *tipo*, no por receta.** Un `installation_type` (campo→hectáreas, mina→galerías, metalurgia/electrónica→líneas de producción, …) **agrupa recetas afines**; cada receta referencia su tipo (`recipe.installation_type_id`). El mapeo tipo→recetas y los precios viven en `infra/seed-config.json` (`installation_types[]`, validado en el seed: cobertura total, sin solapes).
+  (b) **`agent_installation(agent_id, installation_type_id, level)` reemplaza a `agent_capacity`.** El `level` (nº de hectáreas / líneas) es el **presupuesto de concurrencia COMPARTIDO** por todas las recetas del tipo: `startTransformation` valida `sin fila ⇒ insufficient_capacity` y `COUNT(running del tipo) >= level ⇒ recipe_capacity_saturated`.
+  (c) **Nadie recibe instalaciones al inicio.** Ni el seed ni el registro otorgan filas; el capital semilla se sube para cubrir la 1ª compra + primeros salarios/insumos. El agente compra/mejora con `POST /agents/me/installations` (una sola operación: crea nivel 1 o incrementa).
+  (d) **Precio y destino del dinero.** `precio(nivel k→k+1) = floor(base_price × (growth_bps/10000)^k)` (BigInt, `lib/installations.ts`). El pago se debita del agente y se **acredita al banco** insertando en `fee_ledger` con `trade_id` NULL (append-only, sin lock de `gold_standard` ni fila caliente; el `fee-ledger-sweeper` lo pliega). La conservación no cambia: ya suma `fees pendientes`.
+- *Consecuencias:*
+  - (+) La producción se vuelve una **decisión económica**: los bots invierten en las instalaciones de las recetas más rentables y las escalan por demanda.
+  - (+) El banco capta un flujo adicional (compras de instalación) que refuerza su capacidad de financiar semillas sin acuñar.
+  - (+) Sin migraciones: se reemplazan tablas en `schema.sql` + `schema.ts` y se aplica con `clean-docker` + re-seed.
+  - (−) **Arranque en frío:** hasta que los agentes compran su 1ª instalación no hay producción; el capital semilla y la curva de precios deben calibrarse (validado con la corrida de humo).
+  - (−) Cambio de contrato: `agent_capacity` / `CapacityStatus` / `requested_capacities` desaparecen; snapshot expone `installations`, y hay endpoints nuevos (`POST`/`GET /agents/me/installations`, `GET /catalog/installation-types`). Bots y frontend migran en el mismo PR.
+
 ---
 
 ## 13. Notas y Consideraciones Finales
@@ -724,7 +740,7 @@ Este documento es la **referencia arquitectónica**: cómo se distribuye el sist
 
 **Trabajo futuro relevante para v2 (alineado con el alcance v1 del diseño).**
 
-- Expansión de capacidad por inversión de capital → impacto en `AgentService` y en una nueva operación API.
+- ~~Expansión de capacidad por inversión de capital~~ → **implementado en ADR-021** (economía de instalaciones: `installation-service.ts` + `POST /agents/me/installations`).
 - Sharding o múltiples instancias del Core → requiere coordinar matching por producto (lock distribuido en Redis o partición consistente por hash de producto).
 - Particionado de `event_log` por tiempo.
 - Tracing distribuido con OpenTelemetry, completando la observabilidad.

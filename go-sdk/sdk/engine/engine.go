@@ -161,7 +161,7 @@ func (e *Engine) Start(ctx context.Context) error {
 
 	// 1. Authenticate (login or auto-register)
 	e.logger.Info("authenticating agent...")
-	err := e.authMgr.PerformAuth(e.ctx, e.client, e.config.Bot.AutoRegister, e.config.Bot.RequestedCapacities)
+	err := e.authMgr.PerformAuth(e.ctx, e.client, e.config.Bot.AutoRegister)
 	if err != nil {
 		e.Lock()
 		e.running = false
@@ -187,6 +187,17 @@ func (e *Engine) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to download recipes catalog: %w", err)
 	}
 	e.state.SetCatalog(products, recipes)
+
+	// Catálogo de tipos de instalación (ADR-021): para mapear
+	// recipe.InstallationTypeID → key y conocer precios/límites al comprar.
+	installationTypes, err := e.client.ListInstallationTypes(e.ctx)
+	if err != nil {
+		e.Lock()
+		e.running = false
+		e.Unlock()
+		return fmt.Errorf("failed to download installation types catalog: %w", err)
+	}
+	e.state.SetInstallationTypes(installationTypes)
 
 	// 3. Download snapshot
 	e.logger.Info("downloading agent snapshot...")
@@ -418,6 +429,25 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 			if err == nil {
 				e.logger.Info("transformation process started", "process_id", resp.ProcessID)
 				e.state.AddProcess(*resp)
+			}
+		case actions.AcquireInstallation:
+			req := models.AcquireInstallationRequest{
+				InstallationType: act.InstallationType,
+			}
+			if act.ExpectedCurrentLevel >= 0 {
+				lvl := act.ExpectedCurrentLevel
+				req.ExpectedCurrentLevel = &lvl
+			}
+			var inst *models.AcquireInstallationResponse
+			inst, err = e.client.AcquireInstallation(ctx, req)
+			if err == nil {
+				e.logger.Info("installation acquired/upgraded",
+					"installation_type", inst.InstallationType,
+					"level", inst.Level,
+					"amount_cents", inst.AmountChargedCents)
+				// El capital/instalaciones locales se rebasearán en el próximo
+				// snapshot; forzamos un resync para reflejar la compra.
+				go e.resyncSnapshot()
 			}
 		case actions.ConvertGold:
 			req := models.ConvertGoldRequest{

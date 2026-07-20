@@ -21,11 +21,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type YAMLRequestedCapacity struct {
-	RecipeID      string `yaml:"recipe_id"`
-	Installations int    `yaml:"installations"`
-}
-
 var quietMode bool
 
 func logInfo(format string, v ...interface{}) {
@@ -35,14 +30,13 @@ func logInfo(format string, v ...interface{}) {
 }
 
 type BotRunnerConfig struct {
-	Username            string                  `yaml:"username"`
-	Password            string                  `yaml:"password"`
-	Role                models.AgentRole        `yaml:"role"`
-	Strategy            string                  `yaml:"strategy"`
-	PersistPath         string                  `yaml:"persist_path"`
-	AutoRegister        bool                    `yaml:"auto_register"`
-	TickIntervalSeconds int                     `yaml:"tick_interval_seconds"`
-	RequestedCapacities []YAMLRequestedCapacity `yaml:"requested_capacities"`
+	Username            string           `yaml:"username"`
+	Password            string           `yaml:"password"`
+	Role                models.AgentRole `yaml:"role"`
+	Strategy            string           `yaml:"strategy"`
+	PersistPath         string           `yaml:"persist_path"`
+	AutoRegister        bool             `yaml:"auto_register"`
+	TickIntervalSeconds int              `yaml:"tick_interval_seconds"`
 }
 
 type GlobalConfig struct {
@@ -128,10 +122,9 @@ func main() {
 			data := []byte(fmt.Sprintf("%s-%s-%d", runnerVal, stratName, i))
 			username := uuid.NewSHA1(namespace, data).String()
 
-			// Sin requested_capacities: el backend asigna a cada agente las
-			// capacidades de su rol desde infra/seed-config.json y ademas exige
-			// que recipe_id sea un UUID (rechaza las keys con 400). El fan-out
-			// lo acota max_recipes_per_tick.
+			// Los agentes nacen SIN instalaciones (ADR-021): las estrategias
+			// compran/mejoran instalaciones por tipo con su capital. El fan-out
+			// de recetas lo acota max_recipes_per_tick.
 			persistPath := fmt.Sprintf("./sessions/%s.json", username)
 			if *noPersist {
 				persistPath = ""
@@ -314,14 +307,6 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 		return nil
 	}
 
-	reqCapacities := make([]models.RequestedCapacity, len(botCfg.RequestedCapacities))
-	for i, capVal := range botCfg.RequestedCapacities {
-		reqCapacities[i] = models.RequestedCapacity{
-			RecipeID:      capVal.RecipeID,
-			Installations: capVal.Installations,
-		}
-	}
-
 	sdkCfg := &engine.Config{
 		Server: globalCfg.Server,
 		Bot: engine.BotConfig{
@@ -331,7 +316,6 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 			PersistPath:                       botCfg.PersistPath,
 			AutoRegister:                      botCfg.AutoRegister,
 			TickIntervalSeconds:               botCfg.TickIntervalSeconds,
-			RequestedCapacities:               reqCapacities,
 			InsufficientCapitalBackoffSeconds: globalCfg.InsufficientCapitalBackoffSeconds,
 		},
 		Logging: globalCfg.Logging,

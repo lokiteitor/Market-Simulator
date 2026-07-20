@@ -29,6 +29,7 @@ import {
   authCallCount,
   expectProblem,
   expectStatus,
+  type AcquireInstallationResponse,
   type AgentRole,
   type AgentSnapshot,
   type EventItem,
@@ -65,7 +66,14 @@ import {
   startWatchdog,
   step,
 } from "./framework";
-import { FAST_RECIPE_KEY, loadSeedConfig, seedProduct, seedRecipe, type SeedConfig } from "./seed-config";
+import {
+  FAST_RECIPE_KEY,
+  loadSeedConfig,
+  seedInstallationType,
+  seedProduct,
+  seedRecipe,
+  type SeedConfig,
+} from "./seed-config";
 import { WsClient } from "./ws";
 
 // ---------------------------------------------------------------------------
@@ -248,14 +256,19 @@ async function main(): Promise<void> {
     const cfg = await loadSeedConfig();
     const fast = seedRecipe(cfg, FAST_RECIPE_KEY);
     assertEqual(fast.inputs.length, 0, `receta ${FAST_RECIPE_KEY} debe ser primaria (sin insumos)`);
+    // ADR-021: la receta rápida pertenece a un tipo de instalación de rol
+    // primary_producer que ALICE comprará antes de producir.
+    const fastType = seedInstallationType(cfg, fast.installation_type);
+    assertEqual(fastType.role, "primary_producer", `el tipo "${fastType.key}" es de primary_producer`);
     assert(
-      cfg.roles["primary_producer"]?.capacities.some((c) => c.recipe === FAST_RECIPE_KEY),
-      `el rol primary_producer debe tener capacidad para ${FAST_RECIPE_KEY} en seed-config`,
+      fastType.recipes.includes(FAST_RECIPE_KEY),
+      `el tipo "${fastType.key}" lista la receta ${FAST_RECIPE_KEY}`,
     );
     return cfg;
   });
   const fastSeedRecipe = seedRecipe(seedCfg, FAST_RECIPE_KEY);
   const fastSeedProduct = seedProduct(seedCfg, fastSeedRecipe.output);
+  const fastInstallationType = seedInstallationType(seedCfg, fastSeedRecipe.installation_type);
 
   // ---- 2. Reachability -----------------------------------------------------
 
@@ -385,28 +398,18 @@ async function main(): Promise<void> {
     };
   }
 
-  const alice = await step("5. auth: registrar ALICE (primary_producer) con capacidades del rol", async () => {
+  const alice = await step("5. auth: registrar ALICE (primary_producer) SIN instalaciones", async () => {
     const agent = await registerAgent("prod", "primary_producer");
-    // §10.12: el registro por rol asigna las capacidades del rol de seed-config.
+    // ADR-021: el agente nace SIN instalaciones; debe comprarlas después.
     const snap = await me(agent);
-    const roleCaps = seedCfg.roles["primary_producer"]?.capacities ?? [];
-    assertEqual(snap.capacities.length, roleCaps.length, "número de capacidades del rol primary_producer");
-    for (const cap of roleCaps) {
-      const recipeName = seedRecipe(seedCfg, cap.recipe).name;
-      const recipeId = recipeIdByName.get(recipeName);
-      assert(recipeId !== undefined, `receta de capacidad "${recipeName}" en catálogo`);
-      const found = snap.capacities.find((c) => c.recipe_id === recipeId);
-      assert(found !== undefined, `capacidad para "${cap.recipe}" asignada al registrarse`);
-      assertEqual(found.installations, cap.installations, `installations de "${cap.recipe}"`);
-      assertEqual(found.running, 0, `running inicial de "${cap.recipe}"`);
-    }
+    assertEqual(snap.installations.length, 0, "agente recién registrado sin instalaciones");
     return agent;
   });
 
-  const bob = await step("6. auth: registrar BOB (trader) sin capacidades", async () => {
+  const bob = await step("6. auth: registrar BOB (trader) sin instalaciones", async () => {
     const agent = await registerAgent("trader", "trader");
     const snap = await me(agent);
-    assertEqual(snap.capacities.length, 0, "el rol trader no tiene capacidades en seed-config");
+    assertEqual(snap.installations.length, 0, "el rol trader nace sin instalaciones");
     return agent;
   });
 
@@ -487,6 +490,53 @@ async function main(): Promise<void> {
   const wsAlice = alice.ws;
   const wsBob = bob.ws;
   assert(wsAlice !== null && wsBob !== null, "WS conectados");
+
+  // ---- 10b. Instalaciones: sin instalación no se puede producir; comprarla --
+
+  await step("10b. instalaciones: StartTransformation sin instalación ⇒ insufficient_capacity", async () => {
+    const res = await api.post("/transformations", {
+      token: alice.accessToken,
+      body: { recipe_id: fastRecipe.recipe_id, executions_planned: 1 },
+    });
+    assertEqual(res.status, 422, "status HTTP");
+    const problem = res.body as { errors?: Array<{ code: string }> };
+    assert(
+      (problem.errors ?? []).some((e) => e.code === "insufficient_capacity"),
+      "code insufficient_capacity antes de comprar la instalación",
+    );
+  });
+
+  await step(
+    `10c. instalaciones: ALICE compra "${fastInstallationType.key}" (base ${fastInstallationType.base_price_cents}c)`,
+    async () => {
+      const before = await me(alice);
+      const inst = expectStatus<AcquireInstallationResponse>(
+        await api.post("/agents/me/installations", {
+          token: alice.accessToken,
+          body: { installation_type: fastInstallationType.key },
+        }),
+        201,
+        "POST /agents/me/installations",
+      );
+      assertEqual(inst.installation_type, fastInstallationType.key, "installation_type");
+      assertEqual(inst.level, 1, "nivel tras la compra inicial");
+      assertEqual(
+        inst.amount_charged_cents,
+        fastInstallationType.base_price_cents,
+        "precio de compra = base_price_cents (nivel 0→1)",
+      );
+      const after = await me(alice);
+      assertEqual(
+        after.capital_available_cents,
+        before.capital_available_cents - fastInstallationType.base_price_cents,
+        "capital debitado por la compra de instalación",
+      );
+      assert(
+        after.installations.some((i) => i.installation_type === fastInstallationType.key && i.level === 1),
+        "la instalación aparece en el snapshot",
+      );
+    },
+  );
 
   // ---- 11-13. Transformación germinado_rapido ------------------------------
 
@@ -1161,16 +1211,21 @@ async function main(): Promise<void> {
       0,
     );
     const wagesCents = [...procsA, ...procsB].reduce((acc, p) => acc + p.wage_paid_cents, 0);
+    // ADR-021: el pago de la instalación de ALICE salió de la suite hacia el
+    // banco (fee_ledger), igual que fees (banco) y salarios (ciudades); se suma
+    // de vuelta para cerrar la conservación acotada a los agentes de la suite.
+    const installationsCents = fastInstallationType.base_price_cents;
     const finalCents = totalCapital(snapA) + totalCapital(snapB);
     const seedCents = alice.seedCapitalCents + bob.seedCapitalCents;
     console.log(
-      `  seed=${seedCents}c, final=${finalCents}c, fees=${feesCents}c, salarios=${wagesCents}c ` +
-        `(final+fees+salarios=${finalCents + feesCents + wagesCents}c)`,
+      `  seed=${seedCents}c, final=${finalCents}c, fees=${feesCents}c, salarios=${wagesCents}c, ` +
+        `instalaciones=${installationsCents}c ` +
+        `(final+fees+salarios+instalaciones=${finalCents + feesCents + wagesCents + installationsCents}c)`,
     );
     assertEqual(
-      finalCents + feesCents + wagesCents,
+      finalCents + feesCents + wagesCents + installationsCents,
       seedCents,
-      "conservación de dinero (§5): capital final + fees + salarios = capital semilla",
+      "conservación de dinero (§5): capital final + fees + salarios + instalaciones = capital semilla",
     );
   });
 

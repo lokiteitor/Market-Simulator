@@ -42,17 +42,6 @@ export const RegisterAgentRequestSchema = z.object({
     .regex(/^[a-zA-Z0-9_.-]+$/, "Solo letras, dígitos y . _ -"),
   password: z.string().min(12).max(256),
   role: RegisterableRoleSchema,
-  // Aceptadas por contrato openapi pero el servidor asigna las capacidades
-  // según los parámetros configurados para el rol (seed-config), tal como
-  // permite la descripción del campo ("las acepta o ajusta").
-  requested_capacities: z
-    .array(
-      z.object({
-        recipe_id: UuidSchema,
-        installations: z.number().int().min(1),
-      }),
-    )
-    .optional(),
 });
 
 export type RegisterAgentRequestBody = z.infer<typeof RegisterAgentRequestSchema>;
@@ -97,19 +86,12 @@ export const AgentPublicSchema = z.object({
   bankrupt_at: z.iso.datetime().nullable(),
 });
 
-/** openapi CapacityStatus. */
-export const CapacityStatusSchema = z.object({
-  recipe_id: UuidSchema,
-  installations: z.number().int().min(1),
-  running: z.number().int().min(0),
-  available_slots: z.number().int().min(0),
-});
-
 /**
  * openapi AgentSnapshot, acotado a la respuesta de register: un agente recién
- * creado no puede tener inventario, órdenes ni procesos (nacen en ESTA tx),
- * así que esas listas son siempre vacías y se tipan de forma laxa. El
- * AgentSnapshot completo (GET /agents/me) es de [M2] (src/schemas/agents.ts).
+ * creado no puede tener inventario, órdenes, procesos ni instalaciones (nacen
+ * en ESTA tx, ADR-021), así que esas listas son siempre vacías y se tipan de
+ * forma laxa. El AgentSnapshot completo (GET /agents/me) es de [M2]
+ * (src/schemas/agents.ts).
  */
 export const RegisterAgentSnapshotSchema = z.object({
   agent: AgentPublicSchema,
@@ -118,7 +100,7 @@ export const RegisterAgentSnapshotSchema = z.object({
   inventory: z.array(z.unknown()),
   active_orders: z.array(z.unknown()),
   running_processes: z.array(z.unknown()),
-  capacities: z.array(CapacityStatusSchema),
+  installations: z.array(z.unknown()),
   recent_events: z.array(z.unknown()),
 });
 

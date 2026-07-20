@@ -12,7 +12,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
-  agentCapacity,
   agentCredentials,
   agentRefreshToken,
   type AgentRefreshTokenRow,
@@ -159,24 +158,5 @@ export const authRepository = {
       )
       .returning({ tokenId: agentRefreshToken.tokenId });
     return rows.length;
-  },
-
-  /**
-   * Capacidades instaladas del agente (para el AgentSnapshot de la respuesta
-   * de register). Se consulta aquí (y no vía M2) porque un agente recién
-   * creado en ESTA tx no puede tener procesos running: `running` es 0 por
-   * construcción y no hace falta el cálculo completo de CapacityStatus.
-   */
-  async findCapacitiesForAgent(
-    tx: Tx,
-    agentId: string,
-  ): Promise<Array<{ recipeId: string; installations: number }>> {
-    return tx
-      .select({
-        recipeId: agentCapacity.recipeId,
-        installations: agentCapacity.installations,
-      })
-      .from(agentCapacity)
-      .where(eq(agentCapacity.agentId, agentId));
   },
 };

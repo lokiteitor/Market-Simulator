@@ -76,15 +76,18 @@ export const InventoryLotSchema = z.object({
 
 export type InventoryLotJson = z.infer<typeof InventoryLotSchema>;
 
-/** openapi components.schemas.CapacityStatus */
-export const CapacityStatusSchema = z.object({
-  recipe_id: UuidSchema,
-  installations: z.number().int().min(1),
+/** openapi components.schemas.InstallationStatus (instalación comprada, ADR-021). */
+export const InstallationStatusSchema = z.object({
+  installation_type: z.string(),
+  name: z.string(),
+  unit_label: z.string(),
+  level: z.number().int().min(1),
   running: z.number().int().nonnegative(),
   available_slots: z.number().int().nonnegative(),
+  next_upgrade_price_cents: z.number().int().nonnegative().nullable(),
 });
 
-export type CapacityStatusJson = z.infer<typeof CapacityStatusSchema>;
+export type InstallationStatusJson = z.infer<typeof InstallationStatusSchema>;
 
 /** Espejo de openapi components.schemas.Order (para active_orders del snapshot). */
 export const AgentOrderSchema = z.object({
@@ -138,13 +141,13 @@ export const AgentSnapshotSchema = z.object({
   inventory: z.array(InventoryPositionSchema),
   active_orders: z.array(AgentOrderSchema),
   running_processes: z.array(AgentProcessSchema),
-  capacities: z.array(CapacityStatusSchema),
+  installations: z.array(InstallationStatusSchema),
   recent_events: z.array(AgentEventSchema),
 });
 
 export type AgentSnapshotJson = z.infer<typeof AgentSnapshotSchema>;
 
-export const CapacityStatusListSchema = z.array(CapacityStatusSchema);
+export const InstallationStatusListSchema = z.array(InstallationStatusSchema);
 export const InventoryPositionListSchema = z.array(InventoryPositionSchema);
 export const InventoryLotListSchema = z.array(InventoryLotSchema);
 

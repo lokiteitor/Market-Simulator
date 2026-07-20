@@ -189,7 +189,7 @@ export default function TransformationsPage() {
 
   const self = selfQuery.data ?? null;
   const bankrupt = self !== null && self.agent.status === "bankrupt";
-  const capacities = self?.capacities ?? [];
+  const installations = self?.installations ?? [];
 
   const recipeById = useMemo(() => {
     const map = new Map<string, Recipe>();
@@ -406,7 +406,7 @@ export default function TransformationsPage() {
           type="button"
           className={cx(styles["btn"], styles["btnPrimary"])}
           onClick={() => setStartOpen(true)}
-          disabled={bankrupt || (self !== null && capacities.length === 0)}
+          disabled={bankrupt || (self !== null && installations.length === 0)}
         >
           Iniciar proceso
         </button>
@@ -426,38 +426,34 @@ export default function TransformationsPage() {
       <section className={styles["panel"]} aria-labelledby="tf-capacities">
         <div className={styles["panelHead"]}>
           <h2 id="tf-capacities" className={styles["panelTitle"]}>
-            Capacidades instaladas
+            Instalaciones compradas
           </h2>
           <p className={styles["panelHint"]}>
-            Procesos en curso frente a instalaciones por receta
+            Procesos en curso frente al nivel de cada instalación
           </p>
         </div>
         {selfQuery.isPending ? (
           <Skeleton rows={2} />
         ) : selfQuery.isError ? (
           <ErrorBanner problem={toProblem(selfQuery.error)} />
-        ) : capacities.length === 0 ? (
+        ) : installations.length === 0 ? (
           <EmptyState
-            title="Sin capacidades instaladas"
-            hint="Este agente no puede ejecutar recetas de transformación; las capacidades se asignan al registrarse."
+            title="Sin instalaciones"
+            hint="Este agente aún no ha comprado ninguna instalación; sin ellas no puede producir (ADR-021)."
           />
         ) : (
           <div className={styles["capacityGrid"]}>
-            {capacities.map((c) => {
-              const recipe = recipeById.get(c.recipe_id);
-              const slots = availableSlots(c);
+            {installations.map((i) => {
+              const slots = availableSlots(i);
               return (
-                <div key={c.recipe_id} className={styles["capacityCard"]}>
+                <div key={i.installation_type} className={styles["capacityCard"]}>
                   <div className={styles["capacityHead"]}>
-                    <span className={styles["capacityName"]}>
-                      {recipe?.name ?? truncId(c.recipe_id)}
-                    </span>
-                    <CopyId id={c.recipe_id} />
+                    <span className={styles["capacityName"]}>{i.name}</span>
                   </div>
                   <ProgressBar
-                    value={c.running}
-                    max={c.installations}
-                    label={`${c.running}/${c.installations} en uso`}
+                    value={i.running}
+                    max={i.level}
+                    label={`${i.running}/${i.level} en uso`}
                   />
                   <p className={styles["capacityMeta"]}>
                     {slots === 0 ? (
@@ -468,15 +464,14 @@ export default function TransformationsPage() {
                       </Badge>
                     )}
                   </p>
-                  {recipe !== undefined && (
-                    <p className={styles["capacityMeta"]}>
-                      Produce {productName(recipe.output_product_id)} ·{" "}
-                      {fmtDurationSeconds(recipe.duration_seconds)}{" "}
+                  <p className={styles["capacityMeta"]}>
+                    Nivel {i.level} {i.unit_label}
+                    {i.next_upgrade_price_cents !== null && (
                       <span className={styles["subtle"]}>
-                        {realDurationSimHint(recipe.duration_seconds)}
+                        {" "}· mejora: {fmtMoney(i.next_upgrade_price_cents)}
                       </span>
-                    </p>
-                  )}
+                    )}
+                  </p>
                 </div>
               );
             })}

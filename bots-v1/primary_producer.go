@@ -28,6 +28,12 @@ type PrimaryProducerStrategy struct {
 	p                 producerParams
 	recipeFilter      func(recipeID string) bool
 	subscribed        []string
+	role              models.AgentRole
+	// Instalaciones (ADR-021): tope de nivel deseado y colchón de capital para
+	// comprar/mejorar sin descapitalizarse; nº máximo de compras por tick.
+	maxDesiredLevel      int
+	capitalReserveFactor int64
+	maxBuysPerTick       int
 }
 
 type producerParams struct {
@@ -44,15 +50,40 @@ type producerParams struct {
 
 func NewPrimaryProducerStrategy() *PrimaryProducerStrategy {
 	return &PrimaryProducerStrategy{
-		basePrices:        make(map[string]int64),
-		simTimeFactor:     5,
-		maxRecipesPerTick: 8,
+		basePrices:           make(map[string]int64),
+		simTimeFactor:        5,
+		maxRecipesPerTick:    8,
+		maxDesiredLevel:      4,
+		capitalReserveFactor: 3,
+		maxBuysPerTick:       1,
 	}
+}
+
+// producibleRecipes: recetas primarias (sin insumos) cuyo tipo de instalación
+// corresponde al rol del bot y pasan el recipeFilter. Base para producción y
+// para decidir qué instalación comprar.
+func (s *PrimaryProducerStrategy) producibleRecipes(ctx *strategy.Context) []models.Recipe {
+	out := make([]models.Recipe, 0, 16)
+	for _, recipe := range ctx.State.CatalogRecipes() {
+		if len(recipe.Inputs) != 0 {
+			continue
+		}
+		if s.recipeFilter != nil && !s.recipeFilter(recipe.RecipeID) {
+			continue
+		}
+		typ, ok := ctx.State.InstallationTypeByID(recipe.InstallationTypeID)
+		if !ok || models.AgentRole(typ.Role) != s.role {
+			continue
+		}
+		out = append(out, recipe)
+	}
+	return out
 }
 
 func (s *PrimaryProducerStrategy) Initialize(ctx *strategy.Context) error {
 	ctx.Logger.Info("PrimaryProducerStrategy initializing...")
 	s.rnd = newStrategyRand(ctx)
+	_, _, s.role, _ = ctx.State.GetAgentInfo()
 	s.basePrices = resolveBasePrices(ctx)
 	s.view = newMarketView(ctx, s.basePrices)
 	s.bank = loadBankWindow(ctx)
@@ -73,14 +104,7 @@ func (s *PrimaryProducerStrategy) Initialize(ctx *strategy.Context) error {
 	// recetas primarias que este bot puede ejecutar, más el oro si hay
 	// ventanilla (su precio de mercado decide vender al banco o al libro).
 	seen := make(map[string]bool)
-	for _, capSt := range ctx.State.Capacities() {
-		recipe, ok := ctx.State.Recipe(capSt.RecipeID)
-		if !ok || len(recipe.Inputs) != 0 {
-			continue
-		}
-		if s.recipeFilter != nil && !s.recipeFilter(recipe.RecipeID) {
-			continue
-		}
+	for _, recipe := range s.producibleRecipes(ctx) {
 		seen[recipe.OutputProductID] = true
 	}
 	if s.bank.enabled {
@@ -126,26 +150,18 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	capitalAvail, _ := ctx.State.Capital()
 
 	var acts []actions.Action
-	capacities := ctx.State.Capacities()
+	producible := s.producibleRecipes(ctx)
 
 	// 1. Produccion condicionada a margen (oferta elastica). Orden aleatorio:
 	// con el cap por tick, un orden fijo mataria de hambre a las recetas del
-	// final de la lista.
+	// final de la lista. Si una receta es rentable pero no hay instalación
+	// (o está saturada), se COMPRA/MEJORA la instalación del tipo (ADR-021).
 	recipesActed := 0
+	buysActed := 0
 	recipeByOutput := make(map[string]models.Recipe)
-	for _, idx := range s.rnd.Perm(len(capacities)) {
-		capStatus := capacities[idx]
-		recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
-		if !ok || len(recipe.Inputs) != 0 {
-			continue
-		}
-		if s.recipeFilter != nil && !s.recipeFilter(recipe.RecipeID) {
-			continue
-		}
+	for _, idx := range s.rnd.Perm(len(producible)) {
+		recipe := producible[idx]
 		recipeByOutput[recipe.OutputProductID] = recipe
-		if capStatus.AvailableSlots <= 0 {
-			continue
-		}
 		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
 			continue
 		}
@@ -161,22 +177,45 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			(!hasFair || fair < s.bank.windowBid) {
 			fair, hasFair = s.bank.windowBid, true
 		}
+		profitable := true
 		if hasFair && costPU > 0 && float64(fair) < float64(costPU)*(1+s.p.minMargin) {
 			// Si no hay competencia barata en el mercado (sin asks o el mejor ask es caro),
 			// no pausamos la producción para poder abastecer al mercado.
 			floor := float64(costPU) * (1 + s.p.minMargin)
 			top := s.view.Top(ctx, recipe.OutputProductID)
 			if top != nil && top.BestAsk != nil && float64(top.BestAsk.PriceCents) < floor {
-				ctx.Logger.Debug("produccion pausada: fair no cubre coste+margen y hay competencia barata",
-					"recipe_id", recipe.RecipeID, "fair", fair, "unit_cost", costPU, "best_ask", top.BestAsk.PriceCents)
+				profitable = false
+			}
+		}
+
+		inst, typ, owned, typeKnown := installationForRecipe(ctx, recipe)
+		if !typeKnown {
+			continue
+		}
+
+		// Si es rentable pero la producción está bloqueada por instalación
+		// (no comprada o sin huecos), comprar/mejorar si hay capital de sobra.
+		if profitable && (!owned || inst.AvailableSlots <= 0) &&
+			buysActed < s.maxBuysPerTick {
+			if buy, ok := installationBuyAction(inst, typ, owned, capitalAvail,
+				s.maxDesiredLevel, s.capitalReserveFactor); ok {
+				acts = append(acts, buy)
+				buysActed++
+				// El capital/estado reales se rebasearán en el próximo snapshot;
+				// no seguimos produciendo con esta receta este tick.
 				continue
 			}
 		}
+
+		if !owned || inst.AvailableSlots <= 0 || !profitable {
+			continue
+		}
+
 		recipesActed++
 		wage := int64(float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor)
 
 		// No siempre a plena capacidad: los operadores humanos dosifican.
-		execs := capStatus.AvailableSlots
+		execs := inst.AvailableSlots
 		if wage > 0 {
 			maxExecsByCapital := int(capitalAvail / wage)
 			if maxExecsByCapital < execs {

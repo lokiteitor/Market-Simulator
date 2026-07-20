@@ -13,8 +13,15 @@ import type { Tx } from "../db";
 import { feeLedger } from "../db/schema";
 
 export const feeLedgerRepository = {
-  /** Anota un fee acreditable al banco (INSERT, sin contención entre trades). */
-  async insertFee(tx: Tx, p: { tradeId: string; amountCents: number }): Promise<void> {
+  /**
+   * Anota dinero acreditable al banco (INSERT, sin contención). `tradeId` es el
+   * trade de origen para los fees de matching, o `null` cuando el ingreso no
+   * proviene de un trade (pago de compra/mejora de instalación, ADR-021).
+   */
+  async insertFee(
+    tx: Tx,
+    p: { tradeId: string | null; amountCents: number },
+  ): Promise<void> {
     await tx.insert(feeLedger).values({ tradeId: p.tradeId, amountCents: p.amountCents });
   },
 

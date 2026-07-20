@@ -57,6 +57,7 @@ Invariantes que atraviesan todo:
 - **Tiempo simulado**: `SIM_TIME_FACTOR` (5×). Las duraciones de recetas y TTLs se declaran en tiempo simulado pero se persisten como `TIMESTAMPTZ` reales calculados a la creación. Sutileza recurrente: el salario corre en centavos por segundo **real** mientras la duración de la receta está en tiempo **simulado**.
 - **Materialización lazy + sweeper**: los procesos vencidos se materializan al leer el estado del agente o por el sweeper del Worker; ambos usan `FOR UPDATE SKIP LOCKED` y son idempotentes.
 - **Inventario FIFO por lotes** con trazabilidad de costo (`inventory_lot` + tablas `*_lot_consumption`).
+- **Economía de instalaciones (ADR-021)**: producir una receta exige haber **comprado** la instalación de su *tipo* (`installation_type` agrupa recetas afines; ver `installation-service.ts`). El agente **nace sin instalaciones** y las compra/mejora vía `POST /agents/me/installations`; el `level` (hectáreas / líneas de producción) es el presupuesto de **concurrencia compartido** por las recetas del tipo (`running >= level` ⇒ `recipe_capacity_saturated`; sin fila ⇒ `insufficient_capacity`). El precio (`floor(base_price × (growth_bps/10000)^nivel)`, `lib/installations.ts`) se **acredita al banco** vía `fee_ledger` (`trade_id` NULL), sin romper la conservación.
 
 ### Patrón oro (sistema monetario)
 
@@ -94,9 +95,9 @@ La estrategia consumidor y los helpers puros (humanización, dinero, market view
 ## Configuración y seed
 
 - Config por `.env` validada con Zod al boot (`backend/src/config/index.ts`); estática durante la corrida. `backend/.env.example` (dev local) e `infra/.env.docker` (red Docker).
-- El catálogo (productos, recetas, capacidades por rol) vive en `infra/seed-config.json`; el seed es determinístico a partir de `MASTER_SEED` (capital por rol, yacimiento de oro, paridad).
-- El registro dinámico ignora las capacidades solicitadas: asigna todas las del rol según el seed-config.
+- El catálogo (productos, recetas, `installation_types` con su mapeo receta→tipo y precios) vive en `infra/seed-config.json`; el seed es determinístico a partir de `MASTER_SEED` (capital por rol, yacimiento de oro, paridad).
+- El registro dinámico **no otorga instalaciones** (ADR-021): el agente nace sin producción y compra/mejora instalaciones con su capital semilla (subido para cubrir la 1ª compra).
 
 ## Documentación
 
-`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso), `documentacion_base_datos.md` (las 23 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`. Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.
+`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso, ADR-021 economía de instalaciones), `documentacion_base_datos.md` (las 24 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`. Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.

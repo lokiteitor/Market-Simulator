@@ -102,6 +102,7 @@ export const eventType = pgEnum("event_type", [
   "money_issued", // acuñación de capital semilla en un registro dinámico
   "deposit_depleted", // un resource_deposit llegó a 0 (yacimiento agotado)
   "city_income_distributed", // el sweeper repartió el income_ledger entre ciudades
+  "installation_purchased", // un agente compró o mejoró una instalación
 ]);
 
 // Dirección de una conversión de ventanilla, desde la perspectiva del agente:
@@ -128,6 +129,27 @@ export const product = pgTable("product", {
     .defaultNow(),
 });
 
+// Tipo de instalación: "lugar" productivo que los agentes COMPRAN y SUBEN DE
+// NIVEL para producir (economía de instalaciones, ADR-021). Agrupa varias
+// recetas afines; el nivel (nº de hectáreas / líneas de producción) es el
+// presupuesto de concurrencia COMPARTIDO entre las recetas del tipo. Sembrado
+// desde infra/seed-config.json.
+export const installationType = pgTable("installation_type", {
+  installationTypeId: uuid("installation_type_id")
+    .primaryKey()
+    .default(sql`uuidv7()`),
+  key: text("key").notNull().unique(), // ej. 'campo', 'metalurgia'
+  name: text("name").notNull().unique(),
+  role: agentRole("role").notNull(), // rol que puede comprarlo
+  unitLabel: text("unit_label").notNull(), // 'hectareas' | 'lineas_produccion'
+  basePriceCents: bigint("base_price_cents", { mode: "number" }).notNull(), // nivel 0→1
+  growthBps: integer("growth_bps").notNull(), // escalado por nivel (10000 = ×1)
+  maxLevel: integer("max_level").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const recipe = pgTable(
   "recipe",
   {
@@ -145,6 +167,11 @@ export const recipe = pgTable(
     // Salario total de una ejecución = wage_rate_cents_per_sec * EXTRACT(EPOCH FROM duration).
     // Se calcula en aplicación al iniciar el proceso para evitar drift por
     // cambios futuros del rate.
+    // Instalación requerida para ejecutar la receta (ADR-021): el agente debe
+    // haber comprado el tipo y su nivel acota la concurrencia.
+    installationTypeId: uuid("installation_type_id")
+      .notNull()
+      .references(() => installationType.installationTypeId),
     name: text("name").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -157,6 +184,7 @@ export const recipe = pgTable(
       "recipe_wage_rate_cents_per_sec_check",
       sql`${t.wageRateCentsPerSec} >= 0`,
     ),
+    index("idx_recipe_installation_type").on(t.installationTypeId),
   ],
 );
 
@@ -178,7 +206,7 @@ export const recipeInput = pgTable(
 );
 
 // =============================================================================
-// 2. AGENTES, AUTENTICACIÓN Y CAPACIDADES
+// 2. AGENTES, AUTENTICACIÓN E INSTALACIONES
 // =============================================================================
 
 export const agent = pgTable(
@@ -251,20 +279,24 @@ export const agentRefreshToken = pgTable(
   ],
 );
 
-export const agentCapacity = pgTable(
-  "agent_capacity",
+// Instalaciones que el agente ha COMPRADO (economía de instalaciones, ADR-021).
+// Una fila por (agente, tipo). `level` = nº de hectáreas / líneas de producción
+// = presupuesto de concurrencia COMPARTIDO entre las recetas del tipo. No hay
+// grant inicial: los agentes nacen sin filas y compran/suben de nivel.
+export const agentInstallation = pgTable(
+  "agent_installation",
   {
     agentId: uuid("agent_id")
       .notNull()
       .references(() => agent.agentId),
-    recipeId: uuid("recipe_id")
+    installationTypeId: uuid("installation_type_id")
       .notNull()
-      .references(() => recipe.recipeId),
-    installations: integer("installations").notNull(),
+      .references(() => installationType.installationTypeId),
+    level: integer("level").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.agentId, t.recipeId] }),
-    check("agent_capacity_installations_check", sql`${t.installations} > 0`),
+    primaryKey({ columns: [t.agentId, t.installationTypeId] }),
+    check("agent_installation_level_check", sql`${t.level} > 0`),
   ],
 );
 
@@ -604,17 +636,19 @@ export const conversionLotConsumption = pgTable(
   ],
 );
 
-// Ledger append-only de fees de matching acreditados al banco central (ADR-019).
-// El hot path INSERTA un registro por orden que genera fees; un sweeper del
+// Ledger append-only de dinero acreditado al banco central (ADR-019). Dos
+// fuentes: fees de matching (`tradeId` set) y pagos de compra/mejora de
+// instalaciones (ADR-021; `tradeId` NULL). El hot path INSERTA; un sweeper del
 // Worker los pliega al capital del banco (materialized). Saldo del banco =
 // agent.capital_available + SUM(amount_cents) WHERE NOT materialized.
 export const feeLedger = pgTable(
   "fee_ledger",
   {
     feeId: uuid("fee_id").primaryKey().default(sql`uuidv7()`),
-    tradeId: uuid("trade_id")
-      .notNull()
-      .references(() => trade.tradeId, { onDelete: "cascade" }),
+    // NULL cuando el ingreso no proviene de un trade (pago de instalación).
+    tradeId: uuid("trade_id").references(() => trade.tradeId, {
+      onDelete: "cascade",
+    }),
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
     materialized: boolean("materialized").notNull().default(false),
     occurredAt: timestamp("occurred_at", { withTimezone: true })
@@ -861,7 +895,8 @@ export type RecipeInputRow = typeof recipeInput.$inferSelect;
 export type AgentRow = typeof agent.$inferSelect;
 export type AgentCredentialsRow = typeof agentCredentials.$inferSelect;
 export type AgentRefreshTokenRow = typeof agentRefreshToken.$inferSelect;
-export type AgentCapacityRow = typeof agentCapacity.$inferSelect;
+export type InstallationTypeRow = typeof installationType.$inferSelect;
+export type AgentInstallationRow = typeof agentInstallation.$inferSelect;
 export type MarketOrderRow = typeof marketOrder.$inferSelect;
 export type TradeRow = typeof trade.$inferSelect;
 export type FeeLedgerRow = typeof feeLedger.$inferSelect;

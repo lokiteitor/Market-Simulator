@@ -211,11 +211,10 @@ prices:
   chocolate: 141
   textiles: 96
 
-# NOTA: el backend IGNORA `requested_capacities` en el registro; asigna a cada
-# agente TODAS las capacidades de su rol definidas en infra/seed-config.json
-# (~35 recetas para primary_producer, ~120 para transformer). Los bloques
-# `requested_capacities:` de abajo son solo documentacion del subset esperado;
-# el fan-out real lo acota `max_recipes_per_tick` (arriba), no esta lista.
+# NOTA (ADR-021): los agentes NACEN SIN instalaciones. Cada estrategia compra y
+# mejora instalaciones por TIPO (campo, mina, metalurgia, …) con su capital, y
+# el nivel de la instalación es el presupuesto de concurrencia compartido por las
+# recetas del tipo. El fan-out de recetas por tick lo acota `max_recipes_per_tick`.
 bots:
   - username: "primary_producer_1"
     password: "dev-password-123"
@@ -223,17 +222,6 @@ bots:
     tick_interval_seconds: 5
     persist_path: "./.session_prod_1.json"
     auto_register: true
-    requested_capacities:
-      - recipe_id: "cultivo_trigo"
-        installations: 2
-      - recipe_id: "cultivo_maiz"
-        installations: 2
-      - recipe_id: "ordena"
-        installations: 2
-      - recipe_id: "cultivo_tomate"
-        installations: 2
-      - recipe_id: "germinado_rapido"
-        installations: 1
 
   - username: "miner_1"
     password: "dev-password-123"
@@ -257,19 +245,6 @@ bots:
     tick_interval_seconds: 5
     persist_path: "./.session_trans_1.json"
     auto_register: true
-    requested_capacities:
-      - recipe_id: "molienda"
-        installations: 2
-      - recipe_id: "panaderia"
-        installations: 1
-      - recipe_id: "nixtamalizado"
-        installations: 2
-      - recipe_id: "tortilleria"
-        installations: 1
-      - recipe_id: "queseria"
-        installations: 1
-      - recipe_id: "salseria"
-        installations: 1
 
   - username: "consumer_1"
     password: "dev-password-123"

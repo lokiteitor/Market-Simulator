@@ -5,11 +5,12 @@ import "github.com/lokiteitor/market-simulator/sdk/models"
 type ActionType string
 
 const (
-	TypePlaceOrder        ActionType = "place_order"
-	TypeCancelOrder       ActionType = "cancel_order"
+	TypePlaceOrder          ActionType = "place_order"
+	TypeCancelOrder         ActionType = "cancel_order"
 	TypeStartTransformation ActionType = "start_transformation"
-	TypeConvertGold       ActionType = "convert_gold"
-	TypeSleep             ActionType = "sleep"
+	TypeConvertGold         ActionType = "convert_gold"
+	TypeAcquireInstallation ActionType = "acquire_installation"
+	TypeSleep               ActionType = "sleep"
 )
 
 type Action interface {
@@ -48,6 +49,16 @@ type ConvertGold struct {
 }
 
 func (a ConvertGold) Type() ActionType { return TypeConvertGold }
+
+// AcquireInstallation compra (nivel 0→1) o mejora (+1) una instalación del tipo
+// dado (economía de instalaciones, ADR-021). ExpectedCurrentLevel (opcional, -1
+// para omitirlo) da concurrencia optimista frente a otros procesos del bot.
+type AcquireInstallation struct {
+	InstallationType     string `json:"installation_type"`
+	ExpectedCurrentLevel int    `json:"expected_current_level"`
+}
+
+func (a AcquireInstallation) Type() ActionType { return TypeAcquireInstallation }
 
 type Sleep struct {
 	DurationSeconds int64 `json:"duration_seconds"`

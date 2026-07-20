@@ -105,7 +105,8 @@ CREATE TYPE event_type AS ENUM (
     'gold_converted',    -- conversión ejecutada en la ventanilla del banco
     'money_issued',      -- acuñación de capital semilla en un registro dinámico
     'deposit_depleted',  -- un resource_deposit llegó a 0 (yacimiento agotado)
-    'city_income_distributed' -- el sweeper repartió el income_ledger entre ciudades
+    'city_income_distributed', -- el sweeper repartió el income_ledger entre ciudades
+    'installation_purchased'   -- un agente compró o mejoró una instalación
 );
 
 -- Dirección de una conversión en la ventanilla, desde la perspectiva del
@@ -133,6 +134,25 @@ CREATE TABLE product (
     created_at      TIMESTAMPTZ         NOT NULL DEFAULT now()
 );
 
+-- Tipo de instalación: "lugar" productivo que los agentes COMPRAN y SUBEN DE
+-- NIVEL para producir (economía de instalaciones, ADR-021). Agrupa varias
+-- recetas afines (ej. 'campo' → todos los cultivos; 'metalurgia' → acero/inox/
+-- viga/lámina). El nivel de una instalación (nº de hectáreas / líneas de
+-- producción) es el presupuesto de concurrencia COMPARTIDO entre las recetas
+-- del tipo. Sembrado desde infra/seed-config.json; catálogo estático en la
+-- corrida. `role` restringe qué rol puede comprarlo.
+CREATE TABLE installation_type (
+    installation_type_id UUID          PRIMARY KEY DEFAULT uuidv7(),
+    key                  TEXT          NOT NULL UNIQUE,   -- ej. 'campo', 'metalurgia'
+    name                 TEXT          NOT NULL UNIQUE,   -- humano, ej. 'Campo agrícola'
+    role                 agent_role    NOT NULL,          -- rol que puede comprarlo
+    unit_label           TEXT          NOT NULL,          -- 'hectareas' | 'lineas_produccion' | ...
+    base_price_cents     BIGINT        NOT NULL CHECK (base_price_cents > 0),  -- precio nivel 0→1
+    growth_bps           INT           NOT NULL CHECK (growth_bps > 0),        -- escalado por nivel (10000 = ×1)
+    max_level            INT           NOT NULL CHECK (max_level > 0),
+    created_at           TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
 CREATE TABLE recipe (
     recipe_id           UUID            PRIMARY KEY DEFAULT uuidv7(),
     output_product_id   UUID            NOT NULL REFERENCES product(product_id),
@@ -142,9 +162,14 @@ CREATE TABLE recipe (
     -- Salario total de una ejecución = wage_rate_cents_per_sec * EXTRACT(EPOCH FROM duration).
     -- Se calcula en aplicación al iniciar el proceso para evitar drift por
     -- cambios futuros del rate.
+    -- Instalación requerida para ejecutar la receta: el agente debe haber
+    -- comprado el tipo y su nivel acota la concurrencia (ADR-021).
+    installation_type_id UUID           NOT NULL REFERENCES installation_type(installation_type_id),
     name                TEXT            NOT NULL UNIQUE,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_recipe_installation_type ON recipe(installation_type_id);
 
 CREATE TABLE recipe_input (
     recipe_id       UUID    NOT NULL REFERENCES recipe(recipe_id) ON DELETE CASCADE,
@@ -155,7 +180,7 @@ CREATE TABLE recipe_input (
 
 
 -- =============================================================================
--- 2. AGENTES, AUTENTICACIÓN Y CAPACIDADES
+-- 2. AGENTES, AUTENTICACIÓN E INSTALACIONES
 -- =============================================================================
 
 CREATE TABLE agent (
@@ -197,11 +222,16 @@ CREATE TABLE agent_refresh_token (
 CREATE INDEX idx_refresh_token_agent ON agent_refresh_token(agent_id) WHERE revoked_at IS NULL;
 CREATE INDEX idx_refresh_token_hash ON agent_refresh_token(token_hash) WHERE revoked_at IS NULL;
 
-CREATE TABLE agent_capacity (
-    agent_id        UUID    NOT NULL REFERENCES agent(agent_id),
-    recipe_id       UUID    NOT NULL REFERENCES recipe(recipe_id),
-    installations   INT     NOT NULL CHECK (installations > 0),
-    PRIMARY KEY (agent_id, recipe_id)
+-- Instalaciones que el agente ha COMPRADO (economía de instalaciones, ADR-021).
+-- Una fila por (agente, tipo de instalación). `level` = nº de hectáreas / líneas
+-- de producción = presupuesto de concurrencia COMPARTIDO entre todas las recetas
+-- de ese tipo. No hay grant inicial: los agentes nacen SIN filas y compran/suben
+-- de nivel vía POST /agents/me/installations (el pago va al banco vía fee_ledger).
+CREATE TABLE agent_installation (
+    agent_id             UUID   NOT NULL REFERENCES agent(agent_id),
+    installation_type_id UUID   NOT NULL REFERENCES installation_type(installation_type_id),
+    level                INT    NOT NULL CHECK (level > 0),
+    PRIMARY KEY (agent_id, installation_type_id)
 );
 
 
@@ -396,16 +426,18 @@ CREATE TABLE conversion_lot_consumption (
     PRIMARY KEY (conversion_id, lot_id)
 );
 
--- Ledger append-only de fees de matching acreditados al banco central (ADR-019).
--- El hot path del matching INSERTA aquí un registro por orden que genera fees
--- (suma de ambos lados) en vez de hacer UPDATE de la fila caliente del banco,
--- eliminando la contención global entre las N réplicas del Core. Un sweeper del
--- Worker pliega periódicamente los registros no materializados al capital del
--- banco (marcándolos materialized). El saldo real del banco =
--- agent.capital_available + SUM(amount_cents) WHERE NOT materialized.
+-- Ledger append-only de dinero acreditado al banco central (ADR-019). Dos
+-- fuentes: (a) fees de matching (un registro por orden que genera fees, suma de
+-- ambos lados; `trade_id` set) y (b) pagos de compra/mejora de instalaciones
+-- (ADR-021; `trade_id` NULL). El hot path INSERTA en vez de hacer UPDATE de la
+-- fila caliente del banco, eliminando la contención global entre las N réplicas
+-- del Core. Un sweeper del Worker pliega periódicamente los registros no
+-- materializados al capital del banco (marcándolos materialized). El saldo real
+-- del banco = agent.capital_available + SUM(amount_cents) WHERE NOT materialized.
 CREATE TABLE fee_ledger (
     fee_id          UUID            PRIMARY KEY DEFAULT uuidv7(),
-    trade_id        UUID            NOT NULL REFERENCES trade(trade_id) ON DELETE CASCADE,
+    -- NULL cuando el ingreso no proviene de un trade (pago de instalación).
+    trade_id        UUID            REFERENCES trade(trade_id) ON DELETE CASCADE,
     amount_cents    BIGINT          NOT NULL CHECK (amount_cents > 0),
     materialized    BOOLEAN         NOT NULL DEFAULT false,
     occurred_at     TIMESTAMPTZ     NOT NULL DEFAULT now()

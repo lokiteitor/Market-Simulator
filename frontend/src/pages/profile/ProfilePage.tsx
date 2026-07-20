@@ -21,7 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
 import type {
-  CapacityStatus,
+  InstallationStatus,
   Product,
   Recipe,
   SelfState,
@@ -99,43 +99,20 @@ export default function ProfilePage() {
     return map;
   }, [productsQ.data]);
 
-  const capacityColumns = useMemo<Array<DataTableColumn<CapacityStatus>>>(
+  const installationColumns = useMemo<Array<DataTableColumn<InstallationStatus>>>(
     () => [
+      { key: "name", header: "Instalación" },
       {
-        key: "recipe",
-        header: "Receta",
-        render: (c) => {
-          const recipe = recipesById.get(c.recipe_id);
-          return recipe !== undefined ? (
-            recipe.name
-          ) : (
-            <span className="mono">{truncId(c.recipe_id)}</span>
-          );
-        },
+        key: "installation_type",
+        header: "Tipo",
+        render: (i) => <span className="mono">{i.installation_type}</span>,
       },
       {
-        key: "recipe_id",
-        header: "ID",
-        render: (c) => <CopyId id={c.recipe_id} />,
-      },
-      {
-        key: "output",
-        header: "Produce",
-        render: (c) => {
-          const recipe = recipesById.get(c.recipe_id);
-          if (recipe === undefined) return "—";
-          const product = productsById.get(recipe.output_product_id);
-          const qty = fmtQty(recipe.output_qty_cent, product?.unit);
-          return product !== undefined
-            ? `${product.name} · ${qty} por ejecución`
-            : `${qty} por ejecución`;
-        },
-      },
-      {
-        key: "installations",
-        header: "Instalaciones",
+        key: "level",
+        header: "Nivel",
         align: "right",
         mono: true,
+        render: (i) => `${i.level} ${i.unit_label}`,
       },
       { key: "running", header: "En curso", align: "right", mono: true },
       {
@@ -143,11 +120,20 @@ export default function ProfilePage() {
         header: "Libres",
         align: "right",
         mono: true,
-        render: (c) =>
-          c.available_slots ?? Math.max(0, c.installations - c.running),
+        render: (i) => i.available_slots ?? Math.max(0, i.level - i.running),
+      },
+      {
+        key: "next_upgrade_price_cents",
+        header: "Mejora",
+        align: "right",
+        mono: true,
+        render: (i) =>
+          i.next_upgrade_price_cents === null
+            ? "—"
+            : fmtMoney(i.next_upgrade_price_cents),
       },
     ],
-    [recipesById, productsById],
+    [],
   );
 
   // Quiebra: por estado del snapshot o por 403 del endpoint (agent_bankrupt).
@@ -333,27 +319,27 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {/* ---- Capacidades --------------------------------------------- */}
+          {/* ---- Instalaciones ------------------------------------------- */}
           <section
-            aria-labelledby="perfil-capacidades"
+            aria-labelledby="perfil-instalaciones"
             className={styles.section}
           >
-            <h2 id="perfil-capacidades" className={styles.sectionTitle}>
-              Capacidades productivas
+            <h2 id="perfil-instalaciones" className={styles.sectionTitle}>
+              Instalaciones compradas
             </h2>
             <p className={styles.sectionSubtitle}>
-              Recetas con instalaciones propias: cuántos procesos paralelos
-              puedes ejecutar por receta.
+              Lugares productivos comprados y su nivel (presupuesto de procesos
+              paralelos compartido por las recetas del tipo).
             </p>
             <DataTable
-              columns={capacityColumns}
-              rows={snapshot.capacities}
-              rowKey={(c) => c.recipe_id}
-              caption="Capacidades productivas instaladas del agente"
+              columns={installationColumns}
+              rows={snapshot.installations}
+              rowKey={(i) => i.installation_type}
+              caption="Instalaciones compradas del agente"
               empty={
                 <EmptyState
-                  title="Sin capacidades instaladas"
-                  hint="Tu rol opera únicamente en el mercado (compra y venta)."
+                  title="Sin instalaciones"
+                  hint="Este agente aún no ha comprado instalaciones; sin ellas no puede producir."
                 />
               }
             />

@@ -114,7 +114,17 @@ describe("Schemas de respuesta (shapes del openapi)", () => {
           actual_end_at: null,
         },
       ],
-      capacities: [{ recipe_id: UUID, installations: 2, running: 1, available_slots: 1 }],
+      installations: [
+        {
+          installation_type: "campo",
+          name: "Campo agrícola",
+          unit_label: "hectareas",
+          level: 2,
+          running: 1,
+          available_slots: 1,
+          next_upgrade_price_cents: 25500,
+        },
+      ],
       recent_events: [
         {
           event_id: UUID,
@@ -139,7 +149,7 @@ describe("Schemas de respuesta (shapes del openapi)", () => {
         inventory: [],
         active_orders: [],
         running_processes: [],
-        capacities: [],
+        installations: [],
         recent_events: [],
       }).success,
     ).toBe(false);

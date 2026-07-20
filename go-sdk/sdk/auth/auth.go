@@ -205,7 +205,7 @@ func (a *AuthManager) storeTokensLocked(accessToken, refreshToken string, access
 }
 
 // PerformAuth handles the authentication flow: loading from disk, attempting refresh, login or register.
-func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoRegister bool, requestedCapacities []models.RequestedCapacity) error {
+func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoRegister bool) error {
 	a.Lock()
 	defer a.Unlock()
 
@@ -253,10 +253,9 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 	// 3. Login failed; check if we should auto-register
 	if autoRegister {
 		regReq := models.RegisterAgentRequest{
-			Username:            a.username,
-			Password:            a.password,
-			Role:                a.role,
-			RequestedCapacities: requestedCapacities,
+			Username: a.username,
+			Password: a.password,
+			Role:     a.role,
 		}
 		a.Unlock()
 		regResp, err := client.Register(ctx, regReq)

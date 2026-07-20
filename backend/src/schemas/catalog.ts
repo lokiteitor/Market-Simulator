@@ -40,6 +40,8 @@ export const RecipeSchema = z.object({
   /** Segundos REALES de una ejecución (openapi `Recipe.duration_seconds`). */
   duration_seconds: z.number().int().min(1),
   wage_rate_cents_per_sec: z.number().int().min(0),
+  /** Tipo de instalación requerido para ejecutarla (ADR-021). */
+  installation_type_id: z.uuid(),
   inputs: z.array(RecipeInputSchema),
   created_at: z.iso.datetime(),
 });

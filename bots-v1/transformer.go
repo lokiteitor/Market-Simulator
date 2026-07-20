@@ -24,6 +24,12 @@ type TransformerStrategy struct {
 	maxRecipesPerTick int
 	p                 transformerParams
 	subscribed        []string
+	role              models.AgentRole
+	// Instalaciones (ADR-021): tope de nivel deseado, colchón de capital y nº
+	// máximo de compras/mejoras por tick.
+	maxDesiredLevel      int
+	capitalReserveFactor int64
+	maxBuysPerTick       int
 }
 
 type transformerParams struct {
@@ -44,15 +50,36 @@ type transformerParams struct {
 
 func NewTransformerStrategy() *TransformerStrategy {
 	return &TransformerStrategy{
-		basePrices:        make(map[string]int64),
-		simTimeFactor:     5,
-		maxRecipesPerTick: 8,
+		basePrices:           make(map[string]int64),
+		simTimeFactor:        5,
+		maxRecipesPerTick:    8,
+		maxDesiredLevel:      3,
+		capitalReserveFactor: 3,
+		maxBuysPerTick:       1,
 	}
+}
+
+// producibleRecipes: recetas CON insumos cuyo tipo de instalación corresponde al
+// rol del bot (ADR-021).
+func (s *TransformerStrategy) producibleRecipes(ctx *strategy.Context) []models.Recipe {
+	out := make([]models.Recipe, 0, 32)
+	for _, recipe := range ctx.State.CatalogRecipes() {
+		if len(recipe.Inputs) == 0 {
+			continue // las recetas sin insumos son de los productores
+		}
+		typ, ok := ctx.State.InstallationTypeByID(recipe.InstallationTypeID)
+		if !ok || models.AgentRole(typ.Role) != s.role {
+			continue
+		}
+		out = append(out, recipe)
+	}
+	return out
 }
 
 func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 	ctx.Logger.Info("TransformerStrategy initializing...")
 	s.rnd = newStrategyRand(ctx)
+	_, _, s.role, _ = ctx.State.GetAgentInfo()
 	s.basePrices = resolveBasePrices(ctx)
 	s.view = newMarketView(ctx, s.basePrices)
 	s.simTimeFactor = configFloat(ctx.Config, "sim_time_factor", s.simTimeFactor)
@@ -75,11 +102,7 @@ func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 	// Suscripción de tape (fan-out selectivo): insumos y outputs de las
 	// recetas de sus instalaciones — todo lo que compra y todo lo que vende.
 	seen := make(map[string]bool)
-	for _, capSt := range ctx.State.Capacities() {
-		recipe, ok := ctx.State.Recipe(capSt.RecipeID)
-		if !ok {
-			continue
-		}
+	for _, recipe := range s.producibleRecipes(ctx) {
 		for _, input := range recipe.Inputs {
 			seen[input.ProductID] = true
 		}
@@ -137,7 +160,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	}
 	s.view.BeginTick(s.p.restBudget)
 
-	capacities := ctx.State.Capacities()
+	producible := s.producibleRecipes(ctx)
 	activeOrders := ctx.State.ActiveOrders()
 	capitalAvail, _ := ctx.State.Capital()
 
@@ -152,14 +175,11 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	recipeByOutput := make(map[string]models.Recipe)
 	handledInputs := make(map[string]bool) // varias recetas comparten insumos
 	recipesActed := 0
+	buysActed := 0
 	// Orden aleatorio: con el cap por tick, un orden fijo mataria de hambre a
 	// las recetas del final de la lista.
-	for _, idx := range s.rnd.Perm(len(capacities)) {
-		capStatus := capacities[idx]
-		recipe, ok := ctx.State.Recipe(capStatus.RecipeID)
-		if !ok || len(recipe.Inputs) == 0 {
-			continue // las recetas sin insumos son de los productores
-		}
+	for _, idx := range s.rnd.Perm(len(producible)) {
+		recipe := producible[idx]
 		recipeByOutput[recipe.OutputProductID] = recipe
 		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
 			continue
@@ -169,6 +189,11 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		}
 		recipesActed++
 
+		inst, typ, owned, typeKnown := installationForRecipe(ctx, recipe)
+		if !typeKnown {
+			continue
+		}
+
 		inputsCost, wage, revenue, priced := s.execEconomics(recipe)
 		profitable := priced && float64(revenue) >= float64(inputsCost+wage)*(1+s.p.minMargin)
 
@@ -176,16 +201,28 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			// Si no es rentable a precio estimado de mercado, comprobamos si de verdad hay
 			// competencia barata (un ask en el mercado por debajo de nuestro coste + margen).
 			// Si no hay asks o el mejor ask es caro, consideramos que la receta es viable para producir.
-			floor := float64(inputsCost+wage)*(1+s.p.minMargin)
+			floor := float64(inputsCost+wage) * (1 + s.p.minMargin)
 			topOut := s.view.Top(ctx, recipe.OutputProductID)
 			if topOut == nil || topOut.BestAsk == nil || float64(notionalCents(recipe.OutputQtyCent, topOut.BestAsk.PriceCents)) >= floor {
 				profitable = true
 			}
 		}
 
+		// A0. Comprar/mejorar la instalación del tipo si la receta es rentable
+		// pero la producción está bloqueada por falta de huecos (ADR-021).
+		if profitable && (!owned || inst.AvailableSlots <= 0) &&
+			buysActed < s.maxBuysPerTick {
+			if buy, ok := installationBuyAction(inst, typ, owned, capitalAvail,
+				s.maxDesiredLevel, s.capitalReserveFactor); ok {
+				acts = append(acts, buy)
+				buysActed++
+				continue
+			}
+		}
+
 		// A. Arrancar ejecuciones solo si son rentables a precios de mercado y hay capital para salarios.
-		if profitable && capStatus.AvailableSlots > 0 {
-			maxExecutions := capStatus.AvailableSlots
+		if profitable && owned && inst.AvailableSlots > 0 {
+			maxExecutions := inst.AvailableSlots
 			for _, input := range recipe.Inputs {
 				inv := ctx.State.InventoryForProduct(input.ProductID)
 				possible := int(inv.QtyAvailableCent / input.QtyRequiredCent)
@@ -229,7 +266,11 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 			handledInputs[input.ProductID] = true
 			inv := ctx.State.InventoryForProduct(input.ProductID)
-			targetQty := input.QtyRequiredCent * int64(capStatus.Installations) * int64(s.p.bufferExecs)
+			buffLevel := inst.Level
+			if buffLevel < 1 {
+				buffLevel = 1
+			}
+			targetQty := input.QtyRequiredCent * int64(buffLevel) * int64(s.p.bufferExecs)
 			currentQty := inv.QtyAvailableCent + activeBuyQty[input.ProductID]
 			if currentQty >= targetQty {
 				continue

@@ -68,7 +68,9 @@ export function goldWindow(
   const bid = p - half;
   const ask = p + half;
   if (bid < 1n) {
-    throw new Error(`window_bid menor a 1 centavo: ${bid}. Spread excesivo o paridad baja.`);
+    throw new Error(
+      `window_bid calculado menor a 1 centavo: ${bid}. Spread excesivo o paridad baja.`,
+    );
   }
   return {
     bidCents: Number(bid),
@@ -105,6 +107,16 @@ export function clampMint(
   qtyRemainingCent: number,
   qtyPlannedCent: number
 ): { mintedQtyCent: number; remainingAfterCent: number } {
+  if (!Number.isSafeInteger(qtyRemainingCent) || qtyRemainingCent < 0) {
+    throw new Error(
+      `clampMint: qtyRemainingCent debe ser un entero >= 0; recibido: ${qtyRemainingCent}`,
+    );
+  }
+  if (!Number.isSafeInteger(qtyPlannedCent) || qtyPlannedCent < 0) {
+    throw new Error(
+      `clampMint: qtyPlannedCent debe ser un entero >= 0; recibido: ${qtyPlannedCent}`,
+    );
+  }
   const remaining = BigInt(qtyRemainingCent);
   const planned = BigInt(qtyPlannedCent);
   const minted = remaining < planned ? remaining : planned;

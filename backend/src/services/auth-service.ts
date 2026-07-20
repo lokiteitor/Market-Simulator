@@ -46,8 +46,6 @@ export interface TokenPairResult {
 
 export interface RegisterResult extends TokenPairResult {
   agent: AgentRow;
-  /** Capacidades instaladas por el registrar (running = 0 por construcción). */
-  capacities: Array<{ recipeId: string; installations: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,10 +122,7 @@ async function register(p: {
   const passwordHash = await hashPassword(p.password);
   const refresh = generateRefreshToken();
 
-  let committed: {
-    agentRow: AgentRow;
-    capacities: Array<{ recipeId: string; installations: number }>;
-  };
+  let committed: { agentRow: AgentRow };
   try {
     committed = await withTransaction(async (tx) => {
       const existing = await authRepository.findAgentByUsername(tx, p.username);
@@ -138,8 +133,9 @@ async function register(p: {
           { field: "username" },
         );
       }
-      // createAgent [M2]: agent + capacidades del rol + capital semilla
-      // (§10.12) + appendEvent(agent_registered) DENTRO de esta tx.
+      // createAgent [M2]: agent + capital semilla (§10.12) +
+      // appendEvent(agent_registered) DENTRO de esta tx. Sin instalaciones
+      // (ADR-021): el agente las compra después.
       const agentRow = await agentRegistrar.createAgent(tx, {
         username: p.username,
         role: p.role,
@@ -153,11 +149,7 @@ async function register(p: {
         tokenHash: refresh.tokenHash,
         expiresAt: refresh.expiresAt,
       });
-      const capacities = await authRepository.findCapacitiesForAgent(
-        tx,
-        agentRow.agentId,
-      );
-      return { agentRow, capacities };
+      return { agentRow };
     });
   } catch (err) {
     throw translateUniqueUsername(err, p.username);
@@ -178,7 +170,6 @@ async function register(p: {
   });
   return {
     agent: committed.agentRow,
-    capacities: committed.capacities,
     accessToken: access.token,
     accessExpiresAt: access.expiresAt,
     refreshToken: refresh.token,

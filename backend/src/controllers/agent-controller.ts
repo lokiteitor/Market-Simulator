@@ -16,7 +16,7 @@ import type {
   AgentOrderJson,
   AgentProcessJson,
   AgentPublicJson,
-  CapacityStatusJson,
+  InstallationStatusJson,
   InventoryLotJson,
   InventoryLotsQuery,
   InventoryPositionJson,
@@ -25,7 +25,7 @@ import type {
 } from "../schemas/agents";
 import {
   agentService,
-  type CapacityStatusView,
+  type InstallationStatusView,
   type InventoryPositionView,
   type RunningProcessView,
 } from "../services/agent-service";
@@ -68,12 +68,15 @@ function toInventoryLotJson(l: InventoryLotRow): InventoryLotJson {
   };
 }
 
-function toCapacityStatusJson(c: CapacityStatusView): CapacityStatusJson {
+function toInstallationStatusJson(i: InstallationStatusView): InstallationStatusJson {
   return {
-    recipe_id: c.recipeId,
-    installations: c.installations,
-    running: c.running,
-    available_slots: c.availableSlots,
+    installation_type: i.installationType,
+    name: i.name,
+    unit_label: i.unitLabel,
+    level: i.level,
+    running: i.running,
+    available_slots: i.availableSlots,
+    next_upgrade_price_cents: i.nextUpgradePriceCents,
   };
 }
 
@@ -134,15 +137,9 @@ export const agentController = {
       inventory: state.inventory.map(toInventoryPositionJson),
       active_orders: state.activeOrders.map(toOrderJson),
       running_processes: state.runningProcesses.map(toProcessJson),
-      capacities: state.capacities.map(toCapacityStatusJson),
+      installations: state.installations.map(toInstallationStatusJson),
       recent_events: state.recentEvents.map(toEventJson),
     });
-  },
-
-  /** GET /agents/me/capacities. */
-  async getMyCapacities(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const capacities = await agentService.getCapacities(request.agentId);
-    await reply.code(200).send(capacities.map(toCapacityStatusJson));
   },
 
   /** GET /agents/me/inventory — posiciones agregadas por producto. */

@@ -26,20 +26,33 @@ export interface SeedRecipe {
   key: string;
   name: string;
   output: string;
+  /** Tipo de instalación requerido para ejecutarla (ADR-021). */
+  installation_type: string;
   output_qty_cent: number;
   duration_sim_seconds: number;
   wage_rate_cents_per_sec: number;
   inputs: SeedRecipeInput[];
 }
 
+export interface SeedInstallationType {
+  key: string;
+  name: string;
+  role: string;
+  unit_label: string;
+  base_price_cents: number;
+  growth_bps: number;
+  max_level: number;
+  recipes: string[];
+}
+
 export interface SeedRoleConfig {
   initial_agents: number;
-  capacities: Array<{ recipe: string; installations: number }>;
 }
 
 export interface SeedConfig {
   products: SeedProduct[];
   recipes: SeedRecipe[];
+  installation_types: SeedInstallationType[];
   roles: Record<string, SeedRoleConfig>;
 }
 
@@ -49,8 +62,15 @@ export async function loadSeedConfig(): Promise<SeedConfig> {
   const path =
     process.env.E2E_SEED_CONFIG_PATH ?? resolve(import.meta.dir, "../../../infra/seed-config.json");
   const cfg = (await Bun.file(path).json()) as SeedConfig;
-  if (!Array.isArray(cfg.products) || !Array.isArray(cfg.recipes) || typeof cfg.roles !== "object") {
-    throw new Error(`seed-config inválido en ${path}: faltan products/recipes/roles`);
+  if (
+    !Array.isArray(cfg.products) ||
+    !Array.isArray(cfg.recipes) ||
+    !Array.isArray(cfg.installation_types) ||
+    typeof cfg.roles !== "object"
+  ) {
+    throw new Error(
+      `seed-config inválido en ${path}: faltan products/recipes/installation_types/roles`,
+    );
   }
   return cfg;
 }
@@ -60,6 +80,17 @@ export function seedRecipe(cfg: SeedConfig, key: string): SeedRecipe {
   const r = cfg.recipes.find((x) => x.key === key);
   if (r === undefined) throw new Error(`seed-config: receta "${key}" no encontrada`);
   return r;
+}
+
+/** Tipo de instalación del seed-config por key (falla si no existe). */
+export function seedInstallationType(
+  cfg: SeedConfig,
+  key: string,
+): SeedInstallationType {
+  const t = cfg.installation_types.find((x) => x.key === key);
+  if (t === undefined)
+    throw new Error(`seed-config: installation_type "${key}" no encontrado`);
+  return t;
 }
 
 /** Producto del seed-config por key (falla si no existe). */

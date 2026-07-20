@@ -39,6 +39,7 @@ function baseConfig(): SeedConfig {
         key: "cultivo_trigo",
         name: "Cultivo de trigo",
         output: "trigo",
+        installation_type: "campo",
         output_qty_cent: 50000,
         duration_sim_seconds: 3600,
         wage_rate_cents_per_sec: 1,
@@ -48,23 +49,40 @@ function baseConfig(): SeedConfig {
         key: "molienda",
         name: "Molienda",
         output: "harina",
+        installation_type: "molino",
         output_qty_cent: 8000,
         duration_sim_seconds: 1800,
         wage_rate_cents_per_sec: 2,
         inputs: [{ product: "trigo", qty_cent: 10000 }],
       },
     ],
+    installation_types: [
+      {
+        key: "campo",
+        name: "Campo agrícola",
+        role: "primary_producer",
+        unit_label: "hectareas",
+        base_price_cents: 15000,
+        growth_bps: 17000,
+        max_level: 10,
+        recipes: ["cultivo_trigo"],
+      },
+      {
+        key: "molino",
+        name: "Molino",
+        role: "transformer",
+        unit_label: "lineas_produccion",
+        base_price_cents: 40000,
+        growth_bps: 17000,
+        max_level: 10,
+        recipes: ["molienda"],
+      },
+    ],
     roles: {
-      primary_producer: {
-        initial_agents: 2,
-        capacities: [{ recipe: "cultivo_trigo", installations: 2 }],
-      },
-      transformer: {
-        initial_agents: 1,
-        capacities: [{ recipe: "molienda", installations: 1 }],
-      },
-      consumer: { initial_agents: 3, capacities: [] },
-      trader: { initial_agents: 0, capacities: [] },
+      primary_producer: { initial_agents: 2 },
+      transformer: { initial_agents: 1 },
+      consumer: { initial_agents: 3 },
+      trader: { initial_agents: 0 },
     },
   };
 }
@@ -132,17 +150,25 @@ describe("parseSeedConfig", () => {
     );
   });
 
-  test("rechaza capacidad que referencia receta desconocida", () => {
+  test("rechaza installation_type que referencia receta desconocida", () => {
     const cfg = baseConfig();
-    cfg.roles.trader.capacities = [{ recipe: "no_existe", installations: 1 }];
+    cfg.installation_types[0]!.recipes = ["no_existe"];
     expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
       /receta desconocida/,
     );
   });
 
+  test("rechaza receta cuyo installation_type no coincide con el tipo que la lista", () => {
+    const cfg = baseConfig();
+    cfg.recipes[0]!.installation_type = "molino";
+    expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
+      /declara tipo "molino" pero está listada en "campo"/,
+    );
+  });
+
   test("rechaza roles incompletos", () => {
     const cfg: Record<string, unknown> = { ...baseConfig() };
-    cfg.roles = { primary_producer: { initial_agents: 1, capacities: [] } };
+    cfg.roles = { primary_producer: { initial_agents: 1 } };
     expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
       /estructura inválida/,
     );

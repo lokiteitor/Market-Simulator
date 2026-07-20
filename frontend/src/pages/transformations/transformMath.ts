@@ -11,7 +11,7 @@
  * (posible ±1 s por redondeo del catálogo).
  */
 import type {
-  CapacityStatus,
+  InstallationStatus,
   InventoryPosition,
   Recipe,
 } from "../../api/types";
@@ -31,9 +31,9 @@ export function estimateWageCents(recipe: Recipe, executions: number): number {
   );
 }
 
-/** Huecos libres de una capacidad: `available_slots` o `installations - running`. */
-export function availableSlots(capacity: CapacityStatus): number {
-  return capacity.available_slots ?? Math.max(0, capacity.installations - capacity.running);
+/** Huecos libres de una instalación: `available_slots` o `level - running`. */
+export function availableSlots(installation: InstallationStatus): number {
+  return installation.available_slots ?? Math.max(0, installation.level - installation.running);
 }
 
 export interface InputRequirement {

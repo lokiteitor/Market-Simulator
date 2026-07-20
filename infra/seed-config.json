@@ -937,6 +937,7 @@
       "key": "cultivo_trigo",
       "name": "Cultivo de trigo",
       "output": "trigo",
+      "installation_type": "campo",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -946,6 +947,7 @@
       "key": "cultivo_maiz",
       "name": "Cultivo de maíz",
       "output": "maiz",
+      "installation_type": "campo",
       "output_qty_cent": 60000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -955,6 +957,7 @@
       "key": "ordena",
       "name": "Ordeña de vacas",
       "output": "leche",
+      "installation_type": "granja",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -964,6 +967,7 @@
       "key": "cultivo_tomate",
       "name": "Cultivo de tomate",
       "output": "tomate",
+      "installation_type": "campo",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
@@ -973,6 +977,7 @@
       "key": "germinado_rapido",
       "name": "Germinado rápido",
       "output": "germinado",
+      "installation_type": "campo",
       "output_qty_cent": 1000,
       "duration_sim_seconds": 60,
       "wage_rate_cents_per_sec": 1,
@@ -982,6 +987,7 @@
       "key": "molienda",
       "name": "Molienda de trigo",
       "output": "harina",
+      "installation_type": "agroindustria",
       "output_qty_cent": 8000,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
@@ -996,6 +1002,7 @@
       "key": "panaderia",
       "name": "Panadería",
       "output": "pan",
+      "installation_type": "agroindustria",
       "output_qty_cent": 10000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 3,
@@ -1010,6 +1017,7 @@
       "key": "nixtamalizado",
       "name": "Nixtamalizado de maíz",
       "output": "masa",
+      "installation_type": "agroindustria",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 2700,
       "wage_rate_cents_per_sec": 2,
@@ -1024,6 +1032,7 @@
       "key": "tortilleria",
       "name": "Tortillería",
       "output": "tortilla",
+      "installation_type": "agroindustria",
       "output_qty_cent": 9500,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
@@ -1038,6 +1047,7 @@
       "key": "queseria",
       "name": "Quesería",
       "output": "queso",
+      "installation_type": "agroindustria",
       "output_qty_cent": 1000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -1052,6 +1062,7 @@
       "key": "salseria",
       "name": "Salsería",
       "output": "salsa",
+      "installation_type": "agroindustria",
       "output_qty_cent": 8000,
       "duration_sim_seconds": 2700,
       "wage_rate_cents_per_sec": 2,
@@ -1066,6 +1077,7 @@
       "key": "mineria_hierro",
       "name": "Minería de hierro",
       "output": "hierro",
+      "installation_type": "mina",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1075,6 +1087,7 @@
       "key": "mineria_carbon",
       "name": "Minería de carbón",
       "output": "carbon",
+      "installation_type": "mina",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1084,6 +1097,7 @@
       "key": "mineria_cobre",
       "name": "Minería de cobre",
       "output": "mineral_cobre",
+      "installation_type": "mina",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1093,6 +1107,7 @@
       "key": "mineria_bauxita",
       "name": "Minería de bauxita",
       "output": "bauxita",
+      "installation_type": "mina",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1102,6 +1117,7 @@
       "key": "mineria_litio",
       "name": "Minería de litio",
       "output": "litio",
+      "installation_type": "mina",
       "output_qty_cent": 10000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1111,6 +1127,7 @@
       "key": "mineria_niquel",
       "name": "Minería de níquel",
       "output": "niquel",
+      "installation_type": "mina",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1120,6 +1137,7 @@
       "key": "mineria_oro",
       "name": "Minería de oro",
       "output": "oro",
+      "installation_type": "mina",
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1129,6 +1147,7 @@
       "key": "mineria_plata",
       "name": "Minería de plata",
       "output": "plata",
+      "installation_type": "mina",
       "output_qty_cent": 3000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1138,6 +1157,7 @@
       "key": "mineria_uranio",
       "name": "Minería de uranio",
       "output": "uranio",
+      "installation_type": "mina",
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1147,6 +1167,7 @@
       "key": "extraccion_arena",
       "name": "Extracción de arena",
       "output": "arena",
+      "installation_type": "cantera",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1156,6 +1177,7 @@
       "key": "cantera_piedra",
       "name": "Cantera de piedra",
       "output": "piedra",
+      "installation_type": "cantera",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1165,6 +1187,7 @@
       "key": "cantera_caliza",
       "name": "Cantera de caliza",
       "output": "caliza",
+      "installation_type": "cantera",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1174,6 +1197,7 @@
       "key": "extraccion_arcilla",
       "name": "Extracción de arcilla",
       "output": "arcilla",
+      "installation_type": "cantera",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1183,6 +1207,7 @@
       "key": "mineria_fosfato",
       "name": "Minería de fosfato",
       "output": "fosfato",
+      "installation_type": "mina",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1192,6 +1217,7 @@
       "key": "extraccion_sal",
       "name": "Extracción de sal",
       "output": "sal",
+      "installation_type": "cantera",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1201,6 +1227,7 @@
       "key": "pozo_petroleo",
       "name": "Pozo petrolero",
       "output": "petroleo",
+      "installation_type": "pozo",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1210,6 +1237,7 @@
       "key": "pozo_gas",
       "name": "Pozo de gas",
       "output": "gas_natural",
+      "installation_type": "pozo",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1219,6 +1247,7 @@
       "key": "captacion_agua",
       "name": "Captación de agua",
       "output": "agua",
+      "installation_type": "planta_agua",
       "output_qty_cent": 100000,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 1,
@@ -1228,6 +1257,7 @@
       "key": "tala",
       "name": "Tala de árboles",
       "output": "troncos",
+      "installation_type": "bosque",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1237,6 +1267,7 @@
       "key": "cultivo_soya",
       "name": "Cultivo de soya",
       "output": "soya",
+      "installation_type": "campo",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1246,6 +1277,7 @@
       "key": "cultivo_algodon",
       "name": "Cultivo de algodón",
       "output": "algodon",
+      "installation_type": "campo",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1255,6 +1287,7 @@
       "key": "cultivo_cana",
       "name": "Cultivo de caña de azúcar",
       "output": "cana_azucar",
+      "installation_type": "campo",
       "output_qty_cent": 60000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1264,6 +1297,7 @@
       "key": "cultivo_cafe",
       "name": "Cultivo de café",
       "output": "cafe",
+      "installation_type": "campo",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1273,6 +1307,7 @@
       "key": "cultivo_cacao",
       "name": "Cultivo de cacao",
       "output": "cacao",
+      "installation_type": "campo",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
@@ -1282,6 +1317,7 @@
       "key": "cosecha_frutas",
       "name": "Cosecha de frutas",
       "output": "frutas",
+      "installation_type": "campo",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
@@ -1291,6 +1327,7 @@
       "key": "cosecha_verduras",
       "name": "Cosecha de verduras",
       "output": "verduras",
+      "installation_type": "campo",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
@@ -1300,6 +1337,7 @@
       "key": "cria_bovino",
       "name": "Cría de ganado bovino",
       "output": "ganado_bovino",
+      "installation_type": "granja",
       "output_qty_cent": 1000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1309,6 +1347,7 @@
       "key": "cria_cerdos",
       "name": "Cría de cerdos",
       "output": "cerdos",
+      "installation_type": "granja",
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
@@ -1318,6 +1357,7 @@
       "key": "cria_pollos",
       "name": "Cría de pollos",
       "output": "pollos",
+      "installation_type": "granja",
       "output_qty_cent": 5000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1327,6 +1367,7 @@
       "key": "esquila",
       "name": "Esquila de lana",
       "output": "lana",
+      "installation_type": "granja",
       "output_qty_cent": 10000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
@@ -1336,6 +1377,7 @@
       "key": "fundicion_acero",
       "name": "Fundición de acero",
       "output": "acero",
+      "installation_type": "metalurgia",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -1354,6 +1396,7 @@
       "key": "fundicion_inox",
       "name": "Fundición de acero inoxidable",
       "output": "acero_inoxidable",
+      "installation_type": "metalurgia",
       "output_qty_cent": 38000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -1372,6 +1415,7 @@
       "key": "refino_aluminio",
       "name": "Refino de aluminio",
       "output": "aluminio",
+      "installation_type": "metalurgia",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -1386,6 +1430,7 @@
       "key": "refino_cobre",
       "name": "Refino de cobre",
       "output": "cobre_refinado",
+      "installation_type": "metalurgia",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -1400,6 +1445,7 @@
       "key": "produccion_cemento",
       "name": "Producción de cemento",
       "output": "cemento",
+      "installation_type": "materiales",
       "output_qty_cent": 35000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1414,6 +1460,7 @@
       "key": "mezcla_hormigon",
       "name": "Mezcla de hormigón",
       "output": "hormigon",
+      "installation_type": "materiales",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
@@ -1436,6 +1483,7 @@
       "key": "fundicion_vidrio",
       "name": "Fundición de vidrio",
       "output": "vidrio",
+      "installation_type": "materiales",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1450,6 +1498,7 @@
       "key": "coccion_ladrillos",
       "name": "Cocción de ladrillos",
       "output": "ladrillos",
+      "installation_type": "materiales",
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1464,6 +1513,7 @@
       "key": "produccion_asfalto",
       "name": "Producción de asfalto",
       "output": "asfalto",
+      "installation_type": "materiales",
       "output_qty_cent": 40000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1482,6 +1532,7 @@
       "key": "sintesis_plastico",
       "name": "Síntesis de plástico",
       "output": "plastico",
+      "installation_type": "refineria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1496,6 +1547,7 @@
       "key": "sintesis_caucho",
       "name": "Síntesis de caucho",
       "output": "caucho_sintetico",
+      "installation_type": "refineria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1510,6 +1562,7 @@
       "key": "produccion_fertilizantes",
       "name": "Producción de fertilizantes",
       "output": "fertilizantes",
+      "installation_type": "refineria",
       "output_qty_cent": 35000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1528,6 +1581,7 @@
       "key": "sintesis_quimicos",
       "name": "Síntesis de productos químicos",
       "output": "productos_quimicos",
+      "installation_type": "refineria",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1546,6 +1600,7 @@
       "key": "produccion_silicio",
       "name": "Producción de silicio",
       "output": "silicio",
+      "installation_type": "refineria",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -1560,6 +1615,7 @@
       "key": "aserrado",
       "name": "Aserradero",
       "output": "tablas",
+      "installation_type": "aserradero",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1574,6 +1630,7 @@
       "key": "produccion_celulosa",
       "name": "Producción de celulosa",
       "output": "celulosa",
+      "installation_type": "aserradero",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1588,6 +1645,7 @@
       "key": "produccion_papel",
       "name": "Producción de papel",
       "output": "papel",
+      "installation_type": "aserradero",
       "output_qty_cent": 28000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1602,6 +1660,7 @@
       "key": "produccion_carton",
       "name": "Producción de cartón",
       "output": "carton",
+      "installation_type": "aserradero",
       "output_qty_cent": 28000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1616,6 +1675,7 @@
       "key": "refino_azucar",
       "name": "Refino de azúcar",
       "output": "azucar",
+      "installation_type": "agroindustria",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1630,6 +1690,7 @@
       "key": "prensado_aceite",
       "name": "Prensado de aceite vegetal",
       "output": "aceite_vegetal",
+      "installation_type": "agroindustria",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1644,6 +1705,7 @@
       "key": "procesado_carne",
       "name": "Procesado de carne",
       "output": "carne_procesada",
+      "installation_type": "agroindustria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 3,
@@ -1658,6 +1720,7 @@
       "key": "planta_lactea",
       "name": "Planta láctea",
       "output": "lacteos",
+      "installation_type": "agroindustria",
       "output_qty_cent": 30000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1672,6 +1735,7 @@
       "key": "refino_gasolina",
       "name": "Refino de gasolina",
       "output": "gasolina",
+      "installation_type": "refineria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1686,6 +1750,7 @@
       "key": "refino_diesel",
       "name": "Refino de diésel",
       "output": "diesel",
+      "installation_type": "refineria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1700,6 +1765,7 @@
       "key": "refino_queroseno",
       "name": "Refino de queroseno",
       "output": "queroseno",
+      "installation_type": "refineria",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1714,6 +1780,7 @@
       "key": "refino_lubricantes",
       "name": "Refino de lubricantes",
       "output": "lubricantes",
+      "installation_type": "refineria",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1728,6 +1795,7 @@
       "key": "laminado_viga",
       "name": "Laminado de vigas",
       "output": "viga_acero",
+      "installation_type": "metalurgia",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1742,6 +1810,7 @@
       "key": "laminado_lamina",
       "name": "Laminado de láminas de acero",
       "output": "lamina_acero",
+      "installation_type": "metalurgia",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1756,6 +1825,7 @@
       "key": "extrusion_tubo",
       "name": "Extrusión de tubos",
       "output": "tubo_acero",
+      "installation_type": "metalurgia",
       "output_qty_cent": 17000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1770,6 +1840,7 @@
       "key": "perfilado_metal",
       "name": "Perfilado metálico",
       "output": "perfil_metalico",
+      "installation_type": "metalurgia",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1784,6 +1855,7 @@
       "key": "laminado_aluminio",
       "name": "Laminado de aluminio",
       "output": "lamina_aluminio",
+      "installation_type": "metalurgia",
       "output_qty_cent": 13000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1798,6 +1870,7 @@
       "key": "perfilado_aluminio",
       "name": "Perfilado de aluminio",
       "output": "perfil_aluminio",
+      "installation_type": "metalurgia",
       "output_qty_cent": 13000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1812,6 +1885,7 @@
       "key": "trefilado_cable",
       "name": "Trefilado de cable de cobre",
       "output": "cable_cobre",
+      "installation_type": "metalurgia",
       "output_qty_cent": 14000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1826,6 +1900,7 @@
       "key": "bobinado_cobre",
       "name": "Bobinado de cobre",
       "output": "bobina_cobre",
+      "installation_type": "metalurgia",
       "output_qty_cent": 13000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1840,6 +1915,7 @@
       "key": "templado_cristal",
       "name": "Templado de cristal plano",
       "output": "cristal_plano",
+      "installation_type": "materiales",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1854,6 +1930,7 @@
       "key": "produccion_cristal_tecnico",
       "name": "Producción de cristal técnico",
       "output": "cristal_tecnico",
+      "installation_type": "materiales",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 3,
@@ -1868,6 +1945,7 @@
       "key": "polimerizacion",
       "name": "Polimerización",
       "output": "polimeros",
+      "installation_type": "refineria",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1882,6 +1960,7 @@
       "key": "produccion_resinas",
       "name": "Producción de resinas",
       "output": "resinas",
+      "installation_type": "refineria",
       "output_qty_cent": 17000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1896,6 +1975,7 @@
       "key": "hilado_fibra",
       "name": "Hilado de fibra sintética",
       "output": "fibra_sintetica",
+      "installation_type": "agroindustria",
       "output_qty_cent": 16000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1910,6 +1990,7 @@
       "key": "produccion_lubricante_ind",
       "name": "Producción de lubricante industrial",
       "output": "lubricante_industrial",
+      "installation_type": "refineria",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1924,6 +2005,7 @@
       "key": "tratado_madera",
       "name": "Tratado de madera",
       "output": "madera_tratada",
+      "installation_type": "aserradero",
       "output_qty_cent": 18000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1938,6 +2020,7 @@
       "key": "produccion_contrachapado",
       "name": "Producción de contrachapado",
       "output": "contrachapado",
+      "installation_type": "aserradero",
       "output_qty_cent": 17000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1952,6 +2035,7 @@
       "key": "enlatado_conservas",
       "name": "Enlatado de conservas",
       "output": "conservas",
+      "installation_type": "agroindustria",
       "output_qty_cent": 35000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1970,6 +2054,7 @@
       "key": "produccion_piensos",
       "name": "Producción de piensos",
       "output": "piensos",
+      "installation_type": "agroindustria",
       "output_qty_cent": 35000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -1988,6 +2073,7 @@
       "key": "embotellado_bebidas",
       "name": "Embotellado de bebidas",
       "output": "bebidas",
+      "installation_type": "agroindustria",
       "output_qty_cent": 35000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2006,6 +2092,7 @@
       "key": "ensamble_chasis",
       "name": "Ensamblaje de chasis",
       "output": "chasis",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2024,6 +2111,7 @@
       "key": "ensamble_motor",
       "name": "Ensamblaje de motor de combustión",
       "output": "motor_combustion",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -2046,6 +2134,7 @@
       "key": "ensamble_caja",
       "name": "Ensamblaje de caja de cambios",
       "output": "caja_cambios",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2060,6 +2149,7 @@
       "key": "ensamble_suspension",
       "name": "Ensamblaje de suspensión",
       "output": "suspension",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2078,6 +2168,7 @@
       "key": "ensamble_frenos",
       "name": "Ensamblaje de frenos",
       "output": "frenos",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2092,6 +2183,7 @@
       "key": "ensamble_rodamientos",
       "name": "Ensamblaje de rodamientos",
       "output": "rodamientos",
+      "installation_type": "componentes",
       "output_qty_cent": 200,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2106,6 +2198,7 @@
       "key": "ensamble_bomba",
       "name": "Ensamblaje de bomba industrial",
       "output": "bomba_industrial",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2124,6 +2217,7 @@
       "key": "ensamble_motor_elec",
       "name": "Ensamblaje de motor eléctrico",
       "output": "motor_electrico",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2142,6 +2236,7 @@
       "key": "ensamble_transformador",
       "name": "Ensamblaje de transformador",
       "output": "transformador",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2160,6 +2255,7 @@
       "key": "ensamble_generador",
       "name": "Ensamblaje de generador",
       "output": "generador",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2178,6 +2274,7 @@
       "key": "ensamble_bateria",
       "name": "Ensamblaje de batería",
       "output": "bateria",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2196,6 +2293,7 @@
       "key": "ensamble_cableado",
       "name": "Ensamblaje de cableado",
       "output": "cableado",
+      "installation_type": "electronica",
       "output_qty_cent": 8000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2214,6 +2312,7 @@
       "key": "ensamble_circuito",
       "name": "Ensamblaje de circuitos impresos",
       "output": "circuito_impreso",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2236,6 +2335,7 @@
       "key": "ensamble_microchip",
       "name": "Fabricación de microchips",
       "output": "microchip",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -2258,6 +2358,7 @@
       "key": "ensamble_sensor",
       "name": "Fabricación de sensores",
       "output": "sensor",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2272,6 +2373,7 @@
       "key": "ensamble_pantalla",
       "name": "Fabricación de pantallas",
       "output": "pantalla",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2290,6 +2392,7 @@
       "key": "ensamble_ventana",
       "name": "Fabricación de ventanas",
       "output": "ventana",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2308,6 +2411,7 @@
       "key": "ensamble_puerta",
       "name": "Fabricación de puertas industriales",
       "output": "puerta_industrial",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2326,6 +2430,7 @@
       "key": "ensamble_panel_pref",
       "name": "Fabricación de panel prefabricado",
       "output": "panel_prefabricado",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2344,6 +2449,7 @@
       "key": "ensamble_tuberia",
       "name": "Fabricación de tuberías",
       "output": "tuberia",
+      "installation_type": "componentes",
       "output_qty_cent": 8000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2362,6 +2468,7 @@
       "key": "ensamble_asiento",
       "name": "Fabricación de asientos",
       "output": "asiento",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2380,6 +2487,7 @@
       "key": "ensamble_panel_int",
       "name": "Fabricación de paneles interiores",
       "output": "panel_interior",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -2394,6 +2502,7 @@
       "key": "ensamble_neumatico",
       "name": "Fabricación de neumáticos",
       "output": "neumatico",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2408,6 +2517,7 @@
       "key": "ensamble_turbina",
       "name": "Ensamblaje de turbina",
       "output": "turbina",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -2426,6 +2536,7 @@
       "key": "ensamble_hidraulico",
       "name": "Ensamblaje de sistema hidráulico",
       "output": "sistema_hidraulico",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2448,6 +2559,7 @@
       "key": "ensamble_motor_aero",
       "name": "Ensamblaje de motor aeronáutico",
       "output": "motor_aeronautico",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -2470,6 +2582,7 @@
       "key": "ensamble_control",
       "name": "Ensamblaje de sistema de control",
       "output": "sistema_control",
+      "installation_type": "electronica",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2492,6 +2605,7 @@
       "key": "ensamble_tanque",
       "name": "Fabricación de tanque especializado",
       "output": "tanque_especializado",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2510,6 +2624,7 @@
       "key": "ensamble_refrig",
       "name": "Ensamblaje de sistema de refrigeración",
       "output": "sistema_refrigeracion",
+      "installation_type": "componentes",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -2532,6 +2647,7 @@
       "key": "ensamble_aislamiento",
       "name": "Producción de aislamiento térmico",
       "output": "aislamiento_termico",
+      "installation_type": "componentes",
       "output_qty_cent": 10000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2550,6 +2666,7 @@
       "key": "fab_camion_carga",
       "name": "Fabricación de camión de carga",
       "output": "camion_carga",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2596,6 +2713,7 @@
       "key": "fab_camion_cisterna",
       "name": "Fabricación de camión cisterna",
       "output": "camion_cisterna",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2630,6 +2748,7 @@
       "key": "fab_camion_refrigerado",
       "name": "Fabricación de camión refrigerado",
       "output": "camion_refrigerado",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2664,6 +2783,7 @@
       "key": "fab_locomotora",
       "name": "Fabricación de locomotora diésel",
       "output": "locomotora_diesel",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 21600,
       "wage_rate_cents_per_sec": 3,
@@ -2690,6 +2810,7 @@
       "key": "fab_vagon",
       "name": "Fabricación de vagón de carga",
       "output": "vagon_carga",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 10800,
       "wage_rate_cents_per_sec": 3,
@@ -2712,6 +2833,7 @@
       "key": "fab_barco_carga",
       "name": "Fabricación de barco de carga",
       "output": "barco_carga",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 21600,
       "wage_rate_cents_per_sec": 3,
@@ -2738,6 +2860,7 @@
       "key": "fab_barco_petrolero",
       "name": "Fabricación de barco petrolero",
       "output": "barco_petrolero",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 21600,
       "wage_rate_cents_per_sec": 3,
@@ -2768,6 +2891,7 @@
       "key": "fab_avion",
       "name": "Fabricación de avión de carga",
       "output": "avion_carga",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 21600,
       "wage_rate_cents_per_sec": 3,
@@ -2794,6 +2918,7 @@
       "key": "constr_planta_industrial",
       "name": "Construcción de planta industrial",
       "output": "planta_industrial",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2820,6 +2945,7 @@
       "key": "constr_refineria",
       "name": "Construcción de refinería",
       "output": "refineria",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2846,6 +2972,7 @@
       "key": "constr_central_electrica",
       "name": "Construcción de central eléctrica",
       "output": "central_electrica",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2872,6 +2999,7 @@
       "key": "constr_planta_ensamblaje",
       "name": "Construcción de planta de ensamblaje",
       "output": "planta_ensamblaje",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2898,6 +3026,7 @@
       "key": "constr_astillero",
       "name": "Construcción de astillero",
       "output": "astillero",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2920,6 +3049,7 @@
       "key": "constr_fabrica_aeronaves",
       "name": "Construcción de fábrica de aeronaves",
       "output": "fabrica_aeronaves",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2946,6 +3076,7 @@
       "key": "constr_planta_quimica",
       "name": "Construcción de planta química",
       "output": "planta_quimica",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -2972,6 +3103,7 @@
       "key": "constr_estacion",
       "name": "Construcción de estación de carga",
       "output": "estacion_carga",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -2994,6 +3126,7 @@
       "key": "constr_terminal",
       "name": "Construcción de terminal ferroviaria",
       "output": "terminal_ferroviaria",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3016,6 +3149,7 @@
       "key": "constr_puerto",
       "name": "Construcción de puerto comercial",
       "output": "puerto_comercial",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3042,6 +3176,7 @@
       "key": "constr_aeropuerto",
       "name": "Construcción de aeropuerto de carga",
       "output": "aeropuerto_carga",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3068,6 +3203,7 @@
       "key": "fab_automovil",
       "name": "Fabricación de automóvil",
       "output": "automovil",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3106,6 +3242,7 @@
       "key": "fab_refrigerador",
       "name": "Fabricación de refrigerador",
       "output": "refrigerador",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -3128,6 +3265,7 @@
       "key": "fab_lavadora",
       "name": "Fabricación de lavadora",
       "output": "lavadora",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -3150,6 +3288,7 @@
       "key": "fab_televisor",
       "name": "Fabricación de televisor",
       "output": "televisor",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -3172,6 +3311,7 @@
       "key": "fab_computadora",
       "name": "Fabricación de computadora",
       "output": "computadora",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -3198,6 +3338,7 @@
       "key": "fab_telefono",
       "name": "Fabricación de teléfono",
       "output": "telefono",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -3224,6 +3365,7 @@
       "key": "fab_excavadora",
       "name": "Fabricación de excavadora",
       "output": "excavadora",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -3250,6 +3392,7 @@
       "key": "fab_grua",
       "name": "Fabricación de grúa",
       "output": "grua",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -3272,6 +3415,7 @@
       "key": "fab_generador_ind",
       "name": "Fabricación de generador industrial",
       "output": "generador_industrial",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 10800,
       "wage_rate_cents_per_sec": 3,
@@ -3294,6 +3438,7 @@
       "key": "fab_panel_solar",
       "name": "Fabricación de panel solar",
       "output": "panel_solar",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 3,
@@ -3316,6 +3461,7 @@
       "key": "fab_turbina_eolica",
       "name": "Fabricación de turbina eólica",
       "output": "turbina_eolica",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 18000,
       "wage_rate_cents_per_sec": 3,
@@ -3338,6 +3484,7 @@
       "key": "fab_transformador_elec",
       "name": "Fabricación de transformador eléctrico",
       "output": "transformador_electrico",
+      "installation_type": "ensamblaje",
       "output_qty_cent": 100,
       "duration_sim_seconds": 10800,
       "wage_rate_cents_per_sec": 3,
@@ -3360,6 +3507,7 @@
       "key": "constr_edificio_res",
       "name": "Construcción de edificio residencial",
       "output": "edificio_residencial",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3390,6 +3538,7 @@
       "key": "constr_edificio_com",
       "name": "Construcción de edificio comercial",
       "output": "edificio_comercial",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3416,6 +3565,7 @@
       "key": "constr_fabrica_ligera",
       "name": "Construcción de fábrica urbana ligera",
       "output": "fabrica_urbana_ligera",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3442,6 +3592,7 @@
       "key": "constr_almacen",
       "name": "Construcción de almacén logístico",
       "output": "almacen_logistico",
+      "installation_type": "construccion",
       "output_qty_cent": 100,
       "duration_sim_seconds": 14400,
       "wage_rate_cents_per_sec": 3,
@@ -3468,6 +3619,7 @@
       "key": "elab_mantequilla",
       "name": "Elaboración de mantequilla",
       "output": "mantequilla",
+      "installation_type": "agroindustria",
       "output_qty_cent": 8000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -3482,6 +3634,7 @@
       "key": "elab_yogur",
       "name": "Elaboración de yogur",
       "output": "yogur",
+      "installation_type": "agroindustria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -3496,6 +3649,7 @@
       "key": "elab_chocolate",
       "name": "Elaboración de chocolate",
       "output": "chocolate",
+      "installation_type": "agroindustria",
       "output_qty_cent": 20000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 3,
@@ -3514,6 +3668,7 @@
       "key": "elab_textiles",
       "name": "Elaboración de textiles",
       "output": "textiles",
+      "installation_type": "agroindustria",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -3525,644 +3680,351 @@
       ]
     }
   ],
+  "installation_types": [
+    {
+      "key": "campo",
+      "name": "Campo agrícola",
+      "role": "primary_producer",
+      "unit_label": "hectareas",
+      "base_price_cents": 15000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "cultivo_trigo",
+        "cultivo_maiz",
+        "cultivo_tomate",
+        "cultivo_soya",
+        "cultivo_algodon",
+        "cultivo_cana",
+        "cultivo_cafe",
+        "cultivo_cacao",
+        "cosecha_frutas",
+        "cosecha_verduras",
+        "germinado_rapido"
+      ]
+    },
+    {
+      "key": "granja",
+      "name": "Granja ganadera",
+      "role": "primary_producer",
+      "unit_label": "corrales",
+      "base_price_cents": 18000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "ordena",
+        "esquila",
+        "cria_bovino",
+        "cria_cerdos",
+        "cria_pollos"
+      ]
+    },
+    {
+      "key": "mina",
+      "name": "Mina",
+      "role": "primary_producer",
+      "unit_label": "galerias",
+      "base_price_cents": 30000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "mineria_hierro",
+        "mineria_carbon",
+        "mineria_cobre",
+        "mineria_bauxita",
+        "mineria_litio",
+        "mineria_niquel",
+        "mineria_oro",
+        "mineria_plata",
+        "mineria_uranio",
+        "mineria_fosfato"
+      ]
+    },
+    {
+      "key": "cantera",
+      "name": "Cantera",
+      "role": "primary_producer",
+      "unit_label": "frentes",
+      "base_price_cents": 15000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "cantera_caliza",
+        "cantera_piedra",
+        "extraccion_arcilla",
+        "extraccion_arena",
+        "extraccion_sal"
+      ]
+    },
+    {
+      "key": "pozo",
+      "name": "Pozo de extracción",
+      "role": "primary_producer",
+      "unit_label": "perforaciones",
+      "base_price_cents": 30000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "pozo_petroleo",
+        "pozo_gas"
+      ]
+    },
+    {
+      "key": "bosque",
+      "name": "Bosque maderero",
+      "role": "primary_producer",
+      "unit_label": "parcelas",
+      "base_price_cents": 15000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "tala"
+      ]
+    },
+    {
+      "key": "planta_agua",
+      "name": "Planta de captación de agua",
+      "role": "primary_producer",
+      "unit_label": "captaciones",
+      "base_price_cents": 12000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "captacion_agua"
+      ]
+    },
+    {
+      "key": "agroindustria",
+      "name": "Agroindustria alimentaria",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 40000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "molienda",
+        "panaderia",
+        "nixtamalizado",
+        "tortilleria",
+        "queseria",
+        "salseria",
+        "planta_lactea",
+        "elab_mantequilla",
+        "elab_yogur",
+        "elab_chocolate",
+        "refino_azucar",
+        "prensado_aceite",
+        "procesado_carne",
+        "produccion_piensos",
+        "embotellado_bebidas",
+        "enlatado_conservas",
+        "hilado_fibra",
+        "elab_textiles"
+      ]
+    },
+    {
+      "key": "metalurgia",
+      "name": "Industria metalúrgica",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 45000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "fundicion_acero",
+        "fundicion_inox",
+        "refino_aluminio",
+        "refino_cobre",
+        "laminado_aluminio",
+        "laminado_lamina",
+        "laminado_viga",
+        "perfilado_aluminio",
+        "perfilado_metal",
+        "extrusion_tubo",
+        "trefilado_cable",
+        "bobinado_cobre"
+      ]
+    },
+    {
+      "key": "materiales",
+      "name": "Fábrica de materiales de construcción",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 40000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "fundicion_vidrio",
+        "templado_cristal",
+        "produccion_cristal_tecnico",
+        "coccion_ladrillos",
+        "produccion_cemento",
+        "mezcla_hormigon",
+        "produccion_asfalto"
+      ]
+    },
+    {
+      "key": "refineria",
+      "name": "Refinería petroquímica",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 50000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "refino_diesel",
+        "refino_gasolina",
+        "refino_queroseno",
+        "refino_lubricantes",
+        "produccion_lubricante_ind",
+        "sintesis_caucho",
+        "sintesis_plastico",
+        "sintesis_quimicos",
+        "polimerizacion",
+        "produccion_resinas",
+        "produccion_fertilizantes",
+        "produccion_silicio"
+      ]
+    },
+    {
+      "key": "aserradero",
+      "name": "Aserradero y papelera",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 38000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "aserrado",
+        "tratado_madera",
+        "produccion_contrachapado",
+        "produccion_celulosa",
+        "produccion_papel",
+        "produccion_carton"
+      ]
+    },
+    {
+      "key": "electronica",
+      "name": "Planta de electrónica",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 80000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "ensamble_circuito",
+        "ensamble_microchip",
+        "ensamble_sensor",
+        "ensamble_pantalla",
+        "ensamble_cableado",
+        "ensamble_bateria",
+        "ensamble_transformador",
+        "ensamble_motor_elec",
+        "ensamble_control"
+      ]
+    },
+    {
+      "key": "componentes",
+      "name": "Fábrica de componentes mecánicos",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 70000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "ensamble_motor",
+        "ensamble_motor_aero",
+        "ensamble_chasis",
+        "ensamble_caja",
+        "ensamble_frenos",
+        "ensamble_suspension",
+        "ensamble_rodamientos",
+        "ensamble_bomba",
+        "ensamble_hidraulico",
+        "ensamble_neumatico",
+        "ensamble_turbina",
+        "ensamble_generador",
+        "ensamble_tanque",
+        "ensamble_tuberia",
+        "ensamble_asiento",
+        "ensamble_panel_int",
+        "ensamble_panel_pref",
+        "ensamble_puerta",
+        "ensamble_ventana",
+        "ensamble_aislamiento",
+        "ensamble_refrig"
+      ]
+    },
+    {
+      "key": "ensamblaje",
+      "name": "Planta de ensamblaje final",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 90000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "fab_automovil",
+        "fab_avion",
+        "fab_barco_carga",
+        "fab_barco_petrolero",
+        "fab_camion_carga",
+        "fab_camion_cisterna",
+        "fab_camion_refrigerado",
+        "fab_computadora",
+        "fab_excavadora",
+        "fab_generador_ind",
+        "fab_grua",
+        "fab_lavadora",
+        "fab_locomotora",
+        "fab_panel_solar",
+        "fab_refrigerador",
+        "fab_telefono",
+        "fab_televisor",
+        "fab_transformador_elec",
+        "fab_turbina_eolica",
+        "fab_vagon"
+      ]
+    },
+    {
+      "key": "construccion",
+      "name": "Constructora de infraestructura",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 90000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "constr_aeropuerto",
+        "constr_almacen",
+        "constr_astillero",
+        "constr_central_electrica",
+        "constr_edificio_com",
+        "constr_edificio_res",
+        "constr_estacion",
+        "constr_fabrica_aeronaves",
+        "constr_fabrica_ligera",
+        "constr_planta_ensamblaje",
+        "constr_planta_industrial",
+        "constr_planta_quimica",
+        "constr_puerto",
+        "constr_refineria",
+        "constr_terminal"
+      ]
+    }
+  ],
   "roles": {
     "primary_producer": {
-      "initial_agents": 3,
-      "capacities": [
-        {
-          "recipe": "cultivo_trigo",
-          "installations": 2
-        },
-        {
-          "recipe": "cultivo_maiz",
-          "installations": 2
-        },
-        {
-          "recipe": "ordena",
-          "installations": 2
-        },
-        {
-          "recipe": "cultivo_tomate",
-          "installations": 2
-        },
-        {
-          "recipe": "germinado_rapido",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_hierro",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_carbon",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_cobre",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_bauxita",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_litio",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_niquel",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_oro",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_plata",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_uranio",
-          "installations": 1
-        },
-        {
-          "recipe": "extraccion_arena",
-          "installations": 1
-        },
-        {
-          "recipe": "cantera_piedra",
-          "installations": 1
-        },
-        {
-          "recipe": "cantera_caliza",
-          "installations": 1
-        },
-        {
-          "recipe": "extraccion_arcilla",
-          "installations": 1
-        },
-        {
-          "recipe": "mineria_fosfato",
-          "installations": 1
-        },
-        {
-          "recipe": "extraccion_sal",
-          "installations": 1
-        },
-        {
-          "recipe": "pozo_petroleo",
-          "installations": 1
-        },
-        {
-          "recipe": "pozo_gas",
-          "installations": 1
-        },
-        {
-          "recipe": "captacion_agua",
-          "installations": 1
-        },
-        {
-          "recipe": "tala",
-          "installations": 1
-        },
-        {
-          "recipe": "cultivo_soya",
-          "installations": 1
-        },
-        {
-          "recipe": "cultivo_algodon",
-          "installations": 1
-        },
-        {
-          "recipe": "cultivo_cana",
-          "installations": 1
-        },
-        {
-          "recipe": "cultivo_cafe",
-          "installations": 1
-        },
-        {
-          "recipe": "cultivo_cacao",
-          "installations": 1
-        },
-        {
-          "recipe": "cosecha_frutas",
-          "installations": 1
-        },
-        {
-          "recipe": "cosecha_verduras",
-          "installations": 1
-        },
-        {
-          "recipe": "cria_bovino",
-          "installations": 1
-        },
-        {
-          "recipe": "cria_cerdos",
-          "installations": 1
-        },
-        {
-          "recipe": "cria_pollos",
-          "installations": 1
-        },
-        {
-          "recipe": "esquila",
-          "installations": 1
-        }
-      ]
+      "initial_agents": 3
     },
     "transformer": {
-      "initial_agents": 3,
-      "capacities": [
-        {
-          "recipe": "molienda",
-          "installations": 2
-        },
-        {
-          "recipe": "panaderia",
-          "installations": 1
-        },
-        {
-          "recipe": "nixtamalizado",
-          "installations": 2
-        },
-        {
-          "recipe": "tortilleria",
-          "installations": 1
-        },
-        {
-          "recipe": "queseria",
-          "installations": 1
-        },
-        {
-          "recipe": "salseria",
-          "installations": 1
-        },
-        {
-          "recipe": "fundicion_acero",
-          "installations": 1
-        },
-        {
-          "recipe": "fundicion_inox",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_aluminio",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_cobre",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_cemento",
-          "installations": 1
-        },
-        {
-          "recipe": "mezcla_hormigon",
-          "installations": 1
-        },
-        {
-          "recipe": "fundicion_vidrio",
-          "installations": 1
-        },
-        {
-          "recipe": "coccion_ladrillos",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_asfalto",
-          "installations": 1
-        },
-        {
-          "recipe": "sintesis_plastico",
-          "installations": 1
-        },
-        {
-          "recipe": "sintesis_caucho",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_fertilizantes",
-          "installations": 1
-        },
-        {
-          "recipe": "sintesis_quimicos",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_silicio",
-          "installations": 1
-        },
-        {
-          "recipe": "aserrado",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_celulosa",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_papel",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_carton",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_azucar",
-          "installations": 1
-        },
-        {
-          "recipe": "prensado_aceite",
-          "installations": 1
-        },
-        {
-          "recipe": "procesado_carne",
-          "installations": 1
-        },
-        {
-          "recipe": "planta_lactea",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_gasolina",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_diesel",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_queroseno",
-          "installations": 1
-        },
-        {
-          "recipe": "refino_lubricantes",
-          "installations": 1
-        },
-        {
-          "recipe": "laminado_viga",
-          "installations": 1
-        },
-        {
-          "recipe": "laminado_lamina",
-          "installations": 1
-        },
-        {
-          "recipe": "extrusion_tubo",
-          "installations": 1
-        },
-        {
-          "recipe": "perfilado_metal",
-          "installations": 1
-        },
-        {
-          "recipe": "laminado_aluminio",
-          "installations": 1
-        },
-        {
-          "recipe": "perfilado_aluminio",
-          "installations": 1
-        },
-        {
-          "recipe": "trefilado_cable",
-          "installations": 1
-        },
-        {
-          "recipe": "bobinado_cobre",
-          "installations": 1
-        },
-        {
-          "recipe": "templado_cristal",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_cristal_tecnico",
-          "installations": 1
-        },
-        {
-          "recipe": "polimerizacion",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_resinas",
-          "installations": 1
-        },
-        {
-          "recipe": "hilado_fibra",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_lubricante_ind",
-          "installations": 1
-        },
-        {
-          "recipe": "tratado_madera",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_contrachapado",
-          "installations": 1
-        },
-        {
-          "recipe": "enlatado_conservas",
-          "installations": 1
-        },
-        {
-          "recipe": "produccion_piensos",
-          "installations": 1
-        },
-        {
-          "recipe": "embotellado_bebidas",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_chasis",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_motor",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_caja",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_suspension",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_frenos",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_rodamientos",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_bomba",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_motor_elec",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_transformador",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_generador",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_bateria",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_cableado",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_circuito",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_microchip",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_sensor",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_pantalla",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_ventana",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_puerta",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_panel_pref",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_tuberia",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_asiento",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_panel_int",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_neumatico",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_turbina",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_hidraulico",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_motor_aero",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_control",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_tanque",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_refrig",
-          "installations": 1
-        },
-        {
-          "recipe": "ensamble_aislamiento",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_camion_carga",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_camion_cisterna",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_camion_refrigerado",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_locomotora",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_vagon",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_barco_carga",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_barco_petrolero",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_avion",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_planta_industrial",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_refineria",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_central_electrica",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_planta_ensamblaje",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_astillero",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_fabrica_aeronaves",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_planta_quimica",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_estacion",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_terminal",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_puerto",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_aeropuerto",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_automovil",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_refrigerador",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_lavadora",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_televisor",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_computadora",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_telefono",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_excavadora",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_grua",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_generador_ind",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_panel_solar",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_turbina_eolica",
-          "installations": 1
-        },
-        {
-          "recipe": "fab_transformador_elec",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_edificio_res",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_edificio_com",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_fabrica_ligera",
-          "installations": 1
-        },
-        {
-          "recipe": "constr_almacen",
-          "installations": 1
-        },
-        {
-          "recipe": "elab_mantequilla",
-          "installations": 1
-        },
-        {
-          "recipe": "elab_yogur",
-          "installations": 1
-        },
-        {
-          "recipe": "elab_chocolate",
-          "installations": 1
-        },
-        {
-          "recipe": "elab_textiles",
-          "installations": 1
-        }
-      ]
+      "initial_agents": 3
     },
     "consumer": {
-      "initial_agents": 2,
-      "capacities": []
+      "initial_agents": 2
     },
     "trader": {
-      "initial_agents": 2,
-      "capacities": []
+      "initial_agents": 2
     }
   }
 }
