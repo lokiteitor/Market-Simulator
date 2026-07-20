@@ -148,13 +148,21 @@ Solo existen cuatro operaciones que cambian la masa monetaria o el capital del b
 
 | Flujo | Efecto | Dónde |
 |-------|--------|-------|
-| **Fees de trading** | Se **anotan en `fee_ledger`** (append-only) en la misma tx del matching; un sweeper del Worker los pliega al capital del banco (ADR-019). No cambian la masa (el dinero sigue en el circuito). | `order-service.ts` → `fee_ledger`; `fee-ledger-sweeper.ts` |
+| **Fees de trading** | Se **reparten**: `CITY_FEE_SHARE_BPS` va a `income_ledger` (tasa de consumo → ciudades) y el resto a `fee_ledger`, que un sweeper pliega al capital del banco (ADR-019). No cambian la masa (el dinero sigue en el circuito). | `order-service.ts` → `fee_ledger` + `income_ledger` |
+| **Salarios** | Se debitan upfront del productor/transformador y se **anotan íntegros en `income_ledger`**; el `city-income-sweeper` los reparte entre las ciudades. **Ya NO se destruyen.** | `transformation-service.ts` → `income_ledger`; `city-income-sweeper.ts` |
 | **`sell_gold`** | `money_issued += total`; el agente cobra dinero nuevo. | `bank-service.ts` |
 | **`buy_gold`** | `money_burned += total`; el pago del agente desaparece. | `bank-service.ts` |
 | **Registro dinámico** | Capital semilla financiado con capital del banco + acuñación respaldada (ver §5). | `agent-service.ts` |
 
-Todo lo demás (trades, salarios, transformaciones) solo **mueve** dinero entre agentes; los
-salarios se pagan upfront y quedan fuera del circuito de agentes pero no alteran los
+> **Cambio de modelo — flujo circular.** Antes, los **salarios eran el ÚNICO sumidero de
+> dinero** del sistema: se descontaban al iniciar un proceso y no se acreditaban a nadie.
+> Combinado con que los consumidores solo compran (y los bienes finales se retiran del
+> sistema), la demanda se drenaba hasta apagar la economía. Ahora los salarios y una
+> fracción de los fees se reciclan hacia las **ciudades** (rol `city`), que los gastan
+> comprando bienes finales, cerrando el ciclo *firmas → hogares → firmas*. El único
+> sumidero que queda es `buy_gold`.
+
+Todo lo demás (trades, transformaciones) solo **mueve** dinero entre agentes y no altera los
 contadores del patrón oro.
 
 ---

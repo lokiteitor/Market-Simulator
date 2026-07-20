@@ -130,3 +130,25 @@ export const productionUnitsTotal = new Counter({
   labelNames: ["product", "product_id"] as const,
   registers: [register],
 });
+
+/**
+ * Ingreso recurrente repartido a las ciudades por el city-income-sweeper
+ * (flujo circular, ADR-020). `rate()` sobre este contador es el CAUDAL del
+ * ciclo firmas→hogares: si cae a 0 con actividad económica viva, el sweeper
+ * está parado o no hay ciudades activas, y la demanda se apagará.
+ */
+export const cityIncomeDistributedCentsTotal = new Counter({
+  name: "city_income_distributed_cents_total",
+  help: "Centavos de ingreso recurrente repartidos a las ciudades (flujo circular)",
+  registers: [register],
+});
+
+/**
+ * Ciudades acreditadas por el sweeper (acumulado). Junto con el contador de
+ * centavos permite calcular el ticket medio por ciudad y por reparto.
+ */
+export const cityIncomePayoutsTotal = new Counter({
+  name: "city_income_payouts_total",
+  help: "Acreditaciones individuales a ciudades hechas por el city-income-sweeper",
+  registers: [register],
+});

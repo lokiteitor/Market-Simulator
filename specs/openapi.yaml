@@ -1229,13 +1229,18 @@ components:
     AgentRole:
       type: string
       description: |
-        Rol de un agente. `admin` (solo-monitoreo) y `bank` (banco central del
-        patrón oro) NO son registrables vía /auth/register; ver RegisterableRole.
-      enum: [primary_producer, transformer, consumer, trader, admin, bank]
+        Rol de un agente. `admin` (solo-monitoreo), `bank` (banco central del
+        patrón oro) y `city` (ciudad-consumidor sembrada) NO son registrables vía
+        /auth/register; ver RegisterableRole. A diferencia de admin/bank, `city`
+        SÍ participa del mercado: es la demanda final urbana, la siembra el
+        servidor con credenciales y la manejan los bots de `bots-ciudad`.
+      enum: [primary_producer, transformer, consumer, trader, admin, bank, city]
 
     RegisterableRole:
       type: string
-      description: Roles admitidos por POST /auth/register (roles de mercado).
+      description: |
+        Roles admitidos por POST /auth/register (roles de mercado). Excluye
+        `admin`, `bank` y `city`: un rol no listado aquí se rechaza con 400.
       enum: [primary_producer, transformer, consumer, trader]
 
     AgentStatus:
@@ -1685,6 +1690,7 @@ components:
         - gold_converted
         - money_issued
         - deposit_depleted
+        - city_income_distributed
 
     Event:
       type: object
@@ -1841,6 +1847,7 @@ x-websocket-channel:
           - agent_bankrupt       # broadcast
           - trade_printed        # por suscripción: cada trade de un producto suscrito (payload = Trade)
           - gold_converted       # personal: conversión en la ventanilla del banco (payload = GoldConversion)
+          - city_income          # personal (solo rol `city`): ingreso recurrente del flujo circular (payload = { amount_cents })
       occurred_at: { type: string, format: date-time }
       payload:
         type: object

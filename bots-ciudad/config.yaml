@@ -1,0 +1,230 @@
+server:
+  base_url: "http://192.168.0.64:9080/v1"
+  ws_url: "ws://192.168.0.64:9080/v1/ws"
+
+logging:
+  level: "info"
+  format: "text" # text or json
+
+retry:
+  max_attempts: 5
+  initial_backoff_ms: 1000
+  max_backoff_ms: 30000
+
+# Factor de tiempo de simulacion del servidor (env SIM_TIME_FACTOR, default 5).
+# El servidor cobra el salario como wage_rate_cents_per_sec * segundos_SIMULADOS,
+# pero /catalog/recipes expone duration_seconds ya convertido a segundos REALES.
+# Los bots multiplican por este factor para estimar el costo laboral correctamente.
+sim_time_factor: 5
+
+# Si el servidor rechaza una accion con 422 insufficient_capital, el bot duerme
+# este backoff (segundos reales), descarta el resto del lote y rebasea su
+# estado con un snapshot fresco. Clave en modo swarm: un bot sin capital deja
+# de martillar la API y cede el lugar al siguiente. 0 = default del SDK (60s).
+insufficient_capital_backoff_seconds: 120
+
+# --- Configuración específica de bots-ciudad ---
+# Las ciudades son un conjunto FIJO de cuentas (capitales del mundo) sembradas
+# por el backend. NO hay rotación ni scale: se corren TODAS a la vez y de forma
+# permanente (modelan la demanda urbana). El binario es de instancia única
+# (flock) porque los usernames son literales y dos procesos colisionarían en la
+# sesión (refresh token de un solo uso).
+
+# Lista canónica de ciudades (username + population_weight). MISMA fuente que
+# usa el seed del backend, para no divergir. Ruta relativa al cwd del binario.
+cities_path: "../infra/cities.json"
+
+# Contraseña compartida con la que el backend siembra las credenciales de las
+# ciudades (env CITY_SEED_PASSWORD del backend). DEBE coincidir.
+city_password: "city-dev-password"
+
+# Intervalo de tick de cada ciudad (segundos reales).
+tick_interval_seconds: 5
+
+# Jitter máximo de arranque (segundos) para no conectar las 50 a la vez.
+startup_jitter_seconds: 20
+
+# Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.
+market:
+  # Peso del ultimo trade en la EMA del valor justo (0-1).
+  ema_alpha: 0.25
+  # Banda del fair value alrededor del precio base: evita fugas de precio por
+  # retroalimentacion bot-a-bot. fair queda en [base*lo, base*hi].
+  fair_band_lo: 0.4
+  fair_band_hi: 2.5
+  # Frescura del cache de top-of-book (segundos) antes de refetchear.
+  top_ttl_seconds: 12
+  # Llamadas REST de top-of-book permitidas por bot por tick. Con enjambres
+  # grandes (-scale) este numero es lo que protege al servidor.
+  rest_budget_per_tick: 4
+  # Ventana (segundos) para considerar que un producto tiene mercado "vivo".
+  recent_window_seconds: 600
+
+# Precios base (cents/unidad) para evaluar trades y margenes.
+# Generados por propagacion de costo desde infra/seed-config.json:
+#   costo_unit = (wage_rate*duration_sim + sum(insumos)) * 100 / output_qty_cent
+# Cubre los 155 productos del catalogo (materias primas, intermedios y finales).
+prices:
+  # --- Materias primas ---
+  trigo: 14
+  maiz: 12
+  leche: 36
+  tomate: 18
+  germinado: 6
+  hierro: 14
+  carbon: 14
+  mineral_cobre: 14
+  bauxita: 14
+  litio: 144
+  niquel: 24
+  oro: 720
+  plata: 480
+  uranio: 720
+  arena: 7
+  piedra: 7
+  caliza: 7
+  arcilla: 7
+  fosfato: 18
+  sal: 9
+  petroleo: 29
+  gas_natural: 36
+  agua: 2
+  troncos: 18
+  soya: 14
+  algodon: 18
+  cana_azucar: 12
+  cafe: 36
+  cacao: 36
+  frutas: 14
+  verduras: 14
+  ganado_bovino: 1440
+  cerdos: 720
+  pollos: 72
+  lana: 36
+  # --- Intermedios ---
+  harina: 63
+  masa: 37
+  acero: 45
+  acero_inoxidable: 93
+  aluminio: 72
+  cobre_refinado: 90
+  cemento: 29
+  hormigon: 24
+  vidrio: 34
+  ladrillos: 19
+  asfalto: 38
+  plastico: 63
+  caucho_sintetico: 63
+  fertilizantes: 51
+  productos_quimicos: 51
+  silicio: 127
+  tablas: 48
+  celulosa: 48
+  papel: 77
+  carton: 108
+  azucar: 66
+  aceite_vegetal: 86
+  carne_procesada: 72
+  lacteos: 72
+  gasolina: 75
+  diesel: 75
+  queroseno: 94
+  lubricantes: 125
+  viga_acero: 90
+  lamina_acero: 90
+  tubo_acero: 95
+  perfil_metalico: 90
+  lamina_aluminio: 138
+  perfil_aluminio: 138
+  cable_cobre: 148
+  bobina_cobre: 159
+  cristal_plano: 77
+  cristal_tecnico: 117
+  polimeros: 110
+  resinas: 102
+  fibra_sintetica: 124
+  lubricante_industrial: 179
+  madera_tratada: 93
+  contrachapado: 99
+  conservas: 36
+  piensos: 36
+  bebidas: 41
+  chasis: 28800
+  motor_combustion: 34907
+  caja_cambios: 19800
+  suspension: 20801
+  frenos: 18000
+  rodamientos: 8775
+  bomba_industrial: 21309
+  motor_electrico: 24819
+  transformador: 29354
+  generador: 55607
+  bateria: 21787
+  cableado: 206
+  circuito_impreso: 18137
+  microchip: 41264
+  sensor: 34337
+  pantalla: 37841
+  ventana: 13063
+  puerta_industrial: 11167
+  panel_prefabricado: 14378
+  tuberia: 177
+  asiento: 20826
+  panel_interior: 15216
+  neumatico: 19368
+  turbina: 37800
+  sistema_hidraulico: 44921
+  motor_aeronautico: 78164
+  sistema_control: 171525
+  tanque_especializado: 31765
+  sistema_refrigeracion: 47359
+  aislamiento_termico: 189
+  # --- Consumo final ---
+  pan: 158
+  tortilla: 76
+  queso: 1980
+  salsa: 90
+  camion_carga: 489772
+  camion_cisterna: 458513
+  camion_refrigerado: 458477
+  locomotora_diesel: 390546
+  vagon_carga: 123300
+  barco_carga: 543281
+  barco_petrolero: 660575
+  avion_carga: 611555
+  planta_industrial: 115500
+  refineria: 519343
+  central_electrica: 274931
+  planta_ensamblaje: 452804
+  astillero: 333366
+  fabrica_aeronaves: 395183
+  planta_quimica: 488770
+  estacion_carga: 69664
+  terminal_ferroviaria: 407808
+  puerto_comercial: 174960
+  aeropuerto_carga: 599693
+  automovil: 413932
+  refrigerador: 86425
+  lavadora: 220194
+  televisor: 78845
+  computadora: 143686
+  telefono: 135229
+  excavadora: 361523
+  grua: 189998
+  generador_industrial: 100469
+  panel_solar: 45785
+  turbina_eolica: 272325
+  transformador_electrico: 73454
+  edificio_residencial: 146798
+  edificio_comercial: 206762
+  fabrica_urbana_ligera: 233844
+  almacen_logistico: 96633
+  mantequilla: 270
+  yogur: 72
+  chocolate: 141
+  textiles: 96
+
+# bots-ciudad NO usa una lista manual de bots ni auto_register: las cuentas de
+# ciudad las siembra el backend y este binario solo hace LOGIN (login-only) con
+# las credenciales de infra/cities.json + city_password. La lista de ciudades se
+# lee de `cities_path` (arriba), no de aquí.

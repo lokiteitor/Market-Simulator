@@ -150,6 +150,17 @@ export interface DepositDepletedPayload {
   process_id: string;
 }
 
+/**
+ * El city-income-sweeper repartió un lote del income_ledger entre las ciudades
+ * activas (flujo circular). Evento del sistema (agentId NULL).
+ */
+export interface CityIncomeDistributedPayload {
+  /** Total repartido en esta pasada (centavos). */
+  total_cents: number;
+  /** Nº de ciudades que recibieron. */
+  city_count: number;
+}
+
 /** Mapa tipo de evento → payload, para uso genérico por los módulos. */
 export interface EventPayloads {
   agent_registered: AgentRegisteredPayload;
@@ -165,4 +176,5 @@ export interface EventPayloads {
   gold_converted: GoldConvertedPayload;
   money_issued: MoneyIssuedPayload;
   deposit_depleted: DepositDepletedPayload;
+  city_income_distributed: CityIncomeDistributedPayload;
 }

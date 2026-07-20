@@ -26,9 +26,11 @@ import { logger } from "./observability/logger";
 import { register, workerJobsFailed, workerJobsProcessed } from "./observability/metrics";
 import { runOrderExpirySweep } from "./workers/order-expiry-sweeper";
 import { runFeeLedgerSweep } from "./workers/fee-ledger-sweeper";
+import { runCityIncomeSweep } from "./workers/city-income-sweeper";
 import {
   ORDER_EXPIRY_SWEEP_QUEUE,
   FEE_LEDGER_SWEEP_QUEUE,
+  CITY_INCOME_SWEEP_QUEUE,
   REFRESH_TOKEN_CLEANUP_QUEUE,
   SNAPSHOT_QUEUE,
   TRANSFORMATION_SWEEP_QUEUE,
@@ -63,12 +65,14 @@ const repeatJobOpts: JobsOptions = {
 const transformationQueue = new Queue(TRANSFORMATION_SWEEP_QUEUE, { connection });
 const orderExpiryQueue = new Queue(ORDER_EXPIRY_SWEEP_QUEUE, { connection });
 const feeLedgerQueue = new Queue(FEE_LEDGER_SWEEP_QUEUE, { connection });
+const cityIncomeQueue = new Queue(CITY_INCOME_SWEEP_QUEUE, { connection });
 const cleanupQueue = new Queue(REFRESH_TOKEN_CLEANUP_QUEUE, { connection });
 const goldIssuanceQueue = new Queue(GOLD_ISSUANCE_QUEUE, { connection });
 const queues = [
   transformationQueue,
   orderExpiryQueue,
   feeLedgerQueue,
+  cityIncomeQueue,
   cleanupQueue,
   goldIssuanceQueue,
 ];
@@ -87,6 +91,11 @@ await feeLedgerQueue.upsertJobScheduler(
   "fee-ledger-sweep-every",
   { every: config.sweeps.feeLedgerIntervalMs },
   { name: "fee-ledger-sweep", opts: repeatJobOpts },
+);
+await cityIncomeQueue.upsertJobScheduler(
+  "city-income-sweep-every",
+  { every: config.sweeps.cityIncomeIntervalMs },
+  { name: "city-income-sweep", opts: repeatJobOpts },
 );
 await cleanupQueue.upsertJobScheduler(
   "refresh-token-cleanup-daily",
@@ -142,6 +151,14 @@ const feeLedgerWorker = instrument(
   FEE_LEDGER_SWEEP_QUEUE,
 );
 
+const cityIncomeWorker = instrument(
+  new Worker(CITY_INCOME_SWEEP_QUEUE, async () => runCityIncomeSweep(config.sweeps.batchSize), {
+    connection,
+    concurrency: 1,
+  }),
+  CITY_INCOME_SWEEP_QUEUE,
+);
+
 const snapshotWorker = instrument(
   new Worker<SnapshotJobData, SnapshotResult>(
     SNAPSHOT_QUEUE,
@@ -174,6 +191,7 @@ const workers = [
   transformationWorker,
   orderExpiryWorker,
   feeLedgerWorker,
+  cityIncomeWorker,
   snapshotWorker,
   cleanupWorker,
   goldIssuanceWorker,

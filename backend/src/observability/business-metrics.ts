@@ -12,10 +12,11 @@
 import { Gauge } from "prom-client";
 import { sql } from "drizzle-orm";
 import { withTransaction, type Tx } from "../db";
-import { agent, transformationProcess } from "../db/schema";
+import { agent } from "../db/schema";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
 import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
+import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
 import {
   monitoringRepository,
   type AgentsByRoleView,
@@ -37,7 +38,13 @@ interface GoldView {
   depositRemainingCent: number | null;
   moneyIssuedCents: number;
   moneyBurnedCents: number;
-  /** Σ capital TODOS + Σ salarios − inicial − emitido + destruido (debe ser 0). */
+  /**
+   * Σ capital TODOS + fees pendientes + ingreso de ciudades pendiente
+   * − inicial − emitido + destruido (debe ser 0). Los salarios YA NO figuran:
+   * dejaron de destruirse y se reciclan íntegros a las ciudades (flujo
+   * circular), así que viven o en income_ledger (en tránsito) o en el capital
+   * de las ciudades (ya dentro de Σ capital).
+   */
   conservationDeltaCents: number;
 }
 
@@ -54,16 +61,13 @@ async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
       >`coalesce(sum(${agent.capitalAvailable} + ${agent.capitalReserved}), 0)`,
     })
     .from(agent);
-  const wageRows = await tx
-    .select({
-      wages: sql<string | number>`coalesce(sum(${transformationProcess.wagePaidCents}), 0)`,
-    })
-    .from(transformationProcess);
   const allMoney = Number(moneyRows[0]?.allMoney ?? 0);
-  const wages = Number(wageRows[0]?.wages ?? 0);
   // Fees anotados en fee_ledger aún no plegados a la fila del banco (ADR-019):
   // parte del saldo del banco y de la masa monetaria del invariante.
   const pendingFees = await feeLedgerRepository.sumUnmaterialized(tx);
+  // Ingreso de ciudades ya debitado del pagador (salario reciclado + tasa) pero
+  // aún no repartido: dinero EN TRÁNSITO, sigue dentro del sistema.
+  const pendingIncome = await incomeLedgerRepository.sumUnmaterialized(tx);
   return {
     parityCentsPerUnit: gs.parityCentsPerUnit,
     windowBidCents: gs.windowBidCents,
@@ -77,7 +81,7 @@ async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
     conservationDeltaCents:
       allMoney +
       pendingFees +
-      wages -
+      pendingIncome -
       gs.initialMoneyCents -
       gs.moneyIssuedCents +
       gs.moneyBurnedCents,
@@ -89,6 +93,8 @@ interface BusinessSnapshot {
   byRole: AgentsByRoleView[];
   market: MarketProductView[];
   gold: GoldView | null;
+  /** Ingreso de ciudades pendiente de repartir, por fuente (`wage` / `tax`). */
+  cityIncomePending: Array<{ source: string; cents: number }>;
 }
 
 const CACHE_TTL_MS = 2_000;
@@ -108,6 +114,7 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
           byRole: await monitoringRepository.agentsByRole(tx),
           market: await monitoringRepository.marketByProduct(tx),
           gold: await fetchGoldView(tx),
+          cityIncomePending: await incomeLedgerRepository.sumUnmaterializedBySource(tx),
         }),
         { isolationLevel: "repeatable read" },
       );
@@ -326,6 +333,34 @@ new Gauge({
     const s = await fetchSnapshot();
     if (s === null || s.gold === null) return;
     this.set(s.gold.conservationDeltaCents);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Flujo circular de ingreso de ciudades (ADR-020).
+//
+// El capital y el nº de ciudades NO necesitan gauges propios: el rol `city`
+// cuenta como rol de mercado, así que ya salen en
+// market_total_capital_cents{role="city"} y market_active_agents{role="city"}.
+// Ese primero es LA métrica de salud del modelo: si cae de forma sostenida, la
+// demanda se está drenando y la economía va camino de apagarse.
+// ---------------------------------------------------------------------------
+
+new Gauge({
+  name: "market_city_income_pending_cents",
+  help: "Ingreso de ciudades debitado al pagador y aún no repartido, por fuente (dinero en tránsito)",
+  labelNames: ["source"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    // Emitir siempre ambas series (0 incluido): que `tax` desaparezca del
+    // gráfico y que valga 0 son cosas distintas al diagnosticar.
+    const bySource = new Map(s.cityIncomePending.map((r) => [r.source, r.cents]));
+    for (const source of ["wage", "tax"]) {
+      this.set({ source }, bySource.get(source) ?? 0);
+    }
   },
 });
 

@@ -67,10 +67,10 @@ El modelo cubre los siguientes dominios:
 ## 📊 Estadísticas Generales
 
 ```
-Total de Tablas: 22
-Total de Enums: 8
-Total de Índices: 19 (excluyendo PKs y UNIQUE de columnas)
-Total de Relaciones (FK): 31
+Total de Tablas: 23
+Total de Enums: 9
+Total de Índices: 20 (excluyendo PKs y UNIQUE de columnas)
+Total de Relaciones (FK): 33
 ```
 
 Desglose por dominio:
@@ -81,6 +81,7 @@ Desglose por dominio:
 - Procesos: 1 tabla (`transformation_process`)
 - Inventario y trazabilidad: 4 tablas (`inventory_lot`, `trade_lot_consumption`, `transformation_lot_consumption`, `conversion_lot_consumption`)
 - Patrón oro: 4 tablas (`gold_standard`, `gold_conversion`, `resource_deposit`, `fee_ledger`)
+- Flujo circular de ingreso: 1 tabla (`income_ledger`)
 - Event log: 1 tabla (`event_log`)
 - Snapshots: 3 tablas (`market_snapshot`, `market_snapshot_agent_capital`, `market_snapshot_product`)
 - Configuración: ninguna en BD — cargada desde `.env` al arranque del proceso.
@@ -267,7 +268,10 @@ CREATE TYPE agent_role AS ENUM (
     'consumer',
     'trader',
     'admin',    -- solo-monitoreo (panel admin); no registrable, no opera el mercado
-    'bank'      -- banco central del patrón oro; agente único del seed, sin credenciales
+    'bank',     -- banco central del patrón oro; agente único del seed, sin credenciales
+    'city'      -- ciudad-consumidor: demanda final urbana. Sembrada CON credenciales
+                -- (login de bots-ciudad), NO registrable por humanos, pero SÍ participa
+                -- del mercado. Recibe ingreso recurrente vía income_ledger.
 );
 
 CREATE TYPE agent_status AS ENUM (
@@ -284,6 +288,9 @@ CREATE TABLE agent (
     capital_available   BIGINT          NOT NULL DEFAULT 0 CHECK (capital_available >= 0),
     capital_reserved    BIGINT          NOT NULL DEFAULT 0 CHECK (capital_reserved >= 0),
     seed_capital        BIGINT          NOT NULL,
+    -- Solo lo usan las ciudades (rol 'city'): escala su capital semilla y su
+    -- parte del reparto de ingreso recurrente. NULL para el resto de roles.
+    population_weight   BIGINT,
     registered_at       TIMESTAMPTZ     NOT NULL DEFAULT now(),
     bankrupt_at         TIMESTAMPTZ
 );
@@ -332,6 +339,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 | `capital_available` | `BIGINT`        | Capital líquido disponible, en centavos. Disponible para reservar en órdenes de compra o pagar salarios.                                 |
 | `capital_reserved`  | `BIGINT`        | Capital reservado en órdenes de compra activas, en centavos. Se libera al cancelar/expirar la orden o se descuenta al ejecutarse.        |
 | `seed_capital`      | `BIGINT`        | Capital inicial recibido al registrarse, en centavos. Sirve para analítica histórica.                                                    |
+| `population_weight` | `BIGINT`        | Solo rol `city`: población metropolitana aproximada (miles). Escala el capital semilla (`∝ weight`) y el reparto del ingreso recurrente. `NULL` en el resto de roles. |
 | `registered_at`     | `TIMESTAMPTZ`   | Timestamp de alta del agente.                                                                                                            |
 | `bankrupt_at`       | `TIMESTAMPTZ`   | Timestamp de quiebra, `NULL` si está activo.                                                                                             |
 
@@ -1093,7 +1101,7 @@ CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialize
 | -------------- | ------------- | --------------------------------------------------------------------------- |
 | `fee_id`       | `UUID`        | Identificador del registro (UUIDv7, monotónico; el sweeper reclama por orden de `fee_id`). |
 | `trade_id`     | `UUID`        | Trade que generó el fee (`fee_buyer_cents + fee_seller_cents`).              |
-| `amount_cents` | `BIGINT`      | Fee total del trade acreditable al banco (`> 0`).                           |
+| `amount_cents` | `BIGINT`      | Parte del fee del trade acreditable al banco (`> 0`). **No** es el fee total: `CITY_FEE_SHARE_BPS` se desvía a `income_ledger` (tasa de consumo del flujo circular). |
 | `materialized` | `BOOLEAN`     | `true` una vez plegado al capital del banco por el sweeper.                  |
 | `occurred_at`  | `TIMESTAMPTZ` | Momento del INSERT (post-matching).                                         |
 
@@ -1102,12 +1110,67 @@ CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialize
 - Append-only: el hot path solo INSERTA; el único que hace `UPDATE` (a `materialized`) es el sweeper (worker `concurrency:1`, sin carreras).
 - Si la corrida no tiene `gold_standard` (sin banco), no se anota nada (los fees se evaporan como en el diseño previo).
 - La financiación de semilla (`agent-service.ts`) materializa primero los pendientes bajo `gold_standard FOR UPDATE` para que su débito condicional vea el saldo real del banco.
+- **Split del fee:** desde el flujo circular, el fee cobrado se reparte entre este ledger (banco) y `income_ledger` (ciudades) según `CITY_FEE_SHARE_BPS`. `bank_share + city_share == fee` exacto (`splitFeeForCity`), así que el split **no** crea ni destruye dinero.
+
+---
+
+## 🔄 Flujo Circular de Ingreso (Ciudades)
+
+### 19. income_ledger
+
+**Descripción**: ledger append-only del **ingreso recurrente de las ciudades** (rol `city`), gemelo estructural de `fee_ledger` y misma motivación (ADR-019: nada de filas calientes globales). Es la pieza que **cierra el flujo circular de dinero**: antes, los salarios eran el ÚNICO sumidero del sistema (se debitaban del productor/transformador y no se acreditaban a nadie, desapareciendo de la masa monetaria), y las ciudades solo gastaban hasta quedarse sin capital. Ahora:
+
+- **`wage`**: el salario se debita igual del agente que inicia el proceso (primarios y transformadores, mismo `startTransformation`) pero se anota **íntegro** aquí en vez de destruirse.
+- **`tax`**: una fracción (`CITY_FEE_SHARE_BPS`) del fee que los agentes YA pagan por trade se desvía aquí en vez de ir entera al banco (tasa de consumo). Sin cobro extra al agente.
+
+El `city-income-sweeper` del Worker reclama por lotes lo no materializado y lo **reparte entre las ciudades activas ponderado por `agent.population_weight`** (Tokyo recibe ~150× lo de Reikiavik), acreditando su `capital_available` y publicando la notificación WS `city_income` post-commit.
+
+```sql
+CREATE TYPE income_source AS ENUM ('wage', 'tax');
+
+CREATE TABLE income_ledger (
+    income_id           UUID            PRIMARY KEY DEFAULT uuidv7(),
+    amount_cents        BIGINT          NOT NULL CHECK (amount_cents > 0),
+    source              income_source   NOT NULL,
+    source_process_id   UUID            REFERENCES transformation_process(process_id) ON DELETE CASCADE,
+    source_trade_id     UUID            REFERENCES trade(trade_id) ON DELETE CASCADE,
+    materialized        BOOLEAN         NOT NULL DEFAULT false,
+    occurred_at         TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+-- Índice parcial: el sweeper solo escanea lo pendiente de repartir.
+CREATE INDEX idx_income_ledger_pending ON income_ledger (income_id) WHERE NOT materialized;
+```
+
+#### Diccionario de Campos
+
+| Campo               | Tipo            | Descripción                                                                 |
+| ------------------- | --------------- | --------------------------------------------------------------------------- |
+| `income_id`         | `UUID`          | Identificador (UUIDv7, monotónico; el sweeper reclama por orden de `income_id`). |
+| `amount_cents`      | `BIGINT`        | Importe repartible a las ciudades (`> 0`).                                  |
+| `source`            | `income_source` | `wage` (salario reciclado) o `tax` (fracción del fee del trade).             |
+| `source_process_id` | `UUID`          | Proceso que pagó el salario (solo `source='wage'`).                          |
+| `source_trade_id`   | `UUID`          | Trade que generó el fee (solo `source='tax'`).                               |
+| `materialized`      | `BOOLEAN`       | `true` una vez repartido entre las ciudades por el sweeper.                   |
+| `occurred_at`       | `TIMESTAMPTZ`   | Momento del INSERT (misma tx que el débito al pagador).                       |
+
+#### Reglas de Negocio
+
+- **Append-only**: el hot path solo INSERTA (mismo tx que debita al pagador, así el dinero nunca está en dos sitios). El único `UPDATE` (a `materialized`) lo hace el sweeper (worker `concurrency:1`).
+- **Conservación exacta del reparto**: cada ciudad recibe `floor(claimed * w_i / Σw)` y el **residuo del floor va a la ciudad de mayor peso**, de modo que `Σ repartido == Σ reclamado` al céntimo (`splitIncomeByWeight`, función pura testeada sin DB).
+- **Sin ciudades activas ⇒ no se reclama nada**: el sweeper lee las ciudades ANTES de materializar. Si materializara sin destino, el dinero desaparecería del invariante.
+- **Invariante de conservación**: el pendiente de este ledger es **dinero en tránsito** (ya salió del pagador, aún no llegó a la ciudad) y por tanto SUMA en la fórmula. El término de salarios **desapareció** del invariante porque los salarios ya no se destruyen:
+
+  ```
+  Σ capital(todos) + fees pendientes + ingreso pendiente
+    − initial_money − money_issued + money_burned  ==  0
+  ```
 
 ---
 
 ## 📜 Event Log
 
-### 19. event_log
+### 20. event_log
 
 **Descripción**: log append-only de toda mutación de estado relevante. Cada evento se persiste **antes** de aplicarse al estado vivo. El estado actual es derivable reproduciendo eventos. Sirve a agentes de ML para entrenamiento histórico y al investigador para análisis post-mortem. **No particionado en v1**; se evaluará cuando crezca.
 
@@ -1198,7 +1261,7 @@ ALTER TABLE event_log ADD CONSTRAINT event_log_agent_fk FOREIGN KEY (agent_id) R
 
 ## 📸 Snapshots Agregados
 
-### 20. market_snapshot
+### 21. market_snapshot
 
 **Descripción**: foto agregada del estado global del mercado en un instante. Snapshots disparados manualmente (no se modela frecuencia automática en v1). Sirven para evitar reconstrucción costosa desde `event_log` en análisis.
 
@@ -1243,7 +1306,7 @@ ALTER TABLE market_snapshot ADD CONSTRAINT market_snapshot_taken_at_unique UNIQU
 
 ---
 
-### 21. market_snapshot_agent_capital
+### 22. market_snapshot_agent_capital
 
 **Descripción**: detalle por agente del capital total al momento del snapshot. Tabla hija de `market_snapshot`.
 
@@ -1282,7 +1345,7 @@ ALTER TABLE market_snapshot_agent_capital ADD CONSTRAINT msac_agent_fk FOREIGN K
 
 ---
 
-### 22. market_snapshot_product
+### 23. market_snapshot_product
 
 **Descripción**: detalle por producto del inventario total y mejor bid/ask al momento del snapshot.
 

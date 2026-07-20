@@ -39,8 +39,10 @@ import type { InventoryService, BankruptcyService } from "../types/contracts";
 // Módulos paralelos ([M5], [M2]); nombres exactos del contrato §8.
 import { inventoryService } from "./inventory-service";
 import { bankruptcyService } from "./bankruptcy-service";
+import { splitFeeForCity } from "./city-income-service";
 import { bankRepository } from "../repositories/bank-repository";
 import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
+import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
 import { matchOrder, type ExecutedTrade, type MatchOutcome } from "./matching/engine";
 import { releaseReservedCapital, reserveBuyerCapital } from "./matching/capital";
 
@@ -451,13 +453,30 @@ export const orderService = {
             // comportan como antes (no se anotan; se evaporan).
             const bankAgentId = await bankRepository.getBankAgentId(tx);
             if (bankAgentId !== null) {
+              // Flujo circular (tasa de consumo): una fracción del fee que los
+              // agentes YA pagan se desvía del banco a las ciudades vía
+              // income_ledger, en vez de ir entero a fee_ledger. Sin cobro extra.
+              const cityShareBps = config.cityIncome.cityFeeShareBps;
               for (const t of matched.trades) {
                 const feeCents = t.trade.feeBuyerCents + t.trade.feeSellerCents;
                 if (feeCents > 0) {
-                  await feeLedgerRepository.insertFee(tx, {
-                    tradeId: t.trade.tradeId,
-                    amountCents: feeCents,
-                  });
+                  const { bankShareCents, cityShareCents } = splitFeeForCity(
+                    feeCents,
+                    cityShareBps,
+                  );
+                  if (bankShareCents > 0) {
+                    await feeLedgerRepository.insertFee(tx, {
+                      tradeId: t.trade.tradeId,
+                      amountCents: bankShareCents,
+                    });
+                  }
+                  if (cityShareCents > 0) {
+                    await incomeLedgerRepository.insertIncome(tx, {
+                      amountCents: cityShareCents,
+                      source: "tax",
+                      sourceTradeId: t.trade.tradeId,
+                    });
+                  }
                 }
               }
             }

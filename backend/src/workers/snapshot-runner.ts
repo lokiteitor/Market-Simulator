@@ -36,6 +36,7 @@ import { logger } from "../observability/logger";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
 import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
+import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
 import { NON_MARKET_ROLES } from "../types/contracts";
 
 const log = logger.child({ component: "snapshot-runner" });
@@ -60,8 +61,11 @@ export interface SnapshotResult {
   wagesPaidCents: number | null;
   /**
    * Invariante de conservación (debe ser 0):
-   *   Σ capital de TODOS los agentes + Σ wage_paid
+   *   Σ capital de TODOS los agentes + fees pendientes + ingreso pendiente
    *   − initial_money − money_issued + money_burned.
+   * Los salarios NO figuran: dejaron de destruirse y se reciclan íntegros a las
+   * ciudades (flujo circular), así que están o en income_ledger (pendiente) o
+   * ya dentro del capital de las ciudades.
    */
   conservationDeltaCents: number | null;
 }
@@ -135,8 +139,10 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
       const feesCollectedCents = num(feeAggRows[0]?.feesCollectedCents ?? 0);
 
       // --- Patrón oro: estado del banco + invariante de conservación --------
-      // Los salarios son el ÚNICO sumidero de dinero (se descuentan al iniciar
-      // procesos y no se acreditan a nadie); el invariante debe sumarlos.
+      // Los salarios YA NO son un sumidero: se reciclan íntegros a las ciudades
+      // (flujo circular) vía income_ledger, así que NO entran en el invariante;
+      // se siguen persistiendo en el snapshot como métrica de actividad. Lo que
+      // sí entra es el ingreso pendiente de repartir (dinero en tránsito).
       const gs = await bankRepository.getGoldStandard(tx);
       let bankMoneyCents: number | null = null;
       let bankGoldQtyCent: number | null = null;
@@ -159,6 +165,8 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
         // sweeper (ADR-019): forman parte del saldo del banco Y de la masa
         // monetaria del invariante de conservación.
         const pendingFeesCents = await feeLedgerRepository.sumUnmaterialized(tx);
+        // Ingreso de ciudades debitado del pagador pero aún no repartido.
+        const pendingIncomeCents = await incomeLedgerRepository.sumUnmaterialized(tx);
         bankMoneyCents =
           (bankRow?.capitalAvailable ?? 0) + (bankRow?.capitalReserved ?? 0) + pendingFeesCents;
         bankGoldQtyCent = await bankRepository.getGoldAvailable(tx, gs.bankAgentId, gs.productId);
@@ -168,7 +176,7 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
         conservationDeltaCents =
           allMoneyCents +
           pendingFeesCents +
-          wagesPaidCents -
+          pendingIncomeCents -
           gs.initialMoneyCents -
           gs.moneyIssuedCents +
           gs.moneyBurnedCents;
@@ -178,6 +186,7 @@ export async function runSnapshot(note?: string | null): Promise<SnapshotResult>
               conservationDeltaCents,
               allMoneyCents,
               pendingFeesCents,
+              pendingIncomeCents,
               wagesPaidCents,
               initialMoneyCents: gs.initialMoneyCents,
               moneyIssuedCents,

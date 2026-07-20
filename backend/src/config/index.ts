@@ -48,6 +48,12 @@ const EnvSchema = z
     ORDER_TTL_MAX_SIM_SECONDS: posIntFromEnv(604800),
     FEE_FIXED_CENTS: nonNegIntFromEnv(5),
     FEE_RATE_BPS: nonNegIntFromEnv(25),
+    // Flujo circular: fracción del fee de cada trade desviada del banco a las
+    // ciudades (tasa de consumo). Debe ser <= 10000. El SALARIO se recicla
+    // SIEMPRE al 100% (no es configurable): un reciclaje parcial dejaría una
+    // fracción destruida que obligaría a un SUM de tabla completa en cada
+    // lectura del invariante de conservación.
+    CITY_FEE_SHARE_BPS: nonNegIntFromEnv(5000),
     MASTER_SEED: intFromEnv(42),
     DEFAULT_SEED_CAPITAL_CENTS: posIntFromEnv(100000),
     SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS: posIntFromEnv(50000),
@@ -60,6 +66,12 @@ const EnvSchema = z
     SEED_CAPITAL_TRADER_MAX_CENTS: posIntFromEnv(400000),
     SEED_AGENT_PASSWORD: z.string().min(1).default("dev-password-123"),
     SEED_CONFIG_PATH: z.string().min(1).default("../infra/seed-config.json"),
+    // Ciudades-consumidor (rol `city`): lista canónica (fuente única compartida
+    // con bots-ciudad), contraseña de siembra (DEBE coincidir con la de
+    // bots-ciudad/config.yaml) y capital semilla por unidad de population_weight.
+    CITY_CONFIG_PATH: z.string().min(1).default("../infra/cities.json"),
+    CITY_SEED_PASSWORD: z.string().min(1).default("city-dev-password"),
+    CITY_SEED_CAPITAL_CENTS_PER_WEIGHT: posIntFromEnv(50),
     // Patrón oro (§banco central). El banco NO es registrable ni logueable.
     BANK_USERNAME: z.string().min(3).max(64).default("central_bank"),
     GOLD_PRODUCT_KEY: z.string().min(1).default("oro"),
@@ -79,6 +91,7 @@ const EnvSchema = z
     // Sweeper que pliega fee_ledger al capital del banco (ADR-019). Frecuente
     // para que el lag del saldo del banco sea pequeño.
     FEE_LEDGER_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
+    CITY_INCOME_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
     SWEEP_BATCH_SIZE: posIntFromEnv(100),
     IDEMPOTENCY_TTL_SECONDS: posIntFromEnv(600),
     RECONNECT_EVENTS_LIMIT: posIntFromEnv(100),
@@ -116,6 +129,10 @@ const EnvSchema = z
   .refine((e) => e.GOLD_BANK_INITIAL_RESERVE_BPS <= 10000, {
     message: "GOLD_BANK_INITIAL_RESERVE_BPS debe ser <= 10000 (fracción del yacimiento)",
     path: ["GOLD_BANK_INITIAL_RESERVE_BPS"],
+  })
+  .refine((e) => e.CITY_FEE_SHARE_BPS <= 10000, {
+    message: "CITY_FEE_SHARE_BPS debe ser <= 10000 (fracción del fee)",
+    path: ["CITY_FEE_SHARE_BPS"],
   });
 
 /** Roles de agente (claves de `seedCapitalRanges`, snake_case como en la DB). */
@@ -152,11 +169,19 @@ export interface Config {
   simTimeFactor: number;
   orderTtl: { minSimSeconds: number; maxSimSeconds: number };
   fees: { fixedCents: number; rateBps: number };
+  /** Flujo circular: fracción (bps) del fee desviada a las ciudades. */
+  cityIncome: { cityFeeShareBps: number };
   masterSeed: number;
   defaultSeedCapitalCents: number;
   seedCapitalRanges: Record<AgentRoleKey, SeedCapitalRange>;
   seedAgentPassword: string;
   seedConfigPath: string;
+  /** Siembra de ciudades-consumidor (rol `city`). */
+  cities: {
+    configPath: string;
+    seedPassword: string;
+    seedCapitalCentsPerWeight: number;
+  };
   /** Parámetros del patrón oro (banco central + yacimiento finito). */
   gold: {
     bankUsername: string;
@@ -176,6 +201,7 @@ export interface Config {
     transformationIntervalMs: number;
     orderExpiryIntervalMs: number;
     feeLedgerIntervalMs: number;
+    cityIncomeIntervalMs: number;
     batchSize: number;
   };
   idempotencyTtlSeconds: number;
@@ -226,6 +252,7 @@ function loadConfig(): Config {
       maxSimSeconds: e.ORDER_TTL_MAX_SIM_SECONDS,
     },
     fees: { fixedCents: e.FEE_FIXED_CENTS, rateBps: e.FEE_RATE_BPS },
+    cityIncome: { cityFeeShareBps: e.CITY_FEE_SHARE_BPS },
     masterSeed: e.MASTER_SEED,
     defaultSeedCapitalCents: e.DEFAULT_SEED_CAPITAL_CENTS,
     seedCapitalRanges: {
@@ -248,6 +275,11 @@ function loadConfig(): Config {
     },
     seedAgentPassword: e.SEED_AGENT_PASSWORD,
     seedConfigPath: e.SEED_CONFIG_PATH,
+    cities: {
+      configPath: e.CITY_CONFIG_PATH,
+      seedPassword: e.CITY_SEED_PASSWORD,
+      seedCapitalCentsPerWeight: e.CITY_SEED_CAPITAL_CENTS_PER_WEIGHT,
+    },
     gold: {
       bankUsername: e.BANK_USERNAME,
       productKey: e.GOLD_PRODUCT_KEY,
@@ -265,6 +297,7 @@ function loadConfig(): Config {
       transformationIntervalMs: e.TRANSFORMATION_SWEEP_INTERVAL_MS,
       orderExpiryIntervalMs: e.ORDER_EXPIRY_SWEEP_INTERVAL_MS,
       feeLedgerIntervalMs: e.FEE_LEDGER_SWEEP_INTERVAL_MS,
+      cityIncomeIntervalMs: e.CITY_INCOME_SWEEP_INTERVAL_MS,
       batchSize: e.SWEEP_BATCH_SIZE,
     },
     idempotencyTtlSeconds: e.IDEMPOTENCY_TTL_SECONDS,

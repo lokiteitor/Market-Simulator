@@ -19,6 +19,15 @@ build-bots:
 run-bots: build-bots
 	cd bots-v1 && ./bots-v1-runner -config config.yaml
 
+# Ciudades (demanda urbana): conjunto FIJO de capitales, instancia única (flock),
+# login-only contra cuentas sembradas por el backend. Sin -scale ni -no-persist:
+# se conserva la sesión (SQLite) para reutilizar la cadena de refresh tokens.
+build-bots-ciudad:
+	cd bots-ciudad && go build -o bots-ciudad-runner
+
+run-bots-ciudad: build-bots-ciudad
+	cd bots-ciudad && ./bots-ciudad-runner -config config.yaml
+
 run-swarm: build-bots
 	ulimit -n 65535	
 	cd bots-v1 && ./bots-v1-runner -config config.yaml -jitter 900 -no-persist -quiet

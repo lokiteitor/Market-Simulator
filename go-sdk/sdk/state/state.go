@@ -354,6 +354,14 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 		}
 		s.inventory[e.ProductID] = inv
 
+	case events.CityIncome:
+		// Ingreso recurrente de la ciudad (flujo circular). Suma directa al
+		// disponible: el servidor ya lo acreditó, esto solo mantiene el estado
+		// local al día para que el siguiente tick lo gaste.
+		if e.AmountCents > 0 {
+			s.capitalAvailableCents += e.AmountCents
+		}
+
 	case events.BankruptcyNotice:
 		if e.AgentID == s.agentID {
 			s.status = models.StatusBankrupt

@@ -34,6 +34,22 @@ export const MARKET_ROLES = [
 export type MarketRole = (typeof MARKET_ROLES)[number];
 
 /**
+ * Roles de mercado SEMBRABLES: los 4 registrables + `city`. Fuente única para
+ * el plan del seed y para las agregaciones que deben incluir a las ciudades
+ * como demanda/capital de mercado. `city` participa del mercado (es la demanda
+ * final urbana) pero NO es registrable por humanos: se siembra y se maneja por
+ * bots (rol infraestructura, como bank/admin en cuanto a no-registrable, pero a
+ * diferencia de ellos SÍ cuenta en los agregados de mercado). Por eso `city`
+ * está aquí pero NO en MARKET_ROLES (registro) ni en NON_MARKET_ROLES.
+ */
+export const SEEDABLE_MARKET_ROLES = [
+  ...MARKET_ROLES,
+  "city",
+] as const satisfies readonly AgentRole[];
+
+export type SeedableMarketRole = (typeof SEEDABLE_MARKET_ROLES)[number];
+
+/**
  * Roles que NO participan del mercado y deben excluirse de las agregaciones
  * (masa monetaria de mercado, promedio de capital para el seed de registro,
  * active_agents): `admin` (solo-monitoreo) y `bank` (banco central del patrón

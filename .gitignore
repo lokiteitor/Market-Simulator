@@ -191,3 +191,9 @@ pyrightconfig.json
 # Logs de entranamiento
 bot-trader/logs/*
 logs/*
+
+# bots-ciudad: artefactos de runtime (binario, lockfile de instancia única y sesiones)
+bots-ciudad/bots-ciudad-runner
+bots-ciudad/bots-ciudad
+bots-ciudad/.bots-ciudad.lock
+bots-ciudad/sessions/

@@ -39,6 +39,7 @@ import { logger } from "../observability/logger";
 import { productionUnitsTotal } from "../observability/metrics";
 import { productLabels } from "../observability/product-names";
 import { depositRepository } from "../repositories/deposit-repository";
+import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
 import {
   transformationRepository as repo,
   type ProcessStatus,
@@ -495,6 +496,18 @@ async function startTransformation(
       tx,
       consumptionRows.map((c) => ({ processId: proc.processId, ...c })),
     );
+
+    // Flujo circular: el salario ya NO se destruye. El importe debitado del
+    // agente se anota ÍNTEGRO en income_ledger y el city-income-sweeper lo
+    // reparte entre las ciudades (ingreso de los hogares). Cubre por igual a
+    // productores primarios y transformadores: ambos pasan por aquí.
+    if (wagePaidCents > 0) {
+      await incomeLedgerRepository.insertIncome(tx, {
+        amountCents: wagePaidCents,
+        source: "wage",
+        sourceProcessId: proc.processId,
+      });
+    }
 
     const payload: ProcessStartedPayload = {
       process_id: proc.processId,

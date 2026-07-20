@@ -42,6 +42,14 @@ export const bankruptcyService: BankruptcyService = {
     if (agentRow === undefined) return false;
     if (agentRow.status === "bankrupt") return false; // idempotente
 
+    // Las ciudades NO quiebran: son infraestructura de demanda, no operadores.
+    // Cumplen la condición §8 de forma natural (gastan su capital y consumen
+    // los bienes que compran, así que se quedan en 0/0 entre repartos), y
+    // marcarlas bankrupt las dejaría fuera para siempre: authService.login
+    // rechaza a los quebrados y su bot no podría reconectar. Se recuperan solas
+    // con el siguiente reparto del city-income-sweeper.
+    if (agentRow.role === "city") return false;
+
     // --- Condición exacta (§8) ---------------------------------------------
     if (agentRow.capitalAvailable + agentRow.capitalReserved !== 0) return false;
 

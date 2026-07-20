@@ -55,6 +55,11 @@ export const agentRole = pgEnum("agent_role", [
   // no registrable. Opera la ventanilla de convertibilidad y recibe fees.
   // Excluido de agregados de mercado (NON_MARKET_ROLES en types/contracts.ts).
   "bank",
+  // Ciudad-consumidor: demanda final urbana. Se SIEMBRA (con credenciales, para
+  // login de bots) y NO es registrable por humanos. SÍ participa del mercado
+  // (SEEDABLE_MARKET_ROLES en types/contracts.ts). Recibe ingreso recurrente del
+  // flujo circular (salarios reciclados + tasa de consumo) vía city_income.
+  "city",
 ]);
 
 export const agentStatus = pgEnum("agent_status", ["active", "bankrupt"]);
@@ -96,6 +101,7 @@ export const eventType = pgEnum("event_type", [
   "gold_converted", // conversión ejecutada en la ventanilla del banco
   "money_issued", // acuñación de capital semilla en un registro dinámico
   "deposit_depleted", // un resource_deposit llegó a 0 (yacimiento agotado)
+  "city_income_distributed", // el sweeper repartió el income_ledger entre ciudades
 ]);
 
 // Dirección de una conversión de ventanilla, desde la perspectiva del agente:
@@ -189,6 +195,10 @@ export const agent = pgTable(
       .notNull()
       .default(0),
     seedCapital: bigint("seed_capital", { mode: "number" }).notNull(),
+    // Peso de población: SOLO lo usan las ciudades (rol `city`). Escala su
+    // capital semilla y su parte del reparto de ingreso recurrente. NULL para
+    // el resto de roles.
+    populationWeight: bigint("population_weight", { mode: "number" }),
     registeredAt: timestamp("registered_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -617,6 +627,46 @@ export const feeLedger = pgTable(
   ],
 );
 
+// Origen de una fila de income_ledger: 'wage' = salario reciclado (antes se
+// destruía) de un proceso; 'tax' = fracción del fee de un trade (tasa de
+// consumo). Ver flujo circular en docs/patron_oro_sistema_bancario.md.
+export const incomeSource = pgEnum("income_source", ["wage", "tax"]);
+
+// Ledger append-only del ingreso recurrente de las ciudades (flujo circular,
+// gemelo de fee_ledger — ADR-019). El hot path INSERTA: el pago de salario
+// (transformation-service) y el split del fee (order-service). Un sweeper del
+// Worker (city-income-sweeper) pliega lo pendiente y lo reparte entre las
+// ciudades activas ponderado por population_weight. Dinero en tránsito (aún no
+// repartido) = SUM(amount_cents) WHERE NOT materialized; cuenta en la
+// conservación monetaria.
+export const incomeLedger = pgTable(
+  "income_ledger",
+  {
+    incomeId: uuid("income_id").primaryKey().default(sql`uuidv7()`),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    source: incomeSource("source").notNull(),
+    // Trazabilidad del origen (uno u otro según source). ON DELETE CASCADE
+    // como fee_ledger; procesos y trades no se borran en la práctica.
+    sourceProcessId: uuid("source_process_id").references(
+      () => transformationProcess.processId,
+      { onDelete: "cascade" },
+    ),
+    sourceTradeId: uuid("source_trade_id").references(() => trade.tradeId, {
+      onDelete: "cascade",
+    }),
+    materialized: boolean("materialized").notNull().default(false),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("income_ledger_amount_cents_check", sql`${t.amountCents} > 0`),
+    index("idx_income_ledger_pending")
+      .on(t.incomeId)
+      .where(sql`NOT ${t.materialized}`),
+  ],
+);
+
 // =============================================================================
 // 7. EVENT LOG (append-only, sin particionado en v1)
 // =============================================================================
@@ -815,6 +865,7 @@ export type AgentCapacityRow = typeof agentCapacity.$inferSelect;
 export type MarketOrderRow = typeof marketOrder.$inferSelect;
 export type TradeRow = typeof trade.$inferSelect;
 export type FeeLedgerRow = typeof feeLedger.$inferSelect;
+export type IncomeLedgerRow = typeof incomeLedger.$inferSelect;
 export type TransformationProcessRow =
   typeof transformationProcess.$inferSelect;
 export type InventoryLotRow = typeof inventoryLot.$inferSelect;

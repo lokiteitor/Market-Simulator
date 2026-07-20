@@ -30,7 +30,10 @@ export type NotificationType =
   | "trade_printed"
   // Personal: conversión ejecutada en la ventanilla del banco (patrón oro).
   // Payload = objeto GoldConversion del openapi.
-  | "gold_converted";
+  | "gold_converted"
+  // Personal (solo ciudades): ingreso recurrente acreditado por el
+  // city-income-sweeper (flujo circular). Payload = { amount_cents }.
+  | "city_income";
 
 export interface Notification {
   type: NotificationType;

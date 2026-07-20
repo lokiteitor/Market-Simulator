@@ -130,6 +130,18 @@ Una sola instancia con dos bases lógicas (ADR-009): db `0` para el pub/sub de n
 **Prometheus + Grafana.**
 El Core y el Worker exponen `/metrics` en endpoints internos no proxeados por Caddy. Prometheus hace scraping. Grafana se conecta a Prometheus y queda accesible para el operador.
 
+Los gauges de negocio (`observability/business-metrics.ts`) se calculan **en scrape-time** contra la DB y se importan **solo desde el Core**; los contadores (`observability/metrics.ts`) los incrementa el proceso que hace el trabajo (p. ej. el `city-income-sweeper` corre en el Worker, así que su contador se scrapea del job `worker`, no del `core`).
+
+Métricas del **flujo circular de ingreso** (ADR-020), en el dashboard *Negocio*:
+
+| Métrica | Proceso | Para qué sirve |
+|---------|---------|----------------|
+| `market_total_capital_cents{role="city"}` | Core | **Salud del modelo**: si el capital de las ciudades baja de forma sostenida, la demanda se está drenando y la economía va camino de apagarse. Sale gratis porque `city` es rol de mercado. |
+| `city_income_distributed_cents_total` | Worker | Contador; su `rate()` es el **caudal del ciclo** firmas→hogares. A 0 con actividad viva ⇒ sweeper parado o sin ciudades activas. |
+| `city_income_payouts_total` | Worker | Acreditaciones individuales; con el anterior da el ticket medio por ciudad. |
+| `market_city_income_pending_cents{source}` | Core | Dinero **en tránsito** (debitado al pagador, sin repartir) desglosado en `wage` / `tax`. Debe oscilar cerca de 0; si crece sin parar, el sweeper no da abasto. |
+| `market_conservation_delta_cents` | Core | Invariante monetario: cualquier valor ≠ 0 es un bug de contabilidad. |
+
 ### 4.4 Tabla resumen puertos
 
 | Servicio | Puerto interno | Expuesto externamente |
@@ -568,6 +580,7 @@ Aplicados a este sistema en particular:
 | ADR-017 | 2026-07-13 | Aceptado | Patrón oro: banco central con ventanilla acuñadora, fees reciclados al banco, emisión de capital respaldada por oro, yacimiento finito por semilla. |
 | ADR-018 | 2026-07-13 | Aceptado | Sin migraciones incrementales: `specs/schema.sql` + `schema.ts` (Drizzle) como fuentes espejo; cambios de esquema recrean la BD (`clean-docker` + re-seed). |
 | ADR-019 | 2026-07-17 | Aceptado | Matching multiproceso: serialización por producto con advisory locks de Postgres (transaction-scoped) + mutex in-process como primer filtro; fees del matching a `fee_ledger` append-only con sweeper; N réplicas del Core tras PgBouncer. Supera ADR-005, matiza ADR-004. |
+| ADR-020 | 2026-07-20 | Aceptado | Flujo circular de ingreso: rol `city` sembrado y no registrable (~50 capitales), salarios reciclados + fracción del fee a `income_ledger` con `city-income-sweeper` que reparte ponderado por población; invariante de conservación reformulado (sin término de salarios). Matiza ADR-017. |
 
 ### 12.3 Detalle de ADRs clave
 
@@ -670,6 +683,23 @@ Aplicados a este sistema en particular:
   - (+) `fee_ledger` da además trazabilidad por-trade de los fees reciclados.
   - (−) El saldo del banco pasa a ser fila + ledger pendiente: cada lector y el invariante de conservación deben sumar los pendientes, y el sweeper introduce un componente más.
   - (−) Deadlocks cross-producto sobre filas de agente siguen siendo posibles (dos productos, roles invertidos); se absorben con `retryOnDeadlock` (SQLSTATE `40P01`). El `hashtext` (int4) puede colisionar entre dos productos causando falsa contención, nunca incorrectitud.
+
+**ADR-020 — Flujo circular de ingreso: ciudades como demanda sostenible (matiza ADR-017)**
+
+- *Contexto:* la economía se apagaba sola. Los consumidores recibían capital **una única vez** (al registrarse) y solo compraban bienes de `final_consumption`, que se retiran del sistema; nunca vendían nada, así que su capital decrecía monótonamente hasta dejarlos sin poder de compra. En paralelo, los **salarios eran el ÚNICO sumidero de dinero**: se debitaban del productor/transformador al iniciar un proceso y no se acreditaban a nadie, evaporándose de la masa monetaria. Resultado: sin demanda, los productores dejan de vender, no se pagan salarios y la simulación se apaga. Además, los consumidores eran registrables por humanos, lo que no encaja con modelarlos como infraestructura urbana.
+- *Decisión:* cerrar el **flujo circular** *firmas → hogares → firmas* reciclando los sumideros existentes, **sin acuñar dinero nuevo**:
+  (a) **Rol `city` sembrado y no registrable.** ~50 capitales del mundo (`infra/cities.json`, fuente única compartida con el binario de bots) con credenciales sembradas y `population_weight`. Se desacopla `MARKET_ROLES` (que seguía siendo a la vez "roles de mercado" y "roles registrables") introduciendo `SEEDABLE_MARKET_ROLES`: `city` participa del mercado pero Zod lo rechaza en `/auth/register`, igual que a `admin`/`bank`. Las ciudades quedan **exentas de quiebra** (cumplirían la condición §8 de forma natural entre repartos y el login rechaza a los quebrados).
+  (b) **`income_ledger` append-only + `city-income-sweeper`**, gemelos de `fee_ledger`/`fee-ledger-sweeper` (mismo motivo ADR-019: nada de filas calientes). El hot path INSERTA; el sweeper reparte entre las ciudades activas **ponderado por población**.
+  (c) **Dos fuentes, ningún cobro nuevo:** el **salario** se anota íntegro en `income_ledger` en vez de destruirse (cubre primarios y transformadores: comparten `startTransformation`), y una fracción (`CITY_FEE_SHARE_BPS`) del **fee que los agentes ya pagan** se desvía del banco a las ciudades (tasa de consumo).
+  (d) **Invariante de conservación reformulado:** desaparece el término de salarios (ya no se destruyen) y entra el pendiente del nuevo ledger (dinero en tránsito):
+  `Σ capital + fees pendientes + ingreso pendiente − initial_money − money_issued + money_burned == 0`.
+- *Consecuencias:*
+  - (+) La demanda se auto-sostiene y se vuelve **anticíclica-estable**: más actividad → más salarios y fees → más ingreso urbano → más demanda. Sin inflación y sin tocar el yacimiento de oro.
+  - (+) El único sumidero que queda es `buy_gold`, lo que hace el modelo monetario más fácil de razonar.
+  - (+) El `population_weight` es una sola perilla que gobierna tanto el capital semilla como el ingreso recurrente de cada ciudad (Tokyo ≈ 150× Reikiavik).
+  - (−) El reparto debe ser **exacto al céntimo** (`floor` + residuo a la ciudad de mayor peso) o el invariante se rompe; se aísla en una función pura testeada sin DB.
+  - (−) Un sweeper y una tabla más. Y el fee que recibe el banco baja según `CITY_FEE_SHARE_BPS`, lo que reduce su capacidad de financiar semillas sin acuñar (parámetro a tunear).
+  - (−) Las ciudades necesitan la notificación WS `city_income` para que el bot vea su ingreso; sin ella el capital sube en la DB pero el bot no lo gasta hasta el siguiente snapshot.
 
 ---
 

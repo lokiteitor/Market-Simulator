@@ -171,6 +171,28 @@ export const agentRepository = {
     }
   },
 
+  /**
+   * Ciudades activas (rol `city`) con su peso de población, para el reparto
+   * ponderado del ingreso recurrente (city-income-service). `population_weight`
+   * es NOT NULL en la práctica para las ciudades (lo pone el seed); COALESCE a 1
+   * por defensa ante datos inconsistentes.
+   */
+  async listActiveCitiesWithWeight(
+    tx: Tx,
+  ): Promise<Array<{ agentId: string; populationWeight: number }>> {
+    const rows = await tx
+      .select({
+        agentId: agent.agentId,
+        populationWeight: sql<number>`COALESCE(${agent.populationWeight}, 1)::bigint`,
+      })
+      .from(agent)
+      .where(and(eq(agent.role, "city"), eq(agent.status, "active")));
+    return rows.map((r) => ({
+      agentId: r.agentId,
+      populationWeight: Number(r.populationWeight),
+    }));
+  },
+
   /** Abono a capital_available (no puede fallar por saldo). */
   async creditAvailable(tx: Tx, agentId: string, cents: number): Promise<void> {
     assertNonNegativeInt(cents, "cents");

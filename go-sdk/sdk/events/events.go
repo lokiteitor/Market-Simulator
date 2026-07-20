@@ -92,6 +92,17 @@ type GoldConverted struct {
 
 func (e GoldConverted) Occurred() time.Time { return e.ExecutedAt }
 
+// CityIncome: ingreso recurrente acreditado a una ciudad por el
+// city-income-sweeper (flujo circular: salarios reciclados + tasa de consumo).
+// Personal: solo llega al agente-ciudad que lo recibió. Sin esto el capital
+// local de la ciudad quedaría desactualizado y el bot no gastaría su ingreso.
+type CityIncome struct {
+	AmountCents int64     `json:"amount_cents"`
+	ReceivedAt  time.Time `json:"-"`
+}
+
+func (e CityIncome) Occurred() time.Time { return e.ReceivedAt }
+
 type WSConnected struct {
 	ConnectedAt time.Time
 }

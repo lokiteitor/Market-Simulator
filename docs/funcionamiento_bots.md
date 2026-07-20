@@ -1,10 +1,12 @@
-# Funcionamiento de los Bots — `bots-v1` + `go-sdk`
+# Funcionamiento de los Bots — `bots-v1` + `bots-ciudad` + `go-sdk`
 
-> **Estado:** documento vivo, refleja el código a 2026-07-13 (commits hasta `c9327e56`).
-> El sistema de bots vigente es **`bots-v1/`** (estrategias heurísticas en Go) montado sobre
-> **`go-sdk/`** (motor de agente reutilizable). El antiguo `bot-engine/` fue eliminado
-> (commit `b0f4e242`) y no debe referenciarse. El cliente Python (`market-client/`) y los
-> ejemplos del SDK son herramientas auxiliares, no forman parte del runtime de bots.
+> **Estado:** documento vivo, refleja el código a 2026-07-20.
+> Hay **dos binarios** de bots, ambos sobre **`go-sdk/`** (motor de agente reutilizable):
+> **`bots-v1/`** (enjambre de estrategias heurísticas, replicable en varias instancias) y
+> **`bots-ciudad/`** (las ciudades-consumidor: conjunto FIJO de capitales, **instancia
+> única**). El antiguo `bot-engine/` fue eliminado (commit `b0f4e242`) y no debe
+> referenciarse. El cliente Python (`market-client/`) y los ejemplos del SDK son
+> herramientas auxiliares, no forman parte del runtime de bots.
 
 ---
 
@@ -57,11 +59,42 @@ graph LR
 | `consumer.go` | Estrategia consumidor. |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
-| `market_view.go` | Vista de mercado compartida: EMA de "valor justo", cache de top-of-book con TTL, presupuesto REST por tick. |
 | `selling.go` | `sellAtMarket`: venta en tranches con undercut y suelo de coste. |
-| `money.go` | Conversión centi-unidades/centavos (`notionalCents`, `maxQtyForBudget`, `isReservable`). |
-| `humanize.go` | "Humanización": precios bonitos, cantidades perturbadas, TTL con jitter, cancel/replace, probabilidades (`nicePrice`, `humanQty`, `ttlJitter`, `cancelStale`, `chance`, `sampleRange`). |
-| `config_helpers.go` | Parseo del contexto de estrategia (prices, market, etc.). |
+| `botkit_aliases.go` | Shim: re-exporta con los nombres locales los helpers que ahora viven en `go-sdk/sdk/botkit` (ver abajo). Al tocar un helper, editarlo en `botkit`, no aquí. |
+
+> **`consumer.go`, `market_view.go`, `money.go`, `humanize.go` y `config_helpers.go` ya no
+> están en `bots-v1/`**: se movieron a `go-sdk/sdk/botkit` para que `bots-v1` y `bots-ciudad`
+> compartan UNA sola fuente de verdad (eran helpers puros usados por todas las estrategias, y
+> duplicarlos habría hecho divergir los dos binarios).
+
+### `bots-ciudad/` — las ciudades (demanda urbana)
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `main.go` | Toma un **flock** de instancia única, lee `config.yaml` + `../infra/cities.json` y lanza una goroutine por ciudad con `botkit.NewConsumerStrategy()`. Sin `-scale` ni rotación. |
+| `config.yaml` | Servidor, MarketView, precios base, `cities_path`, `city_password` y jitter de arranque. |
+
+Dos diferencias esenciales con `bots-v1`:
+
+- **Login-only** (`auto_register: false`): las cuentas de ciudad las **siembra el backend**
+  (rol `city`, no registrable por humanos) con credenciales; el bot solo hace `POST
+  /auth/login`. Si la cuenta no existe o la contraseña no coincide con `CITY_SEED_PASSWORD`,
+  el bot no arranca.
+- **Instancia única (flock).** `bots-v1` es replicable porque sus usernames se derivan de
+  `--runner-id` (dos instancias generan espacios de identidades disjuntos). Las ciudades son
+  **usernames literales fijos**, así que dos procesos loguearían las MISMAS cuentas y se
+  rotarían mutuamente el refresh token (que es de un solo uso), provocando thrashing de auth.
+  El flock sobre `.bots-ciudad.lock` lo impide: la segunda ejecución aborta.
+
+### `go-sdk/sdk/botkit` — estrategia y helpers compartidos
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `consumer.go` | Estrategia consumidor (`ConsumerStrategy`), usada por los consumidores de `bots-v1` y por TODAS las ciudades. |
+| `market_view.go` | Vista de mercado: EMA de "valor justo", cache de top-of-book con TTL, presupuesto REST por tick. |
+| `money.go` | Conversión centi-unidades/centavos (`NotionalCents`, `MaxQtyForBudget`, `IsReservable`). |
+| `humanize.go` | "Humanización": precios bonitos, cantidades perturbadas, TTL con jitter, cancel/replace (`NicePrice`, `HumanQty`, `TTLJitter`, `CancelStale`, `Chance`, `SampleRange`). |
+| `config_helpers.go` | Parseo del contexto de estrategia (`ResolveBasePrices`, `ConfigFloat`, `ConfigInt`). |
 
 ### `go-sdk/sdk/` — motor de agente
 
@@ -75,6 +108,7 @@ graph LR
 | `scheduler/` | Programación de ticks periódicos. |
 | `strategy/` | Interfaz `Strategy` (`Initialize`, `Tick`, `HandleEvent`). |
 | `actions/` | Acciones declarativas que devuelve la estrategia y ejecuta el engine. |
+| `botkit/` | Estrategia consumidor + helpers puros compartidos por `bots-v1` y `bots-ciudad` (ver arriba). |
 
 La estrategia nunca llama a la API directamente para mutar estado: **devuelve acciones** y el
 engine las ejecuta (`PlaceOrder` → `POST /orders`, `CancelOrder` → `DELETE /orders/{id}`,
@@ -89,10 +123,17 @@ Los bots **no corren en Docker**: se compilan y ejecutan en el host como un solo
 
 ```makefile
 # Makefile (raíz del repo)
-build-bots:  cd bots-v1 && go build -o bots-v1-runner
-run-bots:    ./bots-v1-runner -config config.yaml                  # los 4 bots del YAML
-run-swarm:   ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900
+build-bots:        cd bots-v1 && go build -o bots-v1-runner
+run-bots:          ./bots-v1-runner -config config.yaml            # los 4 bots del YAML
+run-swarm:         ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900
+
+build-bots-ciudad: cd bots-ciudad && go build -o bots-ciudad-runner
+run-bots-ciudad:   ./bots-ciudad-runner -config config.yaml        # las ~50 capitales
 ```
+
+`run-bots-ciudad` **no** lleva `-no-persist`: conviene conservar la sesión (SQLite) para
+reutilizar la cadena de refresh tokens de las cuentas fijas entre reinicios. Y no admite
+`-scale` ni rotación: las ciudades corren todas, siempre.
 
 Flags de `main.go`:
 

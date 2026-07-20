@@ -9,6 +9,9 @@ const (
 	RoleTransformer     AgentRole = "transformer"
 	RoleConsumer        AgentRole = "consumer"
 	RoleTrader          AgentRole = "trader"
+	// RoleCity: consumidor sembrado (capital del mundo). No registrable por
+	// humanos; el backend lo siembra y bots-ciudad lo maneja por login.
+	RoleCity AgentRole = "city"
 )
 
 type AgentStatus string

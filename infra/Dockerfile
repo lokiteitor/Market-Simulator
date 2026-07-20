@@ -11,5 +11,8 @@ COPY backend/node_modules ./node_modules
 COPY backend/package.json backend/tsconfig.json ./
 COPY backend/src ./src
 COPY infra/seed-config.json ./infra/seed-config.json
+# Lista canónica de ciudades-consumidor (rol `city`) que siembra src/seed.ts.
+# Sin esto el seed falla con ENOENT en CITY_CONFIG_PATH.
+COPY infra/cities.json ./infra/cities.json
 
 ENV NODE_ENV=production

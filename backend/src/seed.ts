@@ -236,6 +236,76 @@ export function buildAgentPlan(
   return plan;
 }
 
+// =============================================================================
+// Ciudades-consumidor (rol `city`): sembradas desde infra/cities.json, fuente
+// única compartida con el binario bots-ciudad. No pasan por SeedConfigSchema
+// (no tienen capacidades ni forman parte del seed-config del catálogo).
+// =============================================================================
+
+const CitySchema = z.object({
+  username: z
+    .string()
+    .min(3)
+    .max(64)
+    .regex(/^[a-zA-Z0-9_.-]+$/, "Solo letras, dígitos y . _ -"),
+  display: z.string().optional(),
+  population_weight: z.number().int().positive(),
+});
+
+const CitiesConfigSchema = z.object({
+  cities: z.array(CitySchema).min(1),
+});
+
+export type CitiesConfig = z.infer<typeof CitiesConfigSchema>;
+
+/** Parsea y valida infra/cities.json (schema + usernames únicos). */
+export function parseCitiesConfig(rawJson: string): CitiesConfig {
+  let data: unknown;
+  try {
+    data = JSON.parse(rawJson);
+  } catch (err) {
+    throw new Error(`cities: JSON inválido: ${(err as Error).message}`);
+  }
+  const parsed = CitiesConfigSchema.safeParse(data);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join(".") || "(raíz)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`cities: estructura inválida:\n${issues}`);
+  }
+  const seen = new Set<string>();
+  for (const c of parsed.data.cities) {
+    if (seen.has(c.username)) {
+      throw new Error(`cities: username duplicado: "${c.username}"`);
+    }
+    seen.add(c.username);
+  }
+  return parsed.data;
+}
+
+export interface SeedCityPlanEntry {
+  username: string;
+  populationWeight: number;
+  /** Capital semilla = population_weight * capitalCentsPerWeight (∝ población). */
+  capitalCents: number;
+}
+
+/**
+ * Plan determinista de ciudades: capital semilla proporcional al peso de
+ * población (Tokyo empieza mucho más rica que Reikiavik). Sin RNG: el peso ya
+ * es la fuente de la heterogeneidad.
+ */
+export function buildCityPlan(
+  cfg: CitiesConfig,
+  opts: { capitalCentsPerWeight: number },
+): SeedCityPlanEntry[] {
+  return cfg.cities.map((c) => ({
+    username: c.username,
+    populationWeight: c.population_weight,
+    capitalCents: c.population_weight * opts.capitalCentsPerWeight,
+  }));
+}
+
 /** Clave RNG del sorteo del yacimiento (determinista con MASTER_SEED). */
 export const GOLD_DEPOSIT_RNG_KEY = "gold_deposit";
 
@@ -319,6 +389,7 @@ interface SeedSummary {
   agents: number;
   totalCapitalCents: number;
   byRole: Record<AgentRoleKey, { agents: number; capitalCents: number }>;
+  cities: { count: number; capitalCents: number };
   gold: GoldPlan;
 }
 
@@ -361,6 +432,22 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     plan.map(async (entry) => ({
       ...entry,
       passwordHash: await hashPassword(config.seedAgentPassword),
+    })),
+  );
+
+  // Ciudades-consumidor: lista canónica (fuente única compartida con
+  // bots-ciudad). Capital semilla ∝ population_weight. Credenciales con
+  // CITY_SEED_PASSWORD para que los bots hagan login (login-only).
+  const citiesConfigPath = resolve(process.cwd(), config.cities.configPath);
+  const citiesRaw = await readFile(citiesConfigPath, "utf8");
+  const citiesCfg = parseCitiesConfig(citiesRaw);
+  const cityPlan = buildCityPlan(citiesCfg, {
+    capitalCentsPerWeight: config.cities.seedCapitalCentsPerWeight,
+  });
+  const cityPlanWithHashes = await Promise.all(
+    cityPlan.map(async (entry) => ({
+      ...entry,
+      passwordHash: await hashPassword(config.cities.seedPassword),
     })),
   );
 
@@ -496,10 +583,55 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       totalCapitalCents += entry.capitalCents;
     }
 
+    // --- Ciudades-consumidor (demanda urbana sembrada) -----------------------
+    // Rol `city`: CON credenciales (login de bots-ciudad), capital ∝ población,
+    // sin capacidades. Participan del mercado (SEEDABLE_MARKET_ROLES), así que
+    // su capital cuenta en la masa monetaria inicial que respalda el oro.
+    let totalCityCapitalCents = 0;
+    let citiesSeeded = 0;
+    for (const entry of cityPlanWithHashes) {
+      const cityRows = await tx
+        .insert(agent)
+        .values({
+          username: entry.username,
+          role: "city",
+          status: "active",
+          capitalAvailable: entry.capitalCents,
+          capitalReserved: 0,
+          seedCapital: entry.capitalCents,
+          populationWeight: entry.populationWeight,
+        })
+        .returning({ agentId: agent.agentId });
+      const cityRow = cityRows[0];
+      if (cityRow === undefined) {
+        throw new Error(`seed: insert de ciudad "${entry.username}" no devolvió fila`);
+      }
+      await tx.insert(agentCredentials).values({
+        agentId: cityRow.agentId,
+        passwordHash: entry.passwordHash,
+      });
+      const cityPayload: SeedAgentRegisteredPayload = {
+        agent_id: cityRow.agentId,
+        username: entry.username,
+        role: "city",
+        seed_capital_cents: entry.capitalCents,
+        seed_config_hash: configHash,
+        master_seed: config.masterSeed,
+      };
+      await appendEvent(tx, {
+        type: "agent_registered",
+        agentId: cityRow.agentId,
+        payload: cityPayload,
+      });
+      totalCityCapitalCents += entry.capitalCents;
+      citiesSeeded += 1;
+    }
+
     // --- Patrón oro: banco central + yacimiento + política monetaria ---------
-    // La paridad se calcula con el capital de mercado YA sembrado, de modo que
-    // la masa inicial queda respaldada por construcción.
-    const gold = buildGoldPlan(totalCapitalCents, {
+    // La paridad se calcula con el capital de mercado YA sembrado (agentes de
+    // mercado + ciudades), de modo que la masa inicial queda respaldada por
+    // construcción.
+    const gold = buildGoldPlan(totalCapitalCents + totalCityCapitalCents, {
       masterSeed: config.masterSeed,
       gold: config.gold,
     });
@@ -581,6 +713,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       agents: planWithHashes.length,
       totalCapitalCents,
       byRole,
+      cities: { count: citiesSeeded, capitalCents: totalCityCapitalCents },
       gold,
     };
     return summary;
@@ -605,6 +738,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       agents: result.agents,
       byRole: result.byRole,
       totalCapitalCents: result.totalCapitalCents,
+      cities: result.cities,
       gold: result.gold,
     },
     "Seed completado",

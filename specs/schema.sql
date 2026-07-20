@@ -51,7 +51,13 @@ CREATE TYPE agent_role AS ENUM (
     -- trading y respalda la emisión de capital semilla con sus reservas de
     -- oro (lotes de inventory_lot). Las agregaciones de mercado lo excluyen
     -- igual que a admin (role NOT IN ('admin','bank')).
-    'bank'
+    'bank',
+    -- Ciudad-consumidor: demanda final urbana. Se SIEMBRA con credenciales
+    -- (login de bots-ciudad) y NO es registrable por humanos. A diferencia de
+    -- admin/bank, SÍ participa del mercado (SEEDABLE_MARKET_ROLES). Recibe
+    -- ingreso recurrente del flujo circular (salarios reciclados + tasa de
+    -- consumo) vía el city-income-sweeper.
+    'city'
 );
 
 CREATE TYPE agent_status AS ENUM (
@@ -98,7 +104,8 @@ CREATE TYPE event_type AS ENUM (
     'snapshot_taken',
     'gold_converted',    -- conversión ejecutada en la ventanilla del banco
     'money_issued',      -- acuñación de capital semilla en un registro dinámico
-    'deposit_depleted'   -- un resource_deposit llegó a 0 (yacimiento agotado)
+    'deposit_depleted',  -- un resource_deposit llegó a 0 (yacimiento agotado)
+    'city_income_distributed' -- el sweeper repartió el income_ledger entre ciudades
 );
 
 -- Dirección de una conversión en la ventanilla, desde la perspectiva del
@@ -159,6 +166,9 @@ CREATE TABLE agent (
     capital_available   BIGINT          NOT NULL DEFAULT 0 CHECK (capital_available >= 0),
     capital_reserved    BIGINT          NOT NULL DEFAULT 0 CHECK (capital_reserved >= 0),
     seed_capital        BIGINT          NOT NULL,
+    -- Peso de población: SOLO lo usan las ciudades (rol 'city'). Escala su
+    -- capital semilla y su parte del reparto de ingreso recurrente. NULL resto.
+    population_weight   BIGINT,
     registered_at       TIMESTAMPTZ     NOT NULL DEFAULT now(),
     bankrupt_at         TIMESTAMPTZ
 );
@@ -403,6 +413,35 @@ CREATE TABLE fee_ledger (
 
 -- Índice parcial para el sweeper: solo escanea lo pendiente de materializar.
 CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialized;
+
+
+-- Origen de una fila de income_ledger (flujo circular de ingreso de ciudades):
+-- 'wage' = salario reciclado de un proceso (antes se destruía);
+-- 'tax'  = fracción del fee de un trade (tasa de consumo).
+CREATE TYPE income_source AS ENUM (
+    'wage',
+    'tax'
+);
+
+-- Ledger append-only del ingreso recurrente de las ciudades (gemelo de
+-- fee_ledger, ADR-019). El hot path INSERTA: el pago de salario
+-- (transformation-service) y el split del fee (order-service). El
+-- city-income-sweeper del Worker pliega lo pendiente y lo reparte entre las
+-- ciudades activas ponderado por population_weight. Dinero en tránsito (aún no
+-- repartido) = SUM(amount_cents) WHERE NOT materialized; cuenta en la
+-- conservación monetaria.
+CREATE TABLE income_ledger (
+    income_id           UUID            PRIMARY KEY DEFAULT uuidv7(),
+    amount_cents        BIGINT          NOT NULL CHECK (amount_cents > 0),
+    source              income_source   NOT NULL,
+    source_process_id   UUID            REFERENCES transformation_process(process_id) ON DELETE CASCADE,
+    source_trade_id     UUID            REFERENCES trade(trade_id) ON DELETE CASCADE,
+    materialized        BOOLEAN         NOT NULL DEFAULT false,
+    occurred_at         TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+-- Índice parcial para el sweeper: solo escanea lo pendiente de materializar.
+CREATE INDEX idx_income_ledger_pending ON income_ledger (income_id) WHERE NOT materialized;
 
 
 -- =============================================================================
