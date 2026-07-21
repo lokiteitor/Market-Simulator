@@ -20,6 +20,7 @@ import { incomeLedgerRepository } from "../repositories/income-ledger-repository
 import {
   monitoringRepository,
   type AgentsByRoleView,
+  type InstallationsByTypeView,
   type MarketProductView,
   type OverviewView,
 } from "../repositories/monitoring-repository";
@@ -91,6 +92,7 @@ async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
 interface BusinessSnapshot {
   overview: OverviewView;
   byRole: AgentsByRoleView[];
+  installations: InstallationsByTypeView[];
   market: MarketProductView[];
   gold: GoldView | null;
   /** Ingreso de ciudades pendiente de repartir, por fuente (`wage` / `tax`). */
@@ -112,6 +114,7 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
         async (tx) => ({
           overview: await monitoringRepository.overview(tx),
           byRole: await monitoringRepository.agentsByRole(tx),
+          installations: await monitoringRepository.installationsByType(tx),
           market: await monitoringRepository.marketByProduct(tx),
           gold: await fetchGoldView(tx),
           cityIncomePending: await incomeLedgerRepository.sumUnmaterializedBySource(tx),
@@ -166,6 +169,36 @@ new Gauge({
     if (s === null) return;
     this.reset();
     for (const r of s.byRole) this.set({ role: r.role }, r.totalCapitalCents);
+  },
+});
+
+// Capacidad productiva instalada (ADR-021). El nivel agregado es el techo de
+// procesos concurrentes del tipo en TODO el mercado: contra el consumo del
+// producto que fabrica, dice si falta capacidad o falta demanda. Con la raíz
+// única del catálogo (ADR-022), `pozo_agua` es el que hay que vigilar.
+new Gauge({
+  name: "market_installations_count",
+  help: "Agentes que han comprado cada tipo de instalación",
+  labelNames: ["installation_type"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    for (const i of s.installations) this.set({ installation_type: i.typeKey }, i.installations);
+  },
+});
+
+new Gauge({
+  name: "market_installations_level",
+  help: "Suma de niveles por tipo de instalación (procesos concurrentes posibles)",
+  labelNames: ["installation_type"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    for (const i of s.installations) this.set({ installation_type: i.typeKey }, i.totalLevel);
   },
 });
 

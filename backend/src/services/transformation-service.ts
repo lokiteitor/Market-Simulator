@@ -36,7 +36,7 @@ import {
 } from "../lib/simtime";
 import { publishBroadcast, publishToAgent, type Notification } from "../notifier";
 import { logger } from "../observability/logger";
-import { productionUnitsTotal } from "../observability/metrics";
+import { inputsConsumedUnitsTotal, productionUnitsTotal } from "../observability/metrics";
 import { productLabels } from "../observability/product-names";
 import { depositRepository } from "../repositories/deposit-repository";
 import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
@@ -390,7 +390,10 @@ async function startTransformation(
   // y commitea antes del lockAgent (mismo patrón que getProcess) — sin riesgo
   // de deadlock.
   await materializeExpiredForAgent(agentId);
-  return withTransaction(async (tx) => {
+  // Consumo de insumos por producto: la métrica se emite POST-COMMIT (como el
+  // resto de métricas de negocio), así que se acumula dentro de la tx.
+  const consumoPorProducto = new Map<string, number>();
+  const proc = await withTransaction(async (tx) => {
     const agentRow = await repo.lockAgent(tx, agentId);
     if (agentRow === undefined) {
       throw domainError("unknown_agent", `El agente ${agentId} no existe.`);
@@ -486,6 +489,10 @@ async function startTransformation(
           qtyConsumed: c.qtyCent,
           unitCostCents: c.unitCostCents,
         });
+        consumoPorProducto.set(
+          inputRow.productId,
+          (consumoPorProducto.get(inputRow.productId) ?? 0) + c.qtyCent,
+        );
       }
     }
 
@@ -528,6 +535,11 @@ async function startTransformation(
 
     return proc;
   });
+
+  for (const [productId, qtyCent] of consumoPorProducto) {
+    inputsConsumedUnitsTotal.inc(await productLabels(productId), qtyCent);
+  }
+  return proc;
 }
 
 /**

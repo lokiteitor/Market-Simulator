@@ -132,6 +132,33 @@ export const productionUnitsTotal = new Counter({
 });
 
 /**
+ * Unidades de insumo consumidas al arrancar transformaciones (centi-unidades),
+ * por producto [M4]. Es la cara de DEMANDA de la cadena: contra
+ * `production_units_total` del mismo producto da el balance del eslabón. Con la
+ * raíz única del catálogo (ADR-022) el par producción/consumo de `agua` es el
+ * indicador de si la economía se está estrangulando en el primer eslabón.
+ */
+export const inputsConsumedUnitsTotal = new Counter({
+  name: "inputs_consumed_units_total",
+  help: "Unidades de insumo consumidas por transformaciones, por producto",
+  labelNames: ["product", "product_id"] as const,
+  registers: [register],
+});
+
+/**
+ * Errores de dominio devueltos como Problem+JSON, por código y ruta. Un 422 en
+ * `http_request_duration_seconds` no dice POR QUÉ: esto separa "no hay insumos"
+ * de "no hay capacidad instalada" de "no hay caja", que son tres problemas
+ * económicos distintos con tres respuestas distintas.
+ */
+export const domainErrorsTotal = new Counter({
+  name: "domain_errors_total",
+  help: "Errores de dominio (Problem+JSON) por código y ruta",
+  labelNames: ["code", "route"] as const,
+  registers: [register],
+});
+
+/**
  * Ingreso recurrente repartido a las ciudades por el city-income-sweeper
  * (flujo circular, ADR-020). `rate()` sobre este contador es el CAUDAL del
  * ciclo firmas→hogares: si cae a 0 con actividad económica viva, el sweeper

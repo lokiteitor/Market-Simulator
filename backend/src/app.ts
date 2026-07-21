@@ -36,7 +36,7 @@ import { sql } from "./db";
 import { DomainError, toProblemJson } from "./lib/errors";
 import type { ProblemErrorItem, ProblemJson } from "./lib/errors";
 import { logger } from "./observability/logger";
-import { httpRequestDuration } from "./observability/metrics";
+import { domainErrorsTotal, httpRequestDuration } from "./observability/metrics";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerBankRoutes } from "./routes/bank";
 import { registerAgentRoutes } from "./routes/agents";
@@ -99,6 +99,9 @@ function fieldFromInstancePath(instancePath: string): string | undefined {
  */
 function errorHandler(error: FastifyError, request: FastifyRequest, reply: FastifyReply): void {
   if (error instanceof DomainError) {
+    // Único embudo de los errores de dominio: la métrica va aquí para no tener
+    // que instrumentar cada `domainError(...)` de los services.
+    domainErrorsTotal.inc({ code: error.code, route: request.routeOptions.url ?? "unknown" });
     sendProblem(reply, toProblemJson(error, request.url));
     return;
   }

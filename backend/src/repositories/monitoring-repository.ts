@@ -15,6 +15,8 @@ import { and, asc, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
 import type { Tx } from "../db";
 import {
   agent,
+  agentInstallation,
+  installationType,
   inventoryLot,
   marketOrder,
   marketSnapshot,
@@ -61,6 +63,19 @@ export interface AgentsByRoleView {
   activeAgents: number;
   bankruptAgents: number;
   totalCapitalCents: number;
+}
+
+/**
+ * Capacidad productiva instalada por tipo (ADR-021): cuántos agentes lo han
+ * comprado y la suma de niveles, que es el nº de procesos concurrentes que el
+ * mercado entero puede correr de ese tipo. Con la raíz única del catálogo
+ * (ADR-022) el nivel agregado de `pozo_agua` frente al resto es lo que dice si
+ * hay bastante bombeo para alimentar a la cadena.
+ */
+export interface InstallationsByTypeView {
+  typeKey: string;
+  installations: number;
+  totalLevel: number;
 }
 
 export interface AgentListItemView {
@@ -220,6 +235,28 @@ export const monitoringRepository = {
       activeAgents: num(r.activeAgents),
       bankruptAgents: num(r.bankruptAgents),
       totalCapitalCents: num(r.totalCapitalCents),
+    }));
+  },
+
+  /** Capacidad instalada por tipo (nº de instalaciones y suma de niveles). */
+  async installationsByType(tx: Tx): Promise<InstallationsByTypeView[]> {
+    const rows = await tx
+      .select({
+        typeKey: installationType.key,
+        installations: sql<string | number>`count(${agentInstallation.agentId})`,
+        totalLevel: sql<string | number>`coalesce(sum(${agentInstallation.level}), 0)`,
+      })
+      .from(installationType)
+      .leftJoin(
+        agentInstallation,
+        eq(agentInstallation.installationTypeId, installationType.installationTypeId),
+      )
+      .groupBy(installationType.key)
+      .orderBy(asc(installationType.key));
+    return rows.map((r) => ({
+      typeKey: r.typeKey,
+      installations: num(r.installations),
+      totalLevel: num(r.totalLevel),
     }));
   },
 
