@@ -307,7 +307,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (product) (market_inventory_units{product=~\"Agua|Semillas|Fertilizantes|Piensos\"})",
+          "expr": "max by (product) (market_inventory_units{product=~\"Agua|Semillas|Fertilizantes|Piensos\"})",
           "legendFormat": "{{product}}",
           "range": true,
           "refId": "A"
@@ -402,7 +402,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (product, side) (market_book_depth_units{product=~\"Agua|Semillas|Fertilizantes|Piensos\"})",
+          "expr": "max by (product, side) (market_book_depth_units{product=~\"Agua|Semillas|Fertilizantes|Piensos\"})",
           "legendFormat": "{{product}} {{side}}",
           "range": true,
           "refId": "A"
@@ -522,7 +522,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Procesos concurrentes que el mercado entero puede correr de cada tipo (ADR-021). `pozo_agua` debería rondar el 10-15% del total: un pozo profundo rinde 60 L/min y una mina consume ~12 L/min, un cultivo ~6 L/min.",
+      "description": "Procesos concurrentes que el mercado entero puede correr de cada tipo (ADR-021). Se agrega con max(), no sum(): los gauges de negocio los calcula CADA réplica del core y las N series son el mismo agregado global. `pozo_agua` debería rondar el 10-15% del total: un pozo profundo rinde 60 L/min y una mina consume ~12 L/min, un cultivo ~6 L/min.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -606,7 +606,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (installation_type) (market_installations_level)",
+          "expr": "max by (installation_type) (market_installations_level)",
           "legendFormat": "{{installation_type}}",
           "range": false,
           "refId": "A",
@@ -894,7 +894,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_active_processes",
+          "expr": "max(market_active_processes)",
           "legendFormat": "procesos",
           "range": true,
           "refId": "A"
@@ -990,7 +990,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_open_orders",
+          "expr": "max(market_open_orders)",
           "legendFormat": "órdenes",
           "range": true,
           "refId": "A"
