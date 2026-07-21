@@ -10,7 +10,7 @@ Caddy: REST en `http://localhost:9080/v1` y WebSocket de notificaciones en
 @tanstack/react-query v5, CSS plano con custom properties + CSS Modules (sin Tailwind ni UI kits).
 
 Pantallas: `/auth` (login/registro) · `/dashboard` · `/market[/:productId]` · `/catalog` ·
-`/orders` · `/transformations` · `/history` · `/profile`.
+`/orders` · `/transformations` · `/installations` · `/history` · `/profile`.
 
 ## Desarrollo
 

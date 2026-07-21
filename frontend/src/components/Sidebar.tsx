@@ -38,6 +38,7 @@ const MARKET_NAV: ReadonlyArray<NavItem> = [
   { to: "/catalog", label: "Catálogo", icon: IconCatalog },
   { to: "/orders", label: "Órdenes", icon: IconOrders },
   { to: "/transformations", label: "Transformaciones", icon: IconTransformations },
+  { to: "/installations", label: "Instalaciones", icon: IconFactory },
   { to: "/history", label: "Historial", icon: IconHistory },
   { to: "/profile", label: "Perfil", icon: IconUser },
 ];

@@ -159,6 +159,19 @@ export interface InstallationType {
   max_level: number;
 }
 
+/** Compra/mejora de instalación (POST /agents/me/installations). */
+export interface AcquireInstallationRequest {
+  /** `key` del tipo a comprar/mejorar. */
+  installation_type: string;
+  /** Concurrencia optimista: si no coincide, 409 `conflict_state` sin cobrar. */
+  expected_current_level?: number;
+}
+
+export interface AcquireInstallationResponse extends InstallationStatus {
+  /** Precio cobrado por esta compra/mejora (acreditado al banco). */
+  amount_charged_cents: number;
+}
+
 export interface InventoryPosition {
   product_id: string;
   qty_available_cent: number;
