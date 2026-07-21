@@ -74,7 +74,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_active_agents)",
+          "expr": "sum(max by (role) (market_active_agents))",
           "legendFormat": "Agentes activos",
           "range": true,
           "refId": "A"
@@ -138,7 +138,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_total_capital_cents) / 100",
+          "expr": "sum(max by (role) (market_total_capital_cents)) / 100",
           "legendFormat": "Capital total",
           "range": true,
           "refId": "A"
@@ -201,7 +201,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_open_orders)",
+          "expr": "max(market_open_orders)",
           "legendFormat": "Órdenes abiertas",
           "range": true,
           "refId": "A"
@@ -264,7 +264,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_active_processes)",
+          "expr": "max(market_active_processes)",
           "legendFormat": "Procesos activos",
           "range": true,
           "refId": "A"
@@ -339,7 +339,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (role) (market_active_agents)",
+          "expr": "max by (role) (market_active_agents)",
           "legendFormat": "{{role}}",
           "range": true,
           "refId": "A"
@@ -415,7 +415,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (role) (market_total_capital_cents) / 100",
+          "expr": "max by (role) (market_total_capital_cents) / 100",
           "legendFormat": "{{role}}",
           "range": true,
           "refId": "A"
@@ -715,7 +715,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(market_best_ask_cents - market_best_bid_cents) / 100",
+          "expr": "max by (product) (market_best_ask_cents - market_best_bid_cents) / 100",
           "legendFormat": "{{product}}",
           "range": true,
           "refId": "A"
@@ -790,7 +790,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (product, side) (market_book_depth_units) / 100",
+          "expr": "max by (product, side) (market_book_depth_units) / 100",
           "legendFormat": "{{product}} {{side}}",
           "range": true,
           "refId": "A"
@@ -865,7 +865,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (product) (market_inventory_units) / 100",
+          "expr": "max by (product) (market_inventory_units) / 100",
           "legendFormat": "{{product}}",
           "range": true,
           "refId": "A"
@@ -928,7 +928,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_bank_gold_cent / 100",
+          "expr": "max(market_bank_gold_cent) / 100",
           "legendFormat": "Reserva Banco Central (kg)",
           "range": true,
           "refId": "A"
@@ -991,7 +991,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_gold_deposit_remaining_cent / 100",
+          "expr": "max(market_gold_deposit_remaining_cent) / 100",
           "legendFormat": "Yacimiento Remanente (kg)",
           "range": true,
           "refId": "A"
@@ -1054,7 +1054,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(sum(market_inventory_units{product=\"Oro\"}) - market_bank_gold_cent) / 100",
+          "expr": "(max(market_inventory_units{product=\"Oro\"}) - max(market_bank_gold_cent)) / 100",
           "legendFormat": "Oro en Circulación (kg)",
           "range": true,
           "refId": "A"
@@ -1192,7 +1192,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_bank_gold_cent / 100",
+          "expr": "max(market_bank_gold_cent) / 100",
           "legendFormat": "Reserva Banco Central (kg)",
           "range": true,
           "refId": "A"
@@ -1203,7 +1203,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_gold_deposit_remaining_cent / 100",
+          "expr": "max(market_gold_deposit_remaining_cent) / 100",
           "legendFormat": "Yacimiento Minable Remanente (kg)",
           "range": true,
           "refId": "B"
@@ -1214,7 +1214,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(sum(market_inventory_units{product=\"Oro\"}) - market_bank_gold_cent) / 100",
+          "expr": "(max(market_inventory_units{product=\"Oro\"}) - max(market_bank_gold_cent)) / 100",
           "legendFormat": "En Circulación (Agentes) (kg)",
           "range": true,
           "refId": "C"
@@ -1225,7 +1225,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(sum(market_inventory_units{product=\"Oro\"}) + market_gold_deposit_remaining_cent) / 100",
+          "expr": "(max(market_inventory_units{product=\"Oro\"}) + max(market_gold_deposit_remaining_cent)) / 100",
           "legendFormat": "Masa de Oro Total (kg)",
           "range": true,
           "refId": "D"
@@ -1378,7 +1378,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_total_capital_cents{role=\"city\"}) / 100",
+          "expr": "max(market_total_capital_cents{role=\"city\"}) / 100",
           "legendFormat": "Capital ciudades",
           "range": true,
           "refId": "A"
@@ -1506,7 +1506,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_city_income_pending_cents) / 100",
+          "expr": "sum(max by (source) (market_city_income_pending_cents)) / 100",
           "legendFormat": "En tránsito",
           "range": true,
           "refId": "A"
@@ -1574,7 +1574,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "abs(market_conservation_delta_cents)",
+          "expr": "abs(max(market_conservation_delta_cents))",
           "legendFormat": "|Δ|",
           "range": true,
           "refId": "A"
@@ -1650,7 +1650,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(market_total_capital_cents{role=\"city\"}) / 100",
+          "expr": "max(market_total_capital_cents{role=\"city\"}) / 100",
           "legendFormat": "Ciudades",
           "range": true,
           "refId": "A"
@@ -1813,7 +1813,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (source) (market_city_income_pending_cents) / 100",
+          "expr": "max by (source) (market_city_income_pending_cents) / 100",
           "legendFormat": "{{source}}",
           "range": true,
           "refId": "A"
@@ -1889,7 +1889,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "market_conservation_delta_cents",
+          "expr": "max(market_conservation_delta_cents)",
           "legendFormat": "Δ conservación",
           "range": true,
           "refId": "A"

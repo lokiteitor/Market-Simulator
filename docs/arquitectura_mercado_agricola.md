@@ -132,6 +132,8 @@ El Core y el Worker exponen `/metrics` en endpoints internos no proxeados por Ca
 
 Los gauges de negocio (`observability/business-metrics.ts`) se calculan **en scrape-time** contra la DB y se importan **solo desde el Core**; los contadores (`observability/metrics.ts`) los incrementa el proceso que hace el trabajo (p. ej. el `city-income-sweeper` corre en el Worker, así que su contador se scrapea del job `worker`, no del `core`).
 
+> **Agregación en Grafana: `max` para gauges, `sum` para contadores.** Prometheus descubre **una serie por réplica del Core** (`dns_sd` sobre el nombre de servicio `core`, ADR-019) y las N réplicas calculan el **mismo agregado global** contra la misma DB. Sumar un gauge entre réplicas lo multiplica por N: con las 4 del compose, `sum(market_active_agents)` daba 260 donde había 65. La forma correcta es colapsar primero las réplicas por etiqueta y agregar después — `sum(max by (role) (market_active_agents))`, `max by (product) (market_inventory_units)` —, y reservar `sum` para los contadores, donde cada proceso cuenta **sus propios** eventos y la suma sí es el total.
+
 Métricas del **flujo circular de ingreso** (ADR-020), en el dashboard *Negocio*:
 
 | Métrica | Proceso | Para qué sirve |
