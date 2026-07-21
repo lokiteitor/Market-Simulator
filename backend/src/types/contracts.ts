@@ -19,13 +19,16 @@ export type InventoryLotRow = typeof inventoryLot.$inferSelect;
 export type AgentRole = (typeof agentRole.enumValues)[number];
 
 /**
- * Roles que participan en el mercado (los 4 originales; excluye `admin`, que es
- * solo-monitoreo). Fuente única para: cuerpo de /auth/register, plan del seed,
- * y agregaciones de mercado que deben ignorar a los administradores. NO usar
- * `agentRole.enumValues` para "los roles de mercado": ese incluye `admin`.
+ * Roles que participan en el mercado (los 3 registrables; excluye `admin`, que
+ * es solo-monitoreo). Fuente única para: cuerpo de /auth/register, plan del
+ * seed, y agregaciones de mercado que deben ignorar a los administradores. NO
+ * usar `agentRole.enumValues` para "los roles de mercado": ese incluye `admin`.
+ *
+ * `transformer` es el ÚNICO rol productivo (ADR-022): absorbió al antiguo
+ * `primary_producer` cuando la extracción dejó de ser un caso especial (toda
+ * receta consume insumos salvo la extracción de agua, raíz del catálogo).
  */
 export const MARKET_ROLES = [
-  "primary_producer",
   "transformer",
   "consumer",
   "trader",

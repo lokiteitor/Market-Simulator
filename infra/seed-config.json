@@ -1,5 +1,5 @@
 {
-  "$comment": "Catálogo del simulador (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L; discretos: 100 = 1 unidad). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Incluye el catálogo agrícola original + el catálogo industrial de docs/catalogo_productos_recetas.md.",
+  "$comment": "Catálogo del simulador (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L; discretos: 100 = 1 unidad). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Raíz ÚNICA del grafo: `agua` (pozo_agua_profundo / pozo_somero, sin insumos); toda receta restante consume algo (ADR-022). Un solo rol productivo: transformer.",
   "products": [
     {
       "key": "trigo",
@@ -26,10 +26,10 @@
       "category": "raw_primary"
     },
     {
-      "key": "germinado",
-      "name": "Germinado",
+      "key": "semillas",
+      "name": "Semillas",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "intermediate"
     },
     {
       "key": "harina",
@@ -941,7 +941,20 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_maiz",
@@ -951,7 +964,20 @@
       "output_qty_cent": 60000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "ordena",
@@ -961,7 +987,16 @@
       "output_qty_cent": 20000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 120000
+        },
+        {
+          "product": "piensos",
+          "qty_cent": 4000
+        }
+      ]
     },
     {
       "key": "cultivo_tomate",
@@ -971,17 +1006,35 @@
       "output_qty_cent": 30000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 110000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
     },
     {
-      "key": "germinado_rapido",
-      "name": "Germinado rápido",
-      "output": "germinado",
+      "key": "vivero_semillas",
+      "name": "Vivero de semillas",
+      "output": "semillas",
       "installation_type": "campo",
-      "output_qty_cent": 1000,
-      "duration_sim_seconds": 60,
+      "output_qty_cent": 5000,
+      "duration_sim_seconds": 900,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 40000
+        }
+      ]
     },
     {
       "key": "molienda",
@@ -1081,7 +1134,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "mineria_carbon",
@@ -1091,7 +1149,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "mineria_cobre",
@@ -1101,7 +1164,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "mineria_bauxita",
@@ -1111,7 +1179,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "mineria_litio",
@@ -1121,7 +1194,12 @@
       "output_qty_cent": 10000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 600000
+        }
+      ]
     },
     {
       "key": "mineria_niquel",
@@ -1131,7 +1209,12 @@
       "output_qty_cent": 30000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "mineria_oro",
@@ -1141,7 +1224,12 @@
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 200000
+        }
+      ]
     },
     {
       "key": "mineria_plata",
@@ -1151,7 +1239,12 @@
       "output_qty_cent": 3000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 600000
+        }
+      ]
     },
     {
       "key": "mineria_uranio",
@@ -1161,7 +1254,12 @@
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 600000
+        }
+      ]
     },
     {
       "key": "extraccion_arena",
@@ -1171,7 +1269,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        }
+      ]
     },
     {
       "key": "cantera_piedra",
@@ -1181,7 +1284,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        }
+      ]
     },
     {
       "key": "cantera_caliza",
@@ -1191,7 +1299,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        }
+      ]
     },
     {
       "key": "extraccion_arcilla",
@@ -1201,7 +1314,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        }
+      ]
     },
     {
       "key": "mineria_fosfato",
@@ -1211,7 +1329,12 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 300000
+        }
+      ]
     },
     {
       "key": "extraccion_sal",
@@ -1221,7 +1344,12 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        }
+      ]
     },
     {
       "key": "pozo_petroleo",
@@ -1231,7 +1359,12 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 600000
+        }
+      ]
     },
     {
       "key": "pozo_gas",
@@ -1241,16 +1374,31 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 600000
+        }
+      ]
+    },
+    {
+      "key": "pozo_agua_profundo",
+      "name": "Pozo de agua profundo",
+      "output": "agua",
+      "installation_type": "pozo_agua",
+      "output_qty_cent": 360000,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 2,
       "inputs": []
     },
     {
-      "key": "captacion_agua",
-      "name": "Captación de agua",
+      "key": "pozo_somero",
+      "name": "Pozo somero",
       "output": "agua",
-      "installation_type": "planta_agua",
-      "output_qty_cent": 100000,
-      "duration_sim_seconds": 1800,
-      "wage_rate_cents_per_sec": 1,
+      "installation_type": "pozo_agua",
+      "output_qty_cent": 12000,
+      "duration_sim_seconds": 60,
+      "wage_rate_cents_per_sec": 2,
       "inputs": []
     },
     {
@@ -1261,7 +1409,16 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 250000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_soya",
@@ -1271,7 +1428,20 @@
       "output_qty_cent": 50000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_algodon",
@@ -1281,7 +1451,20 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_cana",
@@ -1291,7 +1474,20 @@
       "output_qty_cent": 60000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_cafe",
@@ -1301,7 +1497,20 @@
       "output_qty_cent": 20000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cultivo_cacao",
@@ -1311,7 +1520,20 @@
       "output_qty_cent": 20000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 150000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1500
+        }
+      ]
     },
     {
       "key": "cosecha_frutas",
@@ -1321,7 +1543,20 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 110000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
     },
     {
       "key": "cosecha_verduras",
@@ -1331,7 +1566,20 @@
       "output_qty_cent": 40000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 110000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
     },
     {
       "key": "cria_bovino",
@@ -1341,7 +1589,16 @@
       "output_qty_cent": 1000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 240000
+        },
+        {
+          "product": "piensos",
+          "qty_cent": 8000
+        }
+      ]
     },
     {
       "key": "cria_cerdos",
@@ -1351,7 +1608,16 @@
       "output_qty_cent": 2000,
       "duration_sim_seconds": 7200,
       "wage_rate_cents_per_sec": 2,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 240000
+        },
+        {
+          "product": "piensos",
+          "qty_cent": 8000
+        }
+      ]
     },
     {
       "key": "cria_pollos",
@@ -1361,7 +1627,16 @@
       "output_qty_cent": 5000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 60000
+        },
+        {
+          "product": "piensos",
+          "qty_cent": 2000
+        }
+      ]
     },
     {
       "key": "esquila",
@@ -1371,7 +1646,16 @@
       "output_qty_cent": 10000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 1,
-      "inputs": []
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 60000
+        },
+        {
+          "product": "piensos",
+          "qty_cent": 2000
+        }
+      ]
     },
     {
       "key": "fundicion_acero",
@@ -3684,7 +3968,7 @@
     {
       "key": "campo",
       "name": "Campo agrícola",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "hectareas",
       "base_price_cents": 15000,
       "growth_bps": 17000,
@@ -3700,13 +3984,13 @@
         "cultivo_cacao",
         "cosecha_frutas",
         "cosecha_verduras",
-        "germinado_rapido"
+        "vivero_semillas"
       ]
     },
     {
       "key": "granja",
       "name": "Granja ganadera",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "corrales",
       "base_price_cents": 18000,
       "growth_bps": 17000,
@@ -3722,7 +4006,7 @@
     {
       "key": "mina",
       "name": "Mina",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "galerias",
       "base_price_cents": 30000,
       "growth_bps": 17000,
@@ -3743,7 +4027,7 @@
     {
       "key": "cantera",
       "name": "Cantera",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "frentes",
       "base_price_cents": 15000,
       "growth_bps": 17000,
@@ -3759,7 +4043,7 @@
     {
       "key": "pozo",
       "name": "Pozo de extracción",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "perforaciones",
       "base_price_cents": 30000,
       "growth_bps": 17000,
@@ -3772,7 +4056,7 @@
     {
       "key": "bosque",
       "name": "Bosque maderero",
-      "role": "primary_producer",
+      "role": "transformer",
       "unit_label": "parcelas",
       "base_price_cents": 15000,
       "growth_bps": 17000,
@@ -3782,15 +4066,16 @@
       ]
     },
     {
-      "key": "planta_agua",
-      "name": "Planta de captación de agua",
-      "role": "primary_producer",
-      "unit_label": "captaciones",
+      "key": "pozo_agua",
+      "name": "Pozo de agua",
+      "role": "transformer",
+      "unit_label": "pozos",
       "base_price_cents": 12000,
       "growth_bps": 17000,
       "max_level": 10,
       "recipes": [
-        "captacion_agua"
+        "pozo_agua_profundo",
+        "pozo_somero"
       ]
     },
     {
@@ -4014,11 +4299,8 @@
     }
   ],
   "roles": {
-    "primary_producer": {
-      "initial_agents": 3
-    },
     "transformer": {
-      "initial_agents": 3
+      "initial_agents": 6
     },
     "consumer": {
       "initial_agents": 2

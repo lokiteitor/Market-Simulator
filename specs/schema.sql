@@ -36,7 +36,10 @@ CREATE TYPE product_category AS ENUM (
 );
 
 CREATE TYPE agent_role AS ENUM (
-    'primary_producer',
+    -- Único rol productivo (ADR-022): extraer y transformar son el mismo acto
+    -- económico (toda receta consume algo salvo la extracción de agua), así que
+    -- el antiguo 'primary_producer' desapareció y sus tipos de instalación
+    -- (campo, mina, pozo_agua, …) pertenecen a 'transformer'.
     'transformer',
     'consumer',
     'trader',

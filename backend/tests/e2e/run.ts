@@ -20,7 +20,8 @@
  * local de llamadas. Reutiliza tokens en todo lo demás.
  *
  * Precondiciones: stack de infra/docker-compose.yml arriba y seed [M9] aplicado
- * (el catálogo debe existir). El libro de `germinado` debe estar limpio; las
+ * (el catálogo debe existir). El libro del producto rápido (`agua`) debe estar
+ * limpio: NO correr los bots contra el stack mientras corre la suite; las
  * órdenes de la suite usan TTLs cortos (≤ 300 sim-s = 60 s reales con factor 5)
  * y se cancelan al final, así una corrida fallida se auto-limpia en ~1 min.
  */
@@ -258,9 +259,9 @@ async function main(): Promise<void> {
     const fast = seedRecipe(cfg, FAST_RECIPE_KEY);
     assertEqual(fast.inputs.length, 0, `receta ${FAST_RECIPE_KEY} debe ser primaria (sin insumos)`);
     // ADR-021: la receta rápida pertenece a un tipo de instalación de rol
-    // primary_producer que ALICE comprará antes de producir.
+    // transformer que ALICE comprará antes de producir.
     const fastType = seedInstallationType(cfg, fast.installation_type);
-    assertEqual(fastType.role, "primary_producer", `el tipo "${fastType.key}" es de primary_producer`);
+    assertEqual(fastType.role, "transformer", `el tipo "${fastType.key}" es de transformer`);
     assert(
       fastType.recipes.includes(FAST_RECIPE_KEY),
       `el tipo "${fastType.key}" lista la receta ${FAST_RECIPE_KEY}`,
@@ -399,8 +400,8 @@ async function main(): Promise<void> {
     };
   }
 
-  const alice = await step("5. auth: registrar ALICE (primary_producer) SIN instalaciones", async () => {
-    const agent = await registerAgent("prod", "primary_producer");
+  const alice = await step("5. auth: registrar ALICE (transformer) SIN instalaciones", async () => {
+    const agent = await registerAgent("prod", "transformer");
     // ADR-021: el agente nace SIN instalaciones; debe comprarlas después.
     const snap = await me(agent);
     assertEqual(snap.installations.length, 0, "agente recién registrado sin instalaciones");
@@ -539,7 +540,7 @@ async function main(): Promise<void> {
     },
   );
 
-  // ---- 11-13. Transformación germinado_rapido ------------------------------
+  // ---- 11-13. Transformación pozo_somero -----------------------------------
 
   const EXECUTIONS = 1;
   const procExp = expectedPrimaryProcessNumbers({

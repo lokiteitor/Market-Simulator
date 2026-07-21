@@ -56,8 +56,6 @@ const EnvSchema = z
     CITY_FEE_SHARE_BPS: nonNegIntFromEnv(5000),
     MASTER_SEED: intFromEnv(42),
     DEFAULT_SEED_CAPITAL_CENTS: posIntFromEnv(100000),
-    SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS: posIntFromEnv(50000),
-    SEED_CAPITAL_PRIMARY_PRODUCER_MAX_CENTS: posIntFromEnv(120000),
     SEED_CAPITAL_TRANSFORMER_MIN_CENTS: posIntFromEnv(120000),
     SEED_CAPITAL_TRANSFORMER_MAX_CENTS: posIntFromEnv(250000),
     SEED_CAPITAL_CONSUMER_MIN_CENTS: posIntFromEnv(80000),
@@ -102,10 +100,6 @@ const EnvSchema = z
     message: "ORDER_TTL_MIN_SIM_SECONDS debe ser <= ORDER_TTL_MAX_SIM_SECONDS",
     path: ["ORDER_TTL_MIN_SIM_SECONDS"],
   })
-  .refine((e) => e.SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS <= e.SEED_CAPITAL_PRIMARY_PRODUCER_MAX_CENTS, {
-    message: "SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS debe ser <= MAX",
-    path: ["SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS"],
-  })
   .refine((e) => e.SEED_CAPITAL_TRANSFORMER_MIN_CENTS <= e.SEED_CAPITAL_TRANSFORMER_MAX_CENTS, {
     message: "SEED_CAPITAL_TRANSFORMER_MIN_CENTS debe ser <= MAX",
     path: ["SEED_CAPITAL_TRANSFORMER_MIN_CENTS"],
@@ -136,7 +130,7 @@ const EnvSchema = z
   });
 
 /** Roles de agente (claves de `seedCapitalRanges`, snake_case como en la DB). */
-export type AgentRoleKey = "primary_producer" | "transformer" | "consumer" | "trader";
+export type AgentRoleKey = "transformer" | "consumer" | "trader";
 
 export interface SeedCapitalRange {
   minCents: number;
@@ -256,10 +250,6 @@ function loadConfig(): Config {
     masterSeed: e.MASTER_SEED,
     defaultSeedCapitalCents: e.DEFAULT_SEED_CAPITAL_CENTS,
     seedCapitalRanges: {
-      primary_producer: {
-        minCents: e.SEED_CAPITAL_PRIMARY_PRODUCER_MIN_CENTS,
-        maxCents: e.SEED_CAPITAL_PRIMARY_PRODUCER_MAX_CENTS,
-      },
       transformer: {
         minCents: e.SEED_CAPITAL_TRANSFORMER_MIN_CENTS,
         maxCents: e.SEED_CAPITAL_TRANSFORMER_MAX_CENTS,

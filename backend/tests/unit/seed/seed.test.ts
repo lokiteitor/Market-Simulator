@@ -21,7 +21,6 @@ import {
 } from "../../../src/seed";
 
 const RANGES: Record<AgentRoleKey, SeedCapitalRange> = {
-  primary_producer: { minCents: 50000, maxCents: 120000 },
   transformer: { minCents: 120000, maxCents: 250000 },
   consumer: { minCents: 80000, maxCents: 150000 },
   trader: { minCents: 200000, maxCents: 400000 },
@@ -60,7 +59,7 @@ function baseConfig(): SeedConfig {
       {
         key: "campo",
         name: "Campo agrícola",
-        role: "primary_producer",
+        role: "transformer",
         unit_label: "hectareas",
         base_price_cents: 15000,
         growth_bps: 17000,
@@ -79,8 +78,7 @@ function baseConfig(): SeedConfig {
       },
     ],
     roles: {
-      primary_producer: { initial_agents: 2 },
-      transformer: { initial_agents: 1 },
+      transformer: { initial_agents: 3 },
       consumer: { initial_agents: 3 },
       trader: { initial_agents: 0 },
     },
@@ -95,9 +93,9 @@ describe("parseSeedConfig", () => {
     );
     const cfg = parseSeedConfig(raw);
     expect(cfg.products.length).toBeGreaterThanOrEqual(7);
-    expect(cfg.recipes.some((r) => r.key === "germinado_rapido")).toBe(true);
+    expect(cfg.recipes.some((r) => r.key === "pozo_somero")).toBe(true);
     // La receta rápida E2E: 60 s simulados, sin insumos.
-    const rapida = cfg.recipes.find((r) => r.key === "germinado_rapido");
+    const rapida = cfg.recipes.find((r) => r.key === "pozo_somero");
     expect(rapida?.duration_sim_seconds).toBe(60);
     expect(rapida?.inputs).toEqual([]);
   });
@@ -168,7 +166,7 @@ describe("parseSeedConfig", () => {
 
   test("rechaza roles incompletos", () => {
     const cfg: Record<string, unknown> = { ...baseConfig() };
-    cfg.roles = { primary_producer: { initial_agents: 1 } };
+    cfg.roles = { transformer: { initial_agents: 1 } };
     expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
       /estructura inválida/,
     );
@@ -194,9 +192,9 @@ describe("buildAgentPlan", () => {
   test("usernames {role}_{i} 1-based y conteo por initial_agents", () => {
     const plan = buildAgentPlan(cfg, { masterSeed: 42, capitalRanges: RANGES });
     expect(plan.map((e) => e.username)).toEqual([
-      "primary_producer_1",
-      "primary_producer_2",
       "transformer_1",
+      "transformer_2",
+      "transformer_3",
       "consumer_1",
       "consumer_2",
       "consumer_3",

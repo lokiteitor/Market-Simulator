@@ -2,7 +2,7 @@
  * Carga de `infra/seed-config.json` para el E2E [M11].
  *
  * La suite lee el MISMO archivo que consume el seed [M9] para conocer la
- * receta rápida `germinado_rapido` (output, duración, salario) y las
+ * receta rápida `pozo_somero` (output, duración, salario) y las
  * capacidades por rol (§13), y así calcular expectativas sin hardcodear.
  *
  * Ruta: `E2E_SEED_CONFIG_PATH` o `<repo>/infra/seed-config.json` resuelta
@@ -56,7 +56,12 @@ export interface SeedConfig {
   roles: Record<string, SeedRoleConfig>;
 }
 
-export const FAST_RECIPE_KEY = "germinado_rapido";
+/**
+ * Receta rápida del E2E: la extracción de agua de pozo somero, ÚNICA junto con
+ * `pozo_agua_profundo` en no tener insumos (ADR-022). 60 s simulados = 12 s
+ * reales con factor 5.
+ */
+export const FAST_RECIPE_KEY = "pozo_somero";
 
 export async function loadSeedConfig(): Promise<SeedConfig> {
   const path =

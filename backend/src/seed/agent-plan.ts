@@ -11,7 +11,7 @@ import type { SeedConfig } from "./seed-config";
 const ROLE_ORDER: readonly MarketRole[] = MARKET_ROLES;
 
 export interface SeedAgentPlanEntry {
-  /** `{role}_{i}` con i 1-based (p. ej. `primary_producer_1`). */
+  /** `{role}_{i}` con i 1-based (p. ej. `transformer_1`). */
   username: string;
   role: MarketRole;
   /** Capital semilla determinista: rngFor(masterSeed, username) en el rango del rol. */

@@ -200,7 +200,6 @@ export default function ProfilePage() {
                   className={cx(
                     styles.avatar,
                     {
-                      primary_producer: styles.avatarPrimaryProducer,
                       transformer: styles.avatarTransformer,
                       consumer: styles.avatarConsumer,
                       trader: styles.avatarTrader,

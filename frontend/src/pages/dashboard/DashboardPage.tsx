@@ -64,7 +64,6 @@ import styles from "./DashboardPage.module.css";
 // ---------------------------------------------------------------------------
 
 const ROLE_LABEL: Record<AgentRole, string> = {
-  primary_producer: "Productor primario",
   transformer: "Transformador",
   consumer: "Consumidor",
   trader: "Trader",

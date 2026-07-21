@@ -180,7 +180,6 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
 
     // --- Agentes iniciales ---------------------------------------------------
     const byRole: SeedSummary["byRole"] = {
-      primary_producer: { agents: 0, capitalCents: 0 },
       transformer: { agents: 0, capitalCents: 0 },
       consumer: { agents: 0, capitalCents: 0 },
       trader: { agents: 0, capitalCents: 0 },

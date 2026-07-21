@@ -16,16 +16,10 @@ export interface RoleInfo {
 /** Orden de presentación fijo del selector de rol. */
 export const ROLE_INFOS: readonly RoleInfo[] = [
   {
-    role: "primary_producer",
-    label: "Productor primario",
-    description:
-      "Produce materias primas desde cero (cultivos, ordeña) y las vende en el mercado.",
-  },
-  {
     role: "transformer",
     label: "Transformador",
     description:
-      "Convierte insumos en productos elaborados mediante recetas (molienda, panadería…).",
+      "Único rol productivo: extrae (pozos, minas, campos) y transforma insumos en productos elaborados mediante recetas.",
   },
   {
     role: "consumer",
@@ -43,7 +37,6 @@ export const ROLE_INFOS: readonly RoleInfo[] = [
 
 /** Etiqueta humana por rol (para Badges y textos). */
 export const ROLE_LABEL: Record<AgentRole, string> = {
-  primary_producer: "Productor primario",
   transformer: "Transformador",
   consumer: "Consumidor",
   trader: "Trader",

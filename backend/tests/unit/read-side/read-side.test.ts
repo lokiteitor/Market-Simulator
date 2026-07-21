@@ -75,7 +75,7 @@ describe("HistoryEventsQuerySchema", () => {
 
 describe("recipeDurationRealSeconds (openapi: duration_seconds en s REALES)", () => {
   test("convierte el INTERVAL simulado con el factor de simulación", () => {
-    // germinado_rapido: 60 s simulados → 60/factor s reales (12 con factor 5).
+    // pozo_somero: 60 s simulados → 60/factor s reales (12 con factor 5).
     const expected = Math.max(1, Math.round(60 / config.simTimeFactor));
     expect(recipeDurationRealSeconds("00:01:00")).toBe(expected);
   });

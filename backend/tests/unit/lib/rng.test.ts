@@ -19,11 +19,11 @@ describe("fnv1a32", () => {
 
 describe("seedFrom", () => {
   test("determinista: misma (semilla, clave) → misma semilla derivada", () => {
-    expect(seedFrom(42, "primary_producer_1")).toBe(seedFrom(42, "primary_producer_1"));
+    expect(seedFrom(42, "transformer_1")).toBe(seedFrom(42, "transformer_1"));
   });
 
   test("claves distintas → semillas distintas", () => {
-    const keys = ["primary_producer_1", "primary_producer_2", "transformer_1", "trader_1"];
+    const keys = ["transformer_1", "transformer_2", "consumer_1", "trader_1"];
     const seeds = new Set(keys.map((k) => seedFrom(42, k)));
     expect(seeds.size).toBe(keys.length);
   });
@@ -101,7 +101,7 @@ describe("randIntInclusive", () => {
   });
 
   test("rangos de capital semilla (§13) reproducibles por agente", () => {
-    const draw = () => randIntInclusive(rngFor(42, "primary_producer_1"), 50000, 120000);
+    const draw = () => randIntInclusive(rngFor(42, "transformer_1"), 50000, 120000);
     const first = draw();
     expect(draw()).toBe(first);
     expect(first).toBeGreaterThanOrEqual(50000);

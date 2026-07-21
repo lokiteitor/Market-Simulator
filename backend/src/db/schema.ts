@@ -44,7 +44,7 @@ export const productCategory = pgEnum("product_category", [
 ]);
 
 export const agentRole = pgEnum("agent_role", [
-  "primary_producer",
+  // Único rol productivo (ADR-022): ya no existe `primary_producer`.
   "transformer",
   "consumer",
   "trader",

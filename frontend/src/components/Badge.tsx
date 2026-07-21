@@ -4,7 +4,7 @@
  * texto = color pleno del rol/estado; fondo = variante *-soft (contraste AA).
  *
  * Kinds admitidos:
- * - Roles: primary_producer, transformer, consumer, trader
+ * - Roles: transformer (único rol productivo), consumer, trader
  * - Estados: active, partial, completed, cancelled, expired, bankrupt
  *   (running es alias visual de active)
  * - Categorías de producto: raw_primary, intermediate, final_consumption
@@ -17,7 +17,6 @@ import styles from "./Badge.module.css";
 
 export type BadgeKind =
   // roles
-  | "primary_producer"
   | "transformer"
   | "consumer"
   | "trader"
@@ -47,7 +46,6 @@ export interface BadgeProps {
 }
 
 const KIND_CLASS: Record<BadgeKind, string> = {
-  primary_producer: styles["rolePrimaryProducer"] ?? "",
   transformer: styles["roleTransformer"] ?? "",
   consumer: styles["roleConsumer"] ?? "",
   trader: styles["roleTrader"] ?? "",

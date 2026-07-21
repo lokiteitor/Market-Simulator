@@ -65,8 +65,8 @@ describe("InventoryQuerySchema y AgentIdParamsSchema", () => {
 describe("Schemas de respuesta (shapes del openapi)", () => {
   const agentPublic = {
     agent_id: UUID,
-    username: "primary_producer_1",
-    role: "primary_producer",
+    username: "transformer_1",
+    role: "transformer",
     status: "active",
     registered_at: "2026-07-03T10:00:00.000Z",
     bankrupt_at: null,

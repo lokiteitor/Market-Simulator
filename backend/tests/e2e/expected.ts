@@ -57,7 +57,7 @@ export interface ExpectedProcessNumbers {
   totalRealDurationMs: number;
 }
 
-/** Números esperados de un proceso SIN insumos (receta primaria, p. ej. germinado_rapido). */
+/** Números esperados de un proceso SIN insumos (la raíz del catálogo, p. ej. pozo_somero). */
 export function expectedPrimaryProcessNumbers(p: {
   durationSimSeconds: number;
   wageRateCentsPerSec: number;

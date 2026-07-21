@@ -111,7 +111,6 @@ export interface Recipe {
 // ---------------------------------------------------------------------------
 
 export type AgentRole =
-  | "primary_producer"
   | "transformer"
   | "consumer"
   | "trader"

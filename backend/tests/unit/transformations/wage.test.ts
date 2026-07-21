@@ -6,8 +6,8 @@ import { describe, expect, test } from "bun:test";
 import { processWageCents } from "../../../src/services/transformation-service";
 
 describe("processWageCents", () => {
-  test("germinado_rapido: 60 s sim × 1 c/s × 1 ejecución = 60", () => {
-    expect(processWageCents("00:01:00", 1, 1)).toBe(60);
+  test("pozo_somero: 60 s sim × 2 c/s × 1 ejecución = 120", () => {
+    expect(processWageCents("00:01:00", 2, 1)).toBe(120);
   });
 
   test("1 hora × 2 c/s × 3 ejecuciones = 21600", () => {

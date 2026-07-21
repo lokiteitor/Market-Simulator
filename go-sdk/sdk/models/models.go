@@ -5,7 +5,6 @@ import "time"
 type AgentRole string
 
 const (
-	RolePrimaryProducer AgentRole = "primary_producer"
 	RoleTransformer     AgentRole = "transformer"
 	RoleConsumer        AgentRole = "consumer"
 	RoleTrader          AgentRole = "trader"

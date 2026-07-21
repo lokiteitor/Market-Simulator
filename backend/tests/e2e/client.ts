@@ -30,7 +30,7 @@ export interface TokenPair {
   refresh_expires_at: string;
 }
 
-export type AgentRole = "primary_producer" | "transformer" | "consumer" | "trader";
+export type AgentRole = "transformer" | "consumer" | "trader";
 
 export interface AgentPublic {
   agent_id: string;

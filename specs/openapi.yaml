@@ -1298,14 +1298,14 @@ components:
         /auth/register; ver RegisterableRole. A diferencia de admin/bank, `city`
         SÍ participa del mercado: es la demanda final urbana, la siembra el
         servidor con credenciales y la manejan los bots de `bots-ciudad`.
-      enum: [primary_producer, transformer, consumer, trader, admin, bank, city]
+      enum: [transformer, consumer, trader, admin, bank, city]
 
     RegisterableRole:
       type: string
       description: |
         Roles admitidos por POST /auth/register (roles de mercado). Excluye
         `admin`, `bank` y `city`: un rol no listado aquí se rechaza con 400.
-      enum: [primary_producer, transformer, consumer, trader]
+      enum: [transformer, consumer, trader]
 
     AgentStatus:
       type: string

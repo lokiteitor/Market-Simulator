@@ -57,7 +57,6 @@ const SeedConfigSchema = z.object({
   recipes: z.array(SeedRecipeSchema),
   installation_types: z.array(SeedInstallationTypeSchema).min(1),
   roles: z.object({
-    primary_producer: SeedRoleSchema,
     transformer: SeedRoleSchema,
     consumer: SeedRoleSchema,
     trader: SeedRoleSchema,

@@ -337,7 +337,6 @@ export default function AuthPage() {
               <div className={styles.roleGrid}>
                 {ROLE_INFOS.map((info) => {
                   const roleClass = {
-                    primary_producer: styles.rolePrimaryProducer,
                     transformer: styles.roleTransformer,
                     consumer: styles.roleConsumer,
                     trader: styles.roleTrader,
