@@ -107,7 +107,10 @@ func main() {
 
 	if scaleVal > 0 {
 		log.Printf("Scale mode active. Generating %d bots programmatically for runner '%s'...", scaleVal, runnerVal)
-		strats := []string{"primary_producer", "miner", "farmer", "transformer", "consumer", "trader"}
+		// Especialidades productoras (ADR-022): reparten los 16 tipos de
+		// instalación entre bots. El aguador está primero porque el agua es la
+		// raíz de la cadena: sin él no arranca nada.
+		strats := []string{"aguador", "miner", "farmer", "transformer", "consumer", "trader"}
 
 		// Fixed namespace UUID for deterministic UUID v5 generation
 		namespace := uuid.MustParse("8c478718-9e01-4841-8870-fdf6d9c4f592")
@@ -115,9 +118,11 @@ func main() {
 		for i := 1; i <= scaleVal; i++ {
 			// Round-robin distribution of strategies
 			stratName := strats[(i-1)%len(strats)]
+			// Un solo rol productivo (ADR-022): las especialidades productoras
+			// se registran todas como `transformer`.
 			role := models.AgentRole(stratName)
-			if stratName == "miner" || stratName == "farmer" {
-				role = "primary_producer"
+			if stratName == "aguador" || stratName == "miner" || stratName == "farmer" {
+				role = "transformer"
 			}
 			data := []byte(fmt.Sprintf("%s-%s-%d", runnerVal, stratName, i))
 			username := uuid.NewSHA1(namespace, data).String()
@@ -290,8 +295,8 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 	}
 
 	switch stratName {
-	case "primary_producer":
-		strat = NewPrimaryProducerStrategy()
+	case "aguador":
+		strat = NewAguadorStrategy()
 	case "miner":
 		strat = NewMinerStrategy()
 	case "farmer":

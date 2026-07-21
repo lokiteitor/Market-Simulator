@@ -10,46 +10,65 @@ import (
 	"github.com/lokiteitor/market-simulator/sdk/strategy"
 )
 
-// TransformerStrategy ejecuta recetas con insumos, decidiendo a PRECIOS DE
-// MERCADO: solo arranca una receta si el fair del output cubre insumos+salario
-// con margen, compra insumos cruzando el spread cuando el margen sobrevive al
-// ask (eso imprime trades reales en la cadena trigo->harina->pan), y vende
-// outputs con undercut y suelo de coste como el productor.
-type TransformerStrategy struct {
+// ProducerStrategy es la ÚNICA estrategia productora (ADR-022): extraer y
+// transformar son el mismo acto económico, porque toda receta consume insumos
+// salvo la extracción de agua (raíz del catálogo). Antes había dos estrategias
+// que se repartían el catálogo por `len(recipe.Inputs)`; ese reparto ya no
+// significa nada y habría dejado sin producir a la mitad del enjambre.
+//
+// Comportamiento:
+//   - Oferta elástica: solo arranca una receta si el fair del output cubre
+//     insumos + salario con margen mínimo. Si un producto se abarata, la
+//     producción para, el inventario se agota y el precio se recupera.
+//   - Reposición de insumos: bids de descanso bajo el fair, o cruce del ask
+//     cuando el margen de la receta sobrevive pagándolo (así la cadena
+//     agua→cultivo→harina→pan ejecuta de verdad en vez de descansar en bids
+//     que nadie cruza).
+//   - Venta a mercado: undercut del mejor ask con suelo de coste, en tranches,
+//     con cancel/replace de asks viejos. NUNCA vende lo que consume.
+//   - Patrón oro: si mina oro y la ventanilla del banco paga mejor que el
+//     mercado, monetiza ahí.
+//
+// El reparto del catálogo entre bots lo hace `typeFilter` (tipos de instalación
+// que este bot está dispuesto a comprar): aguador, farmer, miner, transformer.
+type ProducerStrategy struct {
 	mu                sync.Mutex
 	rnd               *rand.Rand
 	view              *MarketView
+	bank              *bankWindow
 	basePrices        map[string]int64
 	simTimeFactor     float64
 	maxRecipesPerTick int
-	p                 transformerParams
-	subscribed        []string
-	role              models.AgentRole
-	// Instalaciones (ADR-021): tope de nivel deseado, colchón de capital y nº
-	// máximo de compras/mejoras por tick.
+	p                 producerParams
+	// typeFilter: keys de installation_type que este bot produce (nil = todas).
+	typeFilter map[string]bool
+	subscribed []string
+	role       models.AgentRole
+	// Instalaciones (ADR-021): tope de nivel deseado y colchón de capital para
+	// comprar/mejorar sin descapitalizarse; nº máximo de compras por tick.
 	maxDesiredLevel      int
 	capitalReserveFactor int64
 	maxBuysPerTick       int
 }
 
-type transformerParams struct {
-	minMargin     float64 // margen minimo sobre coste total por ejecucion
-	targetMargin  float64
+type producerParams struct {
+	minMargin     float64 // margen minimo sobre coste: gate de produccion y suelo de venta
+	targetMargin  float64 // margen objetivo cuando no hay ask que mejorar
 	crossProb     float64 // probabilidad de cruzar el ask por insumos (si el margen aguanta)
 	bufferExecs   int     // ejecuciones de buffer de insumos por instalacion
 	restingDisc   float64 // descuento del bid de descanso vs fair del insumo
-	undercut      float64
-	tranche       float64
-	requoteThresh float64
+	undercut      float64 // rebaja relativa sobre el mejor ask
+	tranche       float64 // fraccion del inventario listada por tick
+	requoteThresh float64 // desviacion que dispara cancel/replace
 	actProb       float64
 	skipTickProb  float64
-	liqCap        float64
-	capitalDen    int64 // presupuesto por insumo = capital / capitalDen
+	liqCap        float64 // techo del suelo relativo al fair (modo liquidacion)
+	capitalDen    int64   // presupuesto por insumo = capital / capitalDen
 	restBudget    int
 }
 
-func NewTransformerStrategy() *TransformerStrategy {
-	return &TransformerStrategy{
+func NewProducerStrategy() *ProducerStrategy {
+	return &ProducerStrategy{
 		basePrices:           make(map[string]int64),
 		simTimeFactor:        5,
 		maxRecipesPerTick:    8,
@@ -59,16 +78,16 @@ func NewTransformerStrategy() *TransformerStrategy {
 	}
 }
 
-// producibleRecipes: recetas CON insumos cuyo tipo de instalación corresponde al
-// rol del bot (ADR-021).
-func (s *TransformerStrategy) producibleRecipes(ctx *strategy.Context) []models.Recipe {
+// producibleRecipes: recetas cuyo tipo de instalación corresponde al rol del bot
+// y pasa el typeFilter. Base para producción y para decidir qué comprar.
+func (s *ProducerStrategy) producibleRecipes(ctx *strategy.Context) []models.Recipe {
 	out := make([]models.Recipe, 0, 32)
 	for _, recipe := range ctx.State.CatalogRecipes() {
-		if len(recipe.Inputs) == 0 {
-			continue // las recetas sin insumos son de los productores
-		}
 		typ, ok := ctx.State.InstallationTypeByID(recipe.InstallationTypeID)
 		if !ok || models.AgentRole(typ.Role) != s.role {
+			continue
+		}
+		if s.typeFilter != nil && !s.typeFilter[typ.Key] {
 			continue
 		}
 		out = append(out, recipe)
@@ -76,17 +95,18 @@ func (s *TransformerStrategy) producibleRecipes(ctx *strategy.Context) []models.
 	return out
 }
 
-func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
-	ctx.Logger.Info("TransformerStrategy initializing...")
+func (s *ProducerStrategy) Initialize(ctx *strategy.Context) error {
+	ctx.Logger.Info("ProducerStrategy initializing...")
 	s.rnd = newStrategyRand(ctx)
 	_, _, s.role, _ = ctx.State.GetAgentInfo()
 	s.basePrices = resolveBasePrices(ctx)
 	s.view = newMarketView(ctx, s.basePrices)
+	s.bank = loadBankWindow(ctx)
 	s.simTimeFactor = configFloat(ctx.Config, "sim_time_factor", s.simTimeFactor)
 	s.maxRecipesPerTick = configInt(ctx.Config, "max_recipes_per_tick", s.maxRecipesPerTick)
-	s.p = transformerParams{
+	s.p = producerParams{
 		minMargin:     sampleRange(s.rnd, 0.05, 0.2),
-		targetMargin:  sampleRange(s.rnd, 0.2, 0.45),
+		targetMargin:  sampleRange(s.rnd, 0.2, 0.5),
 		crossProb:     sampleRange(s.rnd, 0.3, 0.7),
 		bufferExecs:   sampleIntRange(s.rnd, 3, 6),
 		restingDisc:   sampleRange(s.rnd, 0.02, 0.06),
@@ -99,8 +119,9 @@ func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 		capitalDen:    int64(sampleIntRange(s.rnd, 3, 6)),
 		restBudget:    int(marketCfgFloat(ctx.Config, "rest_budget_per_tick", 4)),
 	}
-	// Suscripción de tape (fan-out selectivo): insumos y outputs de las
-	// recetas de sus instalaciones — todo lo que compra y todo lo que vende.
+	// Suscripción de tape (fan-out selectivo): insumos y outputs de sus recetas
+	// —todo lo que compra y todo lo que vende—, más el oro si hay ventanilla (su
+	// precio de mercado decide vender al banco o al libro).
 	seen := make(map[string]bool)
 	for _, recipe := range s.producibleRecipes(ctx) {
 		for _, input := range recipe.Inputs {
@@ -108,30 +129,46 @@ func (s *TransformerStrategy) Initialize(ctx *strategy.Context) error {
 		}
 		seen[recipe.OutputProductID] = true
 	}
+	if s.bank.enabled {
+		seen[s.bank.goldProductID] = true
+	}
 	s.subscribed = make([]string, 0, len(seen))
 	for id := range seen {
 		s.subscribed = append(s.subscribed, id)
 	}
-	ctx.Logger.Info("TransformerStrategy initialized",
+	ctx.Logger.Info("ProducerStrategy initialized",
 		"priced_products", len(s.basePrices),
 		"tape_products", len(s.subscribed),
 		"sim_time_factor", s.simTimeFactor,
 		"max_recipes_per_tick", s.maxRecipesPerTick,
-		"cross_prob", s.p.crossProb,
+		"target_margin", s.p.targetMargin,
 	)
 	return nil
 }
 
 // wagePerExecCents es el salario por ejecucion en cents (el servidor cobra
 // por segundos SIMULADOS; DurationSeconds llega en reales).
-func (s *TransformerStrategy) wagePerExecCents(recipe models.Recipe) int64 {
+func (s *ProducerStrategy) wagePerExecCents(recipe models.Recipe) int64 {
 	return int64(float64(recipe.WageRateCentsPerSec*recipe.DurationSeconds) * s.simTimeFactor)
+}
+
+// outputFair devuelve el fair del output con el suelo de la ventanilla del
+// banco para el oro: el banco garantiza window_bid, así que el precio efectivo
+// nunca es menor (aunque el mercado libre esté deprimido, minar y monetizar
+// sigue rentando).
+func (s *ProducerStrategy) outputFair(productID string) (int64, bool) {
+	fair, has := s.view.Fair(productID)
+	if s.bank.enabled && productID == s.bank.goldProductID && (!has || fair < s.bank.windowBid) {
+		return s.bank.windowBid, true
+	}
+	return fair, has
 }
 
 // execEconomics valora una ejecucion de la receta a precios fair: coste de
 // insumos, salario e ingreso del output. ok=false si falta el fair de alguna
-// pata (sin valoracion no hay decision).
-func (s *TransformerStrategy) execEconomics(recipe models.Recipe) (inputsCost, wage, revenue int64, ok bool) {
+// pata (sin valoracion no hay decision). Con `inputs: []` (la raíz del
+// catálogo) inputsCost es 0 y el coste es puro salario.
+func (s *ProducerStrategy) execEconomics(recipe models.Recipe) (inputsCost, wage, revenue int64, ok bool) {
 	for _, input := range recipe.Inputs {
 		fairIn, has := s.view.Fair(input.ProductID)
 		if !has {
@@ -139,7 +176,7 @@ func (s *TransformerStrategy) execEconomics(recipe models.Recipe) (inputsCost, w
 		}
 		inputsCost += notionalCents(input.QtyRequiredCent, fairIn)
 	}
-	fairOut, has := s.view.Fair(recipe.OutputProductID)
+	fairOut, has := s.outputFair(recipe.OutputProductID)
 	if !has {
 		return 0, 0, 0, false
 	}
@@ -148,7 +185,7 @@ func (s *TransformerStrategy) execEconomics(recipe models.Recipe) (inputsCost, w
 	return inputsCost, wage, revenue, true
 }
 
-func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
+func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -172,7 +209,13 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	}
 
 	var acts []actions.Action
+	// Solo se vende lo que producimos con instalaciones PROPIAS, y solo por
+	// encima del buffer que consumimos: un aguador vende agua, pero el
+	// agricultor que la compra para regar, no; y el que produce sus propias
+	// semillas vende el excedente, no la simiente del año que viene. Sin esto el
+	// bot se remata sus propios insumos y se queda sin poder producir.
 	recipeByOutput := make(map[string]models.Recipe)
+	reservado := make(map[string]int64)
 	handledInputs := make(map[string]bool) // varias recetas comparten insumos
 	recipesActed := 0
 	buysActed := 0
@@ -184,11 +227,24 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	// (chocarían en expected_current_level).
 	slotsCommitted := make(map[string]int)
 	typesBought := make(map[string]bool)
+	for _, recipe := range producible {
+		inst, _, owned, typeKnown := installationForRecipe(ctx, recipe)
+		if !typeKnown || !owned {
+			continue // solo lo que este bot produce de verdad
+		}
+		recipeByOutput[recipe.OutputProductID] = recipe
+		buffLevel := max(inst.Level, 1)
+		for _, input := range recipe.Inputs {
+			target := input.QtyRequiredCent * int64(buffLevel) * int64(s.p.bufferExecs)
+			if target > reservado[input.ProductID] {
+				reservado[input.ProductID] = target
+			}
+		}
+	}
 	// Orden aleatorio: con el cap por tick, un orden fijo mataria de hambre a
 	// las recetas del final de la lista.
 	for _, idx := range s.rnd.Perm(len(producible)) {
 		recipe := producible[idx]
-		recipeByOutput[recipe.OutputProductID] = recipe
 		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
 			continue
 		}
@@ -229,6 +285,8 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				acts = append(acts, buy)
 				buysActed++
 				typesBought[typ.Key] = true
+				// El capital/estado reales se rebasearán en el próximo snapshot;
+				// no seguimos produciendo con esta receta este tick.
 				continue
 			}
 		}
@@ -251,6 +309,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				}
 			}
 			if maxExecutions > 0 {
+				// No siempre a plena capacidad: los operadores humanos dosifican.
 				execs := maxExecutions
 				if execs > 1 && chance(s.rnd, 0.5) {
 					execs = 1 + s.rnd.IntN(execs)
@@ -337,11 +396,25 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 
 	// C. Vender los outputs producidos a precio de mercado con suelo de coste.
 	for _, pos := range ctx.State.Inventory() {
+		// Oro minado: si la ventanilla del banco paga mejor que el mercado, se
+		// monetiza ahí (dinero acuñado) en vez de listar asks. goldArbActions
+		// con budget 0 solo ejecuta esa pata (no arriesga capital).
+		if s.bank.enabled && pos.ProductID == s.bank.goldProductID {
+			if arb := goldArbActions(ctx, s.rnd, s.view, s.bank, s.p.minMargin, 0); len(arb) > 0 {
+				acts = append(acts, arb...)
+				continue
+			}
+		}
 		recipe, isOutput := recipeByOutput[pos.ProductID]
 		if !isOutput {
 			continue // no vender materias primas compradas como insumo
 		}
 		if !chance(s.rnd, s.p.actProb) {
+			continue
+		}
+		// Excedente sobre el buffer que nosotros mismos consumimos.
+		pos.QtyAvailableCent -= reservado[pos.ProductID]
+		if pos.QtyAvailableCent <= 0 {
 			continue
 		}
 		var costPU int64
@@ -363,24 +436,24 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 
 // SubscribedProducts implementa strategy.ProductSubscriber: el engine
 // suscribe el WS solo al tape de estos productos.
-func (s *TransformerStrategy) SubscribedProducts() []string {
+func (s *ProducerStrategy) SubscribedProducts() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.subscribed...)
 }
 
-func (s *TransformerStrategy) HandleEvent(ctx *strategy.Context, e events.Event) []actions.Action {
+func (s *ProducerStrategy) HandleEvent(ctx *strategy.Context, e events.Event) []actions.Action {
 	switch ev := e.(type) {
 	case events.TradePrinted:
 		s.mu.Lock()
 		s.view.OnTrade(ev)
 		s.mu.Unlock()
 	case events.OrderExecuted:
-		ctx.Logger.Debug("Transformer order executed", "order_id", ev.OrderID, "product_id", ev.ProductID, "qty", ev.QtyExecutedCent, "price", ev.PriceCents)
+		ctx.Logger.Debug("Producer order executed", "order_id", ev.OrderID, "product_id", ev.ProductID, "qty", ev.QtyExecutedCent, "price", ev.PriceCents)
 	case events.TransformationCompleted:
-		ctx.Logger.Debug("Transformer transformation completed", "process_id", ev.ProcessID, "recipe_id", ev.RecipeID)
+		ctx.Logger.Debug("Producer transformation completed", "process_id", ev.ProcessID, "recipe_id", ev.RecipeID)
 	case events.BankruptcyNotice:
-		ctx.Logger.Warn("Transformer bankruptcy notice received!", "agent_id", ev.AgentID)
+		ctx.Logger.Warn("Producer bankruptcy notice received!", "agent_id", ev.AgentID)
 	}
 	return nil
 }

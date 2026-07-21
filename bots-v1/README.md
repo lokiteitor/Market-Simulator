@@ -8,8 +8,8 @@ Este es el sistema de agentes y bots autónomos (versión 1) escrito en Go. Util
 * **[`config.yaml`](file:///home/ddelgado/git/lab/world/bots-v1/config.yaml)**: Configuración global del servidor, precios base del catálogo y credenciales/capacidades individuales de cada agente.
 * **[`market_view.go`](file:///home/ddelgado/git/lab/world/bots-v1/market_view.go)**: Vista de mercado compartida: EMA del "valor justo" por producto alimentada por el tape (`trade_printed`, WebSocket), acotada a una banda alrededor del precio base, más caché de top-of-book con presupuesto de llamadas REST por tick.
 * **[`humanize.go`](file:///home/ddelgado/git/lab/world/bots-v1/humanize.go)** / **[`selling.go`](file:///home/ddelgado/git/lab/world/bots-v1/selling.go)**: Helpers de humanización (precios "bonitos", cantidades perturbadas, TTLs variados, cancel/replace) y venta a mercado con suelo de coste.
-* **[`primary_producer.go`](file:///home/ddelgado/git/lab/world/bots-v1/primary_producer.go)**: Productor primario. Solo produce si el valor justo cubre el coste salarial con margen (oferta elástica) y vende en tranches con undercut del mejor ask y suelo de coste.
-* **[`transformer.go`](file:///home/ddelgado/git/lab/world/bots-v1/transformer.go)**: Transformador. Arranca recetas solo con margen positivo a precios de mercado, compra insumos cruzando el spread cuando el margen lo permite, y vende outputs como el productor.
+* **[`producer.go`](file:///home/ddelgado/git/lab/world/bots-v1/producer.go)**: Estrategia productora ÚNICA (ADR-022). Arranca recetas solo con margen positivo a precios de mercado, compra insumos cruzando el spread cuando el margen lo permite, y vende sus outputs en tranches con undercut del mejor ask y suelo de coste. Nunca vende lo que consume: solo el excedente sobre su propio buffer de insumos.
+* **[`specialties.go`](file:///home/ddelgado/git/lab/world/bots-v1/specialties.go)**: Reparto del catálogo entre bots por TIPO de instalación, no por rol: `aguador` (pozo_agua), `farmer` (campo, granja, bosque), `miner` (mina, cantera, pozo) y `transformer` (los 9 tipos industriales). Los cuatro conjuntos particionan los 16 tipos.
 * **[`consumer.go`](file:///home/ddelgado/git/lab/world/bots-v1/consumer.go)**: Consumidor final. Precio de reserva por bot (base × tolerancia), levanta el mejor ask cuando cabe en la reserva (imprime trades) o deja bids de descanso; gasta a una tasa por tick.
 * **[`trader.go`](file:///home/ddelgado/git/lab/world/bots-v1/trader.go)**: Market maker. Cotiza bid/ask alrededor del valor justo sobre un universo acotado de productos, con sesgo por inventario, cancel/replace de cotizaciones viejas y re-cotización debounced cuando el tape imprime.
 
@@ -32,7 +32,7 @@ Para iniciar la simulación de los bots listados en `config.yaml`:
 ```
 
 ### 3. Ejecución a gran escala (Ej. 5,000 bots)
-Para generar y ejecutar automáticamente una cantidad masiva de bots distribuidos de forma equitativa entre los 4 roles principales (`primary_producer`, `transformer`, `consumer`, `trader`) con **autorregistro dinámico**:
+Para generar y ejecutar automáticamente una cantidad masiva de bots distribuidos de forma equitativa entre las 6 estrategias (`aguador`, `miner`, `farmer`, `transformer`, `consumer`, `trader`; las cuatro primeras se registran con el rol `transformer`) con **autorregistro dinámico**:
 ```bash
 ./bots-v1-runner -config config.yaml -scale 5000 -jitter 120
 ```

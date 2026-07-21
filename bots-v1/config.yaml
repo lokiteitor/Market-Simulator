@@ -220,16 +220,19 @@ prices:
 # el nivel de la instalación es el presupuesto de concurrencia compartido por las
 # recetas del tipo. El fan-out de recetas por tick lo acota `max_recipes_per_tick`.
 bots:
-  - username: "primary_producer_1"
+  # Un solo rol productivo (ADR-022): las especialidades se distinguen por
+  # `strategy`, que decide qué TIPOS de instalación compra el bot.
+  - username: "aguador_1"
     password: "dev-password-123"
-    role: "primary_producer"
+    role: "transformer"
+    strategy: "aguador"
     tick_interval_seconds: 5
-    persist_path: "./.session_prod_1.json"
+    persist_path: "./.session_agua_1.json"
     auto_register: true
 
   - username: "miner_1"
     password: "dev-password-123"
-    role: "primary_producer"
+    role: "transformer"
     strategy: "miner"
     tick_interval_seconds: 5
     persist_path: "./.session_miner_1.json"
@@ -237,7 +240,7 @@ bots:
 
   - username: "farmer_1"
     password: "dev-password-123"
-    role: "primary_producer"
+    role: "transformer"
     strategy: "farmer"
     tick_interval_seconds: 5
     persist_path: "./.session_farmer_1.json"
@@ -246,6 +249,7 @@ bots:
   - username: "transformer_1"
     password: "dev-password-123"
     role: "transformer"
+    strategy: "transformer"
     tick_interval_seconds: 5
     persist_path: "./.session_trans_1.json"
     auto_register: true
