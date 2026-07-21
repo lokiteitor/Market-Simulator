@@ -61,17 +61,17 @@ Ver `docs/patron_oro_sistema_bancario.md`. Lo que hay que saber al tocar dinero:
 - Los **fees del matching se acreditan al banco central** (rol `bank`), no se evaporan. Para no crear una fila caliente global bajo N réplicas (ADR-019), el hot path los **anota en `fee_ledger`** (append-only) y un sweeper del Worker (`fee-ledger-sweeper`) los pliega al capital del banco; los lectores del saldo (GET `/bank`, métricas, snapshots, conservación) suman los pendientes de `fee_ledger`.
 - El capital semilla de cada registro dinámico se financia con capital del banco + **acuñación respaldada por oro** (`agent-service.ts`); puede fallar con `insufficient_gold_backing`. Materializa primero los fees pendientes para ver el saldo real del banco antes de debitar.
 - **Orden global de locks**: `gold_standard FOR UPDATE` siempre antes que cualquier lock de agente. La fila del banco ya **no** la escribe el matching (que ahora solo INSERTA en `fee_ledger`); la escriben el sweeper de fees y la financiación de semilla, ambos bajo `gold_standard`.
-- Roles de agente: los 4 de mercado (`primary_producer`, `transformer`, `consumer`, `trader`) más `admin` (panel, solo-monitoreo) y `bank` (banco central, sin credenciales); estos dos no son registrables ni cuentan en agregados de mercado (`NON_MARKET_ROLES` en `types/contracts.ts`).
+- Roles de agente: los 3 de mercado (`transformer` —**único rol productivo**, ADR-022: extrae y transforma—, `consumer`, `trader`) más `admin` (panel, solo-monitoreo) y `bank` (banco central, sin credenciales); estos dos no son registrables ni cuentan en agregados de mercado (`NON_MARKET_ROLES` en `types/contracts.ts`).
 - La producción de oro se clampea contra un yacimiento finito (`resource_deposit`).
 
 ## Bots (`bots-v1/` + `go-sdk/`)
 
-Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`primary_producer.go`, `transformer.go`, `consumer.go`, `trader.go`) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 155 productos y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
+Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`producer.go` + `specialties.go`, `consumer.go`, `trader.go`) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 155 productos —**generados** con `cd backend && bun src/scripts/generate-bot-prices.ts`, no escritos a mano— y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
 
 ## Configuración y seed
 
 - Config por `.env` validada con Zod al boot (`backend/src/config/index.ts`); estática durante la corrida. `backend/.env.example` (dev local) e `infra/.env.docker` (red Docker).
-- El catálogo (productos, recetas, capacidades por rol) vive en `infra/seed-config.json`; el seed es determinístico a partir de `MASTER_SEED` (capital por rol, yacimiento de oro, paridad).
+- El catálogo (productos, recetas, `installation_types`) vive en `infra/seed-config.json`; el seed es determinístico a partir de `MASTER_SEED` (capital por rol, yacimiento de oro, paridad).
 - El registro dinámico ignora las capacidades solicitadas: asigna todas las del rol según el seed-config.
 
 ## Documentación

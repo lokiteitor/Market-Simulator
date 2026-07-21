@@ -17,17 +17,21 @@ WebSocket que un humano (gateway Caddy, `http://localhost:9080/v1` y
 `ws://localhost:9080/v1/ws`). El servidor no los distingue.
 
 Un único binario (`bots-v1/bots-v1-runner`) lanza N agentes concurrentes, cada uno como una
-goroutine con su propio `engine.Engine` del SDK. Hay cuatro roles, alineados con los
-`agent_role` del backend:
+goroutine con su propio `engine.Engine` del SDK. Hay **tres roles** en BD (ADR-022: el rol
+productivo es uno solo) y seis estrategias:
 
 | Rol en BD | Estrategia (bot) | Archivo | Qué hace |
 |-----------|------------------|---------|----------|
-| `primary_producer` | `primary_producer` | `primary_producer.go` | Ejecuta recetas sin insumos y vende lo producido; monetiza oro en la ventanilla del banco. |
-| `primary_producer` | `miner` | `miner.go` | Sub-estrategia: solo ejecuta recetas de minería y extracción. |
-| `primary_producer` | `farmer` | `farmer.go` | Sub-estrategia: solo ejecuta recetas de cultivos, ganadería y otros recursos naturales. |
-| `transformer` | `transformer` | `transformer.go` | Compra insumos, ejecuta recetas con insumos si son rentables, vende el output. |
+| `transformer` | `aguador` | `producer.go` + `specialties.go` | Pozos de agua: la **raíz** de la cadena. Sin él no arranca nada. |
+| `transformer` | `farmer` | `producer.go` + `specialties.go` | Campo, granja y bosque: consume agua, semillas, fertilizante y piensos. |
+| `transformer` | `miner` | `producer.go` + `specialties.go` | Mina, cantera y pozo: consume agua; monetiza oro en la ventanilla del banco. |
+| `transformer` | `transformer` | `producer.go` + `specialties.go` | Los 9 tipos industriales: compra insumos, ejecuta recetas rentables, vende el output. |
 | `consumer` | `consumer` | `consumer.go` | Demanda final: compra productos de consumo con presupuesto y precio de reserva. |
 | `trader` | `trader` | `trader.go` | Market maker: cotiza bid/ask alrededor del valor justo; arbitra oro contra el banco. |
+
+Las cuatro primeras son **la misma estrategia** (`ProducerStrategy`) con distinto conjunto de
+tipos de instalación: extraer y transformar son el mismo acto económico desde que toda receta
+consume insumos salvo la del agua.
 
 ```mermaid
 graph LR
@@ -52,10 +56,8 @@ graph LR
 |---------|-----------------|
 | `main.go` | CLI: parsea flags, lee `config.yaml`, genera bots (modo YAML o modo enjambre) y los lanza en goroutines. Cierre limpio en `SIGINT/SIGTERM`. |
 | `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 155 productos** (ancla de todas las heurísticas). |
-| `primary_producer.go` | Estrategia productor primario genérica (produce cualquier receta sin insumos). |
-| `miner.go` | Estrategia productor primario especializada en minería y extracción. |
-| `farmer.go` | Estrategia productor primario especializada en cultivos, ganadería y otros recursos naturales. |
-| `transformer.go` | Estrategia transformador. |
+| `producer.go` | Estrategia productora ÚNICA: gate de margen, reposición de insumos, compra de instalaciones y venta con suelo de coste. |
+| `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `farmer`, `miner`, `transformer` (los cuatro conjuntos particionan los 16 tipos). |
 | `consumer.go` | Estrategia consumidor. |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
@@ -269,16 +271,24 @@ estrategias armaban órdenes que el servidor rechazaba con 422
 
 Todos los parámetros por bot se muestrean en `Initialize` con `sampleRange(min, max)`.
 
-### 5.1 Primary Producer (`primary_producer.go`)
+### 5.1 Producer (`producer.go`)
 
-Ejecuta recetas **sin insumos** y vende la producción.
+Estrategia productora única (ADR-022): cubre desde el pozo de agua hasta la constructora.
 
-- **Coste unitario:** `unitCost = wage_rate × duration × sim_time_factor / output_qty`
-  (el salario se paga en tiempo real, la duración está en tiempo simulado; de ahí el factor).
-- **Oferta elástica:** solo produce si `fair ≥ coste × (1 + minMargin)`. Si el producto se
-  abarata por debajo del coste, deja de producir. Recorre las recetas producibles de su rol en
-  orden aleatorio, acotado por `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena
+- **Economía por ejecución** (`execEconomics`): insumos valorados a `fair` + salario vs.
+  ingreso del output. Rentable si `revenue ≥ (insumos + salario) × (1 + minMargin)`. Con
+  `inputs: []` (las dos recetas del agua) degenera a coste = puro salario.
+- **Coste salarial:** `wage = wage_rate × duration × sim_time_factor` por ejecución (el salario
+  se cobra por segundos simulados y `duration_seconds` llega en reales; de ahí el factor).
+- **Oferta elástica:** solo produce si el fair cubre coste + margen. Si el producto se
+  abarata por debajo del coste, deja de producir. Recorre las recetas producibles en orden
+  aleatorio, acotado por `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena
   capacidad.
+- **Reposición de insumos:** solo para recetas rentables, hasta un buffer de
+  `bufferExecs × nivel × qty`. Compra con bid de descanso bajo el fair, o **cruza el ask** con
+  probabilidad `crossProb` si el margen sobrevive pagándolo — esto imprime trades reales a lo
+  largo de la cadena (agua → trigo → harina → pan). Presupuesto por insumo =
+  `capital / capitalDen`.
 - **Instalaciones (ADR-021):** para producir una receta debe haber **comprado** la instalación
   de su tipo. Si una receta es rentable pero no tiene instalación (o está saturada) y hay capital
   de sobra (colchón `capitalReserveFactor×` sobre el precio), emite `AcquireInstallation` para
@@ -286,36 +296,34 @@ Ejecuta recetas **sin insumos** y vende la producción.
   del tipo es el presupuesto de concurrencia compartido por sus recetas.
 - **Venta:** `sellAtMarket` por posición de inventario — undercut del mejor ask (1–3%),
   con **suelo de coste** (`coste × (1 + minMargin)`), en tranches del 30–70% del inventario,
-  cancelando asks viejos (cancel/replace).
+  cancelando asks viejos (cancel/replace). Vende **solo lo que produce con instalaciones
+  propias y solo el excedente sobre su propio buffer de insumos**: sin esa regla el agricultor
+  que compra agua para regar se la revendería, y el que produce sus semillas se quedaría sin
+  simiente.
 - **Oro:** si produce oro y la ventanilla del banco paga mejor que el mercado, lo vende al
   banco (`sell_gold`, dinero recién acuñado). El gate de producción de oro usa el
   `window_bid` como suelo del fair: minar oro siempre renta mientras el yacimiento dure.
 - Parámetros típicos: `minMargin` 0.05–0.15, `targetMargin` 0.25–0.6, `undercut` 0.01–0.03,
   `tranche` 0.3–0.7, `skipTickProb` 0.05–0.2.
 
-#### 5.1.1 Variaciones especializadas: Miner y Farmer
+#### 5.1.1 Especialidades (`specialties.go`)
 
-Para favorecer la división del trabajo sin alterar los roles fundamentales de la base de datos (que restringen el registro dinámico a los 4 roles básicos), se implementaron dos sub-estrategias sobre la base del productor primario, filtrando las recetas que están dispuestos a iniciar:
+Con un único rol productivo, lo que reparte el catálogo entre bots ya no es el rol sino el
+**tipo de instalación** que cada uno está dispuesto a comprar. Los cuatro conjuntos particionan
+los 16 tipos del seed-config: juntos lo cubren todo y no se solapan, así que el enjambre cubre
+la cadena entera sin que ningún bot intente abarcar los 156 procesos.
 
-* **Miner (`miner.go`)**: Se registra como `primary_producer` pero solo ejecuta recetas de minería y extracción (cuyo ID comienza con `mineria_`, `extraccion_`, `cantera_` o `pozo_`). Esta estrategia incluye la producción de metales (hierro, cobre, aluminio, litio, níquel, oro, plata, uranio) y recursos básicos de construcción/energía (arena, piedra, caliza, arcilla, sal, fosfato, petróleo, gas).
-* **Farmer (`farmer.go`)**: Se registra como `primary_producer` pero solo ejecuta recetas de cultivo, ganadería y otros recursos biológicos/naturales básicos (cuyo ID comienza con `cultivo_`, `cosecha_`, `cria_`, o es igual a `ordena`, `germinado_rapido`, `captacion_agua`, `tala` o `esquila`).
+| Estrategia | Tipos | Por qué |
+|------------|-------|---------|
+| `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 36 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
+| `farmer` | `campo`, `granja`, `bosque` | Cultivo, ganadería y tala; consumen agua, semillas, fertilizante y piensos. |
+| `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
+| `transformer` | los 9 industriales | De la agroindustria a la constructora. |
 
-### 5.2 Transformer (`transformer.go`)
+En modo enjambre el round-robin reparte las seis estrategias a partes iguales, así que ~1/6 de
+la flota se dedica al agua.
 
-Ejecuta recetas **con insumos** decidiendo a precios de mercado.
-
-- **Economía por ejecución** (`execEconomics`): insumos valorados a `fair` + salario vs.
-  ingreso del output. Rentable si `revenue ≥ (insumos + salario) × (1 + minMargin)`.
-- **A. Arranque de procesos:** solo recetas rentables con stock de insumos.
-- **B. Reposición de insumos:** solo para recetas rentables, hasta un buffer de
-  `bufferExecs × instalaciones × qty`. Compra con bid de descanso bajo el fair, o **cruza el
-  ask** con probabilidad `crossProb` si el margen sobrevive pagándolo — esto imprime trades
-  reales a lo largo de la cadena (trigo → harina → pan). Presupuesto por insumo =
-  `capital / capitalDen`.
-- **C. Venta de outputs:** `sellAtMarket` con coste real de producción como suelo. No revende
-  las materias primas compradas como insumo.
-
-### 5.3 Consumer (`consumer.go`)
+### 5.2 Consumer (`consumer.go`)
 
 Demanda final con elasticidad; solo opera productos de categoría `final_consumption`.
 
@@ -327,7 +335,7 @@ Demanda final con elasticidad; solo opera productos de categoría `final_consump
   fair, sin exceder la reserva ni el techo de cantidad pendiente.
 - Los consumers imprimen la mayor parte del tape que alimenta las EMAs del resto de roles.
 
-### 5.4 Trader (`trader.go`)
+### 5.3 Trader (`trader.go`)
 
 Market maker sobre un universo acotado (8–16 productos: mercados vivos + su inventario +
 relleno aleatorio).
@@ -405,9 +413,10 @@ prices:                     # precio base (centavos/unidad) de los 155 productos
   oro: 720
   # ...
 
-bots:                       # solo en modo YAML (sin -scale): 4 bots de ejemplo
-  - username: producer_1
-    role: primary_producer
+bots:                       # solo en modo YAML (sin -scale): 6 bots de ejemplo
+  - username: aguador_1
+    role: transformer         # único rol productivo (ADR-022)
+    strategy: aguador         # la especialidad la decide `strategy`
     ...
 ```
 

@@ -238,7 +238,7 @@ El arbitraje mantiene el precio de mercado del oro dentro de la banda de la vent
 - Para los **productores de oro**, `window_bid` es un precio de venta garantizado: minar
   siempre renta mientras el yacimiento dure.
 
-Los bots `primary_producer` y `trader` implementan exactamente estas tres patas
+Los bots productores (`ProducerStrategy`) y `trader` implementan exactamente estas tres patas
 (`bots-v1/bank.go`, `goldArbActions`); consumers y transformers no usan la ventanilla.
 Ver `funcionamiento_bots.md` §6.
 

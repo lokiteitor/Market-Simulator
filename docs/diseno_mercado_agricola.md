@@ -43,7 +43,7 @@ Algunos agentes operan por reglas simples, otros por modelos de ML. El sistema n
 
 Las recetas son entidades canónicas del catálogo. Múltiples agentes pueden ejecutar la misma receta. El sistema valida toda transformación contra la receta de referencia, no contra una copia del agente.
 
-**Caso especial — producción primaria:** las recetas de productores primarios se modelan como recetas **sin insumos** (lista vacía) cuyo resultado es la materia prima. La duración representa el ciclo productivo (cultivo, crianza). Esto unifica el concepto de transformación en todo el sistema.
+**Caso especial — la raíz del catálogo (ADR-022):** la extracción también es una transformación, con insumos como cualquier otra: la minería consume agua, los cultivos agua + semillas + fertilizante, la ganadería agua + piensos. La duración representa el ciclo productivo (cultivo, crianza, extracción). La ÚNICA receta sin insumos (lista vacía) es la extracción de agua, raíz del grafo: sin ella el mundo no podría producir su primera unidad desde inventario cero.
 
 > Pendiente para iteración futura: explorar producción primaria con insumos básicos del entorno (agua, energía) modelados como fees al sistema. En v1, producción desde cero pura.
 
@@ -62,7 +62,7 @@ Las recetas son entidades canónicas del catálogo. Múltiples agentes pueden ej
 - Un **tipo de instalación** (`campo`, `mina`, `metalurgia`, `electrónica`, …) agrupa varias recetas afines; cada receta pertenece a exactamente un tipo.
 - El agente **compra** una instalación de un tipo y la **sube de nivel**; el `level` (nº de hectáreas / líneas de producción) es el número de procesos simultáneos que puede repartir entre **todas las recetas del tipo** (presupuesto de concurrencia compartido).
 - **Nadie recibe instalaciones al inicio**: el agente nace sin producción y compra/mejora con su capital (`POST /agents/me/installations`). El precio crece por nivel (`base_price × growth^nivel`) y se acredita al banco central.
-- Conceptualmente modela: campos/hectáreas para productores primarios, industrias/líneas de producción para transformadores.
+- Conceptualmente modela: pozos, campos/hectáreas y galerías de mina para la extracción; industrias/líneas de producción para la manufactura. Todas las compra el mismo rol `transformer` (ADR-022).
 
 **Posición de inventario**
 - Relación (agente, producto)

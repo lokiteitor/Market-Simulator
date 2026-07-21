@@ -1,6 +1,6 @@
 # 📚 Documentación Base de Datos — Simulación de Mercado Agrícola
 
-## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (productores primarios, transformadores, consumidores y traders) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora, yacimiento finito de oro y emisión respaldada).
+## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (transformadores —el único rol productivo, ADR-022—, consumidores, traders y ciudades) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora, yacimiento finito de oro y emisión respaldada).
 
 ---
 
@@ -141,7 +141,7 @@ CREATE TABLE product (
 
 | Valor               | Descripción                                                                 |
 | ------------------- | --------------------------------------------------------------------------- |
-| `raw_primary`       | Materia prima generada por productores primarios (sin insumos).             |
+| `raw_primary`       | Recurso natural extraído del entorno (minería, cantera, pozo, cultivo, cría). Desde ADR-022 su receta también consume insumos: la única sin insumos es la del agua. |
 | `intermediate`      | Producto resultante de transformación intermedia (tiene insumos y salidas). |
 | `final_consumption` | Producto destinado al consumo final, retirado del sistema por consumidores. |
 
@@ -165,7 +165,7 @@ CREATE TABLE product (
 
 ### 2. recipe
 
-**Descripción**: receta canónica que describe una transformación: insumos, producto resultante, cantidad producida, duración del proceso y salario asociado. Las recetas son canónicas del catálogo: todos los agentes ejecutan la misma definición y el sistema valida contra esta tabla, no contra copias del agente. Las recetas de productores primarios se modelan como recetas sin insumos.
+**Descripción**: receta canónica que describe una transformación: insumos, producto resultante, cantidad producida, duración del proceso y salario asociado. Las recetas son canónicas del catálogo: todos los agentes ejecutan la misma definición y el sistema valida contra esta tabla, no contra copias del agente. Desde ADR-022 la única receta sin insumos del catálogo es la extracción de agua (la raíz del grafo); las extractivas consumen agua y, en el agro, semillas/fertilizante/piensos.
 
 ```sql
 -- Tabla
@@ -291,7 +291,6 @@ ALTER TABLE recipe_input ADD CONSTRAINT recipe_input_product_fk FOREIGN KEY (pro
 ```sql
 -- Enums
 CREATE TYPE agent_role AS ENUM (
-    'primary_producer',
     'transformer',
     'consumer',
     'trader',
@@ -342,8 +341,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 
 | Valor              | Descripción                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------------- |
-| `primary_producer` | Productor primario: genera materias primas desde cero (recetas sin insumos).                 |
-| `transformer`      | Transformador: compra materias primas, las procesa y vende productos de mayor valor.         |
+| `transformer`      | **Único rol productivo** (ADR-022): extrae del entorno (pozos, minas, campos) y transforma insumos en productos de mayor valor. Absorbió al antiguo `primary_producer`. |
 | `consumer`         | Consumidor final: compra productos para consumir, retirándolos del sistema.                  |
 | `trader`           | Trader/intermediario: compra y revende buscando arbitraje, sin transformar.                  |
 | `admin`            | Rol de solo-monitoreo para el panel de administración. No registrable vía `/auth/register`; no participa en el mercado. Creado por `seed-admin`. |
@@ -375,7 +373,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 
 - **Invariantes de capital**: `capital_available >= 0` y `capital_reserved >= 0`. La suma de `capital_reserved` debe coincidir con la suma de `qty_pending × limit_price_cents` de las órdenes de compra activas del agente.
 - **Capital semilla en registro dinámico (emisión respaldada)**: el grant objetivo es el promedio actual del capital total de agentes activos (o `DEFAULT_SEED_CAPITAL_CENTS` si no hay ninguno). Con patrón oro activo, ese grant se financia **primero con capital del banco central** (fees reciclados) y el resto se **acuña** (`money_issued`) solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro falla con `insufficient_gold_backing`. Todo bajo el mutex `gold_standard FOR UPDATE`.
-- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (productores primarios: bajo-medio; transformadores: medio-alto; consumidores: medio; traders: alto). Determinístico a partir de la semilla maestra.
+- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (transformadores: medio-alto —cubren extracción e industria—; consumidores: medio; traders: alto). Determinístico a partir de la semilla maestra.
 - **Detección de quiebra**: reactiva. Se evalúa cuando se cancela la última orden, vence la última orden o se completa el último proceso sin recuperar capital. Se requiere: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas.
 - **Acciones al quebrar**: cancelar órdenes activas, marcar `status='bankrupt'`, registrar `bankrupt_at`, congelar inventario residual, emitir `bankruptcy_notice` y broadcast `agent_bankrupt`.
 

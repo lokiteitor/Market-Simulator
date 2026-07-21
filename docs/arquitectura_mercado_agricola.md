@@ -11,7 +11,7 @@
 **Responsables:** Equipo de Simulación de Mercado
 
 **Descripción General**
-Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes concurrentes (productores primarios, transformadores, consumidores y traders) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada). Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
+Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes concurrentes (transformadores —el único rol productivo, ADR-022—, consumidores, traders y ciudades) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada). Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
 
 Este documento se apoya en artefactos previos que se consideran fuente de verdad de sus respectivos dominios:
 
@@ -141,6 +141,15 @@ Métricas del **flujo circular de ingreso** (ADR-020), en el dashboard *Negocio*
 | `city_income_payouts_total` | Worker | Acreditaciones individuales; con el anterior da el ticket medio por ciudad. |
 | `market_city_income_pending_cents{source}` | Core | Dinero **en tránsito** (debitado al pagador, sin repartir) desglosado en `wage` / `tax`. Debe oscilar cerca de 0; si crece sin parar, el sweeper no da abasto. |
 | `market_conservation_delta_cents` | Core | Invariante monetario: cualquier valor ≠ 0 es un bug de contabilidad. |
+
+Métricas de la **cadena de suministro** (ADR-022), en el dashboard *Cadena de suministro*:
+
+| Métrica | Proceso | Para qué sirve |
+|---------|---------|----------------|
+| `inputs_consumed_units_total{product}` | Core | Cara de DEMANDA de cada eslabón. Contra `production_units_total` del mismo producto da el balance; el par de `agua` es el indicador de si la economía se estrangula en la raíz. |
+| `domain_errors_total{code,route}` | Core | **Por qué no se produce.** Un 422 en `http_request_duration_seconds` no lo dice: esto separa `insufficient_inputs` (falta suministro) de `recipe_capacity_saturated` (falta nivel instalado) de `insufficient_capital` (falta caja). |
+| `market_installations_level{installation_type}` | Core | Techo de procesos concurrentes del tipo en todo el mercado. `pozo_agua` debería rondar el 10-15% del total. |
+| `market_installations_count{installation_type}` | Core | Cuántos agentes han comprado cada tipo; con el anterior da el nivel medio. |
 
 ### 4.4 Tabla resumen puertos
 
@@ -581,6 +590,7 @@ Aplicados a este sistema en particular:
 | ADR-018 | 2026-07-13 | Aceptado | Sin migraciones incrementales: `specs/schema.sql` + `schema.ts` (Drizzle) como fuentes espejo; cambios de esquema recrean la BD (`clean-docker` + re-seed). |
 | ADR-019 | 2026-07-17 | Aceptado | Matching multiproceso: serialización por producto con advisory locks de Postgres (transaction-scoped) + mutex in-process como primer filtro; fees del matching a `fee_ledger` append-only con sweeper; N réplicas del Core tras PgBouncer. Supera ADR-005, matiza ADR-004. |
 | ADR-020 | 2026-07-20 | Aceptado | Flujo circular de ingreso: rol `city` sembrado y no registrable (~50 capitales), salarios reciclados + fracción del fee a `income_ledger` con `city-income-sweeper` que reparte ponderado por población; invariante de conservación reformulado (sin término de salarios). Matiza ADR-017. |
+| ADR-022 | 2026-07-21 | Aceptado | Cadena conexa con raíz única: el sector extractivo consume insumos (agua; el agro además semillas/fertilizante/piensos), la única receta sin insumos es la extracción de agua, y `primary_producer` se fusiona con `transformer` como único rol productivo. Matiza ADR-021. |
 | ADR-021 | 2026-07-20 | Aceptado | Economía de instalaciones: la capacidad estática por receta se sustituye por instalaciones **comprables y mejorables** por *tipo* (`installation_type` agrupa recetas); el `level` es el presupuesto de concurrencia compartido; nadie recibe instalaciones al inicio; el pago va al banco vía `fee_ledger`. Reemplaza `agent_capacity` por `installation_type` + `agent_installation`. |
 
 ### 12.3 Detalle de ADRs clave
@@ -716,6 +726,25 @@ Aplicados a este sistema en particular:
   - (+) Sin migraciones: se reemplazan tablas en `schema.sql` + `schema.ts` y se aplica con `clean-docker` + re-seed.
   - (−) **Arranque en frío:** hasta que los agentes compran su 1ª instalación no hay producción; el capital semilla y la curva de precios deben calibrarse (validado con la corrida de humo).
   - (−) Cambio de contrato: `agent_capacity` / `CapacityStatus` / `requested_capacities` desaparecen; snapshot expone `installations`, y hay endpoints nuevos (`POST`/`GET /agents/me/installations`, `GET /catalog/installation-types`). Bots y frontend migran en el mismo PR.
+
+**ADR-022 — Cadena conexa con raíz única y rol productivo unificado (matiza ADR-021)**
+
+- *Contexto:* 35 recetas producían `raw_primary` **sin insumos**. Eran 35 raíces independientes del grafo: el trigo, el hierro o el oro nacían literalmente de la nada a cambio de puro salario, y el precio base de todo primario era exactamente su coste salarial. Además 17 "intermedios" (`fertilizantes`, `piensos`, `lubricante_industrial`, …) no tenían **ningún** consumidor industrial: se fabricaban solo para vendérselos a los consumidores.
+- *Decisión:*
+  (a) **Una sola raíz.** Lo único que nace de la nada es el `agua`, extraída de pozos (`pozo_agua_profundo`, 3600 L / 1800 s sim; `pozo_somero`, 120 L / 60 s sim, que además es la receta rápida del E2E). Todo lo demás consume: minería, cantera, pozo y tala consumen agua; los cultivos agua + semillas + fertilizante; la ganadería agua + piensos. Producto nuevo `semillas`, producido en el `campo` a partir de agua.
+  (b) **Proporciones de juego, no realistas:** los insumos son el 25-35% del coste de ejecución de la extractiva. Con ratios reales (1.500 L de agua por kg de trigo) el agua sería el 90% de la economía.
+  (c) **El grafo debe seguir siendo acíclico.** Un pozo de petróleo que consumiera diésel cerraría el ciclo petróleo→diésel→petróleo y el mundo no podría producir su primera unidad desde inventario cero. Por eso los pozos solo consumen agua y **el combustible y la electricidad quedan pospuestos** a una fase de energía posterior, que los introducirá con una fuente renovable como raíz alternativa.
+  (d) **Un solo rol productivo.** Si extraer también es transformar, `primary_producer` no describe nada: desaparece del enum (`agent_role`), del registro y del frontend, y los 16 `installation_type` pasan a `role = 'transformer'`. La columna `role` del tipo se mantiene: sigue impidiendo que un `consumer` o un `trader` compren instalaciones.
+  (e) **Los bots se unifican igual.** `primary_producer.go` y `transformer.go` se repartían el catálogo por `len(recipe.Inputs)`, criterio que deja de significar nada; una sola `ProducerStrategy` cubre ambos casos y el reparto entre bots pasa a hacerse por **tipo de instalación** (`aguador`, `farmer`, `miner`, `transformer`).
+  (f) **Los precios base se generan**, no se escriben: `backend/src/scripts/generate-bot-prices.ts` los propaga por coste desde el catálogo a los dos YAML de bots.
+- *Consecuencias:*
+  - (+) Nada se crea de la nada salvo el agua: la contabilidad de costes de la cadena entera es trazable hasta un único origen.
+  - (+) `fertilizantes` y `piensos` pasan a tener demanda industrial real; el sector extractivo se convierte en cliente del industrial, cerrando el circuito en la otra dirección.
+  - (+) La escasez se propaga como en una economía real: sin agua no hay minería, y sin minería no hay acero.
+  - (−) **Puntos únicos de fallo.** Antes había 35 raíces independientes; ahora, si nadie bombea agua, se para todo. Por eso el `aguador` es una especialidad propia del enjambre (~1/6 de la flota) y `market_installations_level{installation_type="pozo_agua"}` es una métrica a vigilar (10-15% de los slots).
+  - (−) **Transitorio de arranque** de ~4 saltos (agua → petróleo/gas/fosfato → fertilizantes → cultivos → piensos → ganadería): las corridas cortas dejan de ser representativas.
+  - (−) El coste de producción del oro sube a 820 ¢/kg y queda a un 16% del `window_bid` mínimo del banco: cualquier insumo adicional en `mineria_oro` exige recalibrar `GOLD_COVERAGE_RATIO_BPS` o se para la acuñación.
+  - (−) Cambio de contrato: `primary_producer` desaparece del enum de la API, del frontend y de los clientes (go-sdk, market-client). Sin migraciones (ADR-018).
 
 ---
 
