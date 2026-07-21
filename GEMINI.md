@@ -66,7 +66,7 @@ Ver `docs/patron_oro_sistema_bancario.md`. Lo que hay que saber al tocar dinero:
 
 ## Bots (`bots-v1/` + `go-sdk/`)
 
-Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`producer.go` + `specialties.go`, `consumer.go`, `trader.go`) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 155 productos —**generados** con `cd backend && bun src/scripts/generate-bot-prices.ts`, no escritos a mano— y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
+Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`producer.go` + `specialties.go`, `consumer.go`, `trader.go`) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 155 productos —**generados** con `cd backend && bun src/scripts/generate-catalog-artifacts.ts`, no escritos a mano— y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
 
 ## Configuración y seed
 

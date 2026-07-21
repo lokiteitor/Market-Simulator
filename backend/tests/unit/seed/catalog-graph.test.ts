@@ -16,7 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseSeedConfig, type SeedConfig } from "../../../src/seed";
+import { catalogCosts, parseSeedConfig, type SeedConfig } from "../../../src/seed";
 
 const ROOT_PRODUCT = "agua";
 
@@ -76,26 +76,7 @@ describe("grafo del catálogo", () => {
 
   test("las extractivas gastan entre el 25% y el 35% de su coste en insumos", async () => {
     const cfg = await loadCatalog();
-    // Precio derivado por propagación de coste (el mismo criterio que
-    // src/scripts/generate-bot-prices.ts): permite medir la cuota de insumos.
-    const byOutput = new Map<string, SeedConfig["recipes"]>();
-    for (const r of cfg.recipes) byOutput.set(r.output, [...(byOutput.get(r.output) ?? []), r]);
-    const precio = new Map<string, number>();
-    const precioDe = (key: string): number => {
-      const cached = precio.get(key);
-      if (cached !== undefined) return cached;
-      const costes = (byOutput.get(key) ?? []).map(
-        (r) => costeEjecucion(r) / (r.output_qty_cent / 100),
-      );
-      const p = Math.max(1, Math.round(Math.min(...costes)));
-      precio.set(key, p);
-      return p;
-    };
-    const costeInsumos = (r: SeedConfig["recipes"][number]): number =>
-      r.inputs.reduce((acc, i) => acc + (i.qty_cent / 100) * precioDe(i.product), 0);
-    const costeEjecucion = (r: SeedConfig["recipes"][number]): number =>
-      costeInsumos(r) + r.wage_rate_cents_per_sec * r.duration_sim_seconds;
-
+    const costs = catalogCosts(cfg);
     // Solo las extractivas: aguas abajo la cuota de insumos es naturalmente
     // mucho mayor (cada eslabón añade valor sobre insumos ya caros).
     // `mineria_oro` va deliberadamente por debajo de la banda: su coste unitario
@@ -105,7 +86,7 @@ describe("grafo del catálogo", () => {
     const excepciones = new Set(["mineria_oro"]);
     const fuera = cfg.recipes
       .filter((r) => EXTRACTIVOS.has(r.installation_type) && !excepciones.has(r.key))
-      .map((r) => ({ key: r.key, cuota: costeInsumos(r) / costeEjecucion(r) }))
+      .map((r) => ({ key: r.key, cuota: costs.inputsShare(r) }))
       .filter((x) => x.cuota < 0.25 || x.cuota > 0.35)
       .map((x) => `${x.key}=${Math.round(x.cuota * 100)}%`);
     expect(fuera).toEqual([]);
