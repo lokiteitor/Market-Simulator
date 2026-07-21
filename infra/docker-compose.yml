@@ -89,7 +89,7 @@ services:
     # conexiones reales de Postgres. Nota de sizing: 8 procesos core saturan una
     # máquina de ~8 cores (más worker/postgres/redis); ajustar según el host.
     deploy:
-      replicas: 8
+      replicas: 4
     expose:
       - "8000" # API HTTP/WS (interno; se accede vía Caddy)
       - "8001" # métricas Prometheus
