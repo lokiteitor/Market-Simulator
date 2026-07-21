@@ -411,6 +411,13 @@ func (c *Client) parseWSEvent(msg []byte) (events.Event, error) {
 		}
 		p.ReceivedAt = env.OccurredAt
 		ev = p
+	case "installation_purchased":
+		var p events.InstallationPurchased
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.PurchasedAt = env.OccurredAt
+		ev = p
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", env.Type)
 	}

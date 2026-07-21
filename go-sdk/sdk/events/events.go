@@ -103,6 +103,24 @@ type CityIncome struct {
 
 func (e CityIncome) Occurred() time.Time { return e.ReceivedAt }
 
+// InstallationPurchased: compra o mejora de instalación propia confirmada
+// (ADR-021). Personal: solo llega al agente que compró. El payload es el
+// estado absoluto de la instalación al commit (camelCase en el wire, a
+// diferencia del resto de la API) más el importe cobrado.
+type InstallationPurchased struct {
+	InstallationType      string    `json:"installationType"`
+	Name                  string    `json:"name"`
+	UnitLabel             string    `json:"unitLabel"`
+	Level                 int       `json:"level"`
+	Running               int       `json:"running"`
+	AvailableSlots        int       `json:"availableSlots"`
+	NextUpgradePriceCents *int64    `json:"nextUpgradePriceCents"`
+	AmountChargedCents    int64     `json:"amountChargedCents"`
+	PurchasedAt           time.Time `json:"-"`
+}
+
+func (e InstallationPurchased) Occurred() time.Time { return e.PurchasedAt }
+
 type WSConnected struct {
 	ConnectedAt time.Time
 }

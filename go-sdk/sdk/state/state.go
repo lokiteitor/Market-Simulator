@@ -375,6 +375,22 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			s.capitalAvailableCents += e.AmountCents
 		}
 
+	case events.InstallationPurchased:
+		// Compra/mejora propia confirmada (ADR-021). El payload es el estado
+		// absoluto de la instalación al commit del servidor (running incluido),
+		// así que se aplica tal cual. El capital NO se toca aquí: lo rebasea el
+		// resync de snapshot que dispara el engine tras la compra.
+		s.installationsDirty = true
+		s.installations[e.InstallationType] = models.InstallationStatus{
+			InstallationType:      e.InstallationType,
+			Name:                  e.Name,
+			UnitLabel:             e.UnitLabel,
+			Level:                 e.Level,
+			Running:               e.Running,
+			AvailableSlots:        e.AvailableSlots,
+			NextUpgradePriceCents: e.NextUpgradePriceCents,
+		}
+
 	case events.BankruptcyNotice:
 		if e.AgentID == s.agentID {
 			s.status = models.StatusBankrupt

@@ -212,7 +212,9 @@ Cada `tick_interval` la estrategia recibe el control. Patrón común a los 4 rol
 
 El engine parsea: `order_executed`, `order_expired`, `order_cancelled`,
 `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`,
-`trade_printed`, `gold_converted`. Los `trade_printed` alimentan las EMAs de MarketView y
+`trade_printed`, `gold_converted`, `city_income`, `installation_purchased` (este último
+rebasea la instalación local con el estado absoluto del commit; el capital lo cubre el
+resync post-compra). Los `trade_printed` alimentan las EMAs de MarketView y
 disparan re-cotización event-driven en los traders. Tras una reconexión WS se recarga el
 snapshot con jitter de 0–5 s.
 
