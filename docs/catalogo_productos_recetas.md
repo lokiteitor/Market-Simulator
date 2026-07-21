@@ -1,683 +1,598 @@
-# Catálogo de Productos y Recetas — Guía de Enriquecimiento
+# Catálogo de Productos y Recetas
 
 > **Proyecto:** Market-Simulator (Simulación de Mercado)
 >
-> **Versión:** 1.0
+> **Versión:** 2.0 — catálogo industrial completo (155 productos / 155 recetas)
 >
-> **Estado:** Referencia canónica para enriquecer el catálogo
+> **Estado:** Referencia canónica del catálogo **actual** de
+> `infra/seed-config.json` + reglas para ampliarlo.
 >
-> **Audiencia:** Un agente de IA que ampliará el catálogo del simulador
-> (`infra/seed-config.json` → tablas `product`, `recipe`, `recipe_input`).
->
-> **Origen:** Adaptación de tres documentos de otro proyecto ("Logistics World"):
-> recursos globales, recursos industriales y productos finales. Este documento es
-> **autocontenido**: no requiere los documentos de origen para trabajar.
+> **Nota histórica:** la v1.0 de este documento era la guía con la que se
+> enriqueció el catálogo agrícola original (trigo→harina→pan, etc.) hasta el
+> catálogo industrial actual, adaptando material de otro proyecto ("Logistics
+> World"). Ese enriquecimiento **ya está aplicado**; las tablas de este
+> documento se generan del `seed-config.json` real.
 
 ---
 
-## 1. Objetivo y cómo usar este documento
+## 1. Resumen del catálogo actual
 
-Este documento define **qué productos y qué cadenas de transformación** deben
-existir en el catálogo del simulador, ya traducidos al modelo de datos real de
-este proyecto.
+- **155 productos**: 35 `raw_primary`, 77 `intermediate`, 43 `final_consumption`.
+- **155 recetas** (una por producto: todo producto tiene exactamente una receta que lo produce).
+- **16 tipos de instalación** (ADR-021): 7 de `primary_producer` y 9 de `transformer`.
 
-Un agente de IA debe usarlo para:
-
-1. Generar entradas nuevas en `infra/seed-config.json` (productos y recetas) que
-   respeten el esquema y las reglas de la Sección 2.
-2. Mantener la coherencia del grafo económico (todo se rastrea hasta un recurso
-   natural; nada se fabrica "de la nada").
-3. Asignar parámetros numéricos (cantidades, duraciones, salarios) siguiendo la
-   guía de la Sección 7, anclada al catálogo agrícola ya existente.
-
-**Regla de oro:** el catálogo agrícola actual (`infra/seed-config.json`:
-trigo→harina→pan, maíz→masa→tortilla, leche→queso, tomate→salsa) es el patrón de
-referencia de estilo, unidades y magnitudes. Todo lo que se añada debe encajar
-con él sin romper el `bun run seed`.
+La cadena completa va de la extracción primaria (minería, pozos, cultivo,
+ganadería) a materiales básicos e industriales, componentes, y productos
+finales (vehículos, edificios, electrónica de consumo, alimentos). El `oro` es
+además el producto-respaldo del patrón oro (`GOLD_PRODUCT_KEY`), con
+yacimiento finito (`resource_deposit`).
 
 ---
 
-## 2. Modelo de datos objetivo (contrato del catálogo)
+## 2. Modelo de datos (contrato del catálogo)
 
 El esquema real vive en `specs/schema.sql` (espejo en
-`backend/src/db/schema.ts`). El seed se valida con Zod en `backend/src/seed/seed-config.ts`.
-Estas son las **tres tablas** del catálogo y sus reglas.
+`backend/src/db/schema.ts`). El seed se valida con Zod en
+`backend/src/seed/seed-config.ts` (schema + integridad referencial completa).
 
-### 2.1 `product` — un ítem del catálogo
+### 2.1 `product`
 
-| Campo      | Tipo   | Reglas                                                        |
-| ---------- | ------ | ------------------------------------------------------------ |
-| `name`     | texto  | **Único**. Nombre humano en español (p. ej. "Harina de trigo"). |
-| `unit`     | texto  | Unidad libre de medida: `kg`, `litro`, `unidad`, `m3`, …      |
-| `category` | enum   | Exactamente uno de: `raw_primary`, `intermediate`, `final_consumption`. |
+| Campo (JSON seed) | Tipo  | Reglas                                                                  |
+| ----------------- | ----- | ----------------------------------------------------------------------- |
+| `key`             | texto | **Único**. Slug snake_case sin acentos; referencia interna de las recetas. |
+| `name`            | texto | **Único**. Nombre humano en español.                                    |
+| `unit`            | texto | Unidad libre: `kg`, `litro`, `unidad`, `m3`, …                          |
+| `category`        | enum  | `raw_primary` \| `intermediate` \| `final_consumption`.                 |
 
-En el `seed-config.json` cada producto lleva además una `key` (slug único,
-snake_case, minúsculas, sin acentos) que **solo** sirve para referenciarlo desde
-las recetas; no se persiste en la base de datos.
+- **`raw_primary`** — se obtiene con una receta **sin insumos** (extracción/cultivo/cría).
+- **`intermediate`** — se fabrica a partir de otros productos y alimenta otras recetas.
+- **`final_consumption`** — sumidero de la cadena: ninguna receta lo consume.
 
-**Enum de categorías — significado en este proyecto:**
+### 2.2 `recipe`
 
-- **`raw_primary`** — Recurso primario. Se **obtiene**, no se fabrica a partir de
-  otros productos. En el juego se produce con una receta **sin insumos** (ver
-  §2.2). Equivale al "Nivel 1 · Recursos Naturales" del material de origen.
-- **`intermediate`** — Bien intermedio. Se fabrica a partir de otros productos y
-  se consume para fabricar otros. **Colapsa tres niveles del origen**: materiales
-  básicos, materiales industriales y componentes.
-- **`final_consumption`** — Producto final. Es el sumidero de la cadena: se
-  compra/consume pero no alimenta otras recetas. Equivale al "Nivel 5 ·
-  Productos Finales".
+| Campo (JSON seed)         | Tipo   | Reglas                                                             |
+| ------------------------- | ------ | ------------------------------------------------------------------ |
+| `key`                     | texto  | Slug único de la receta.                                           |
+| `name`                    | texto  | **Único**. Nombre humano del proceso.                              |
+| `output`                  | texto  | `key` del **único** producto que produce.                          |
+| `installation_type`       | texto  | `key` del tipo de instalación que la habilita (ADR-021, **obligatorio**). |
+| `output_qty_cent`         | entero | Cantidad producida por ejecución, en **centésimas** (>0).          |
+| `duration_sim_seconds`    | entero | Duración de **una** ejecución en **segundos simulados** (>0).      |
+| `wage_rate_cents_per_sec` | entero | Salario en centavos por segundo (≥0; en el catálogo actual 1–3).   |
+| `inputs`                  | lista  | Cero o más `{ "product": <key>, "qty_cent": <entero > 0> }`.       |
 
-### 2.2 `recipe` — una transformación (y sus insumos)
+**Restricciones duras (validadas por el seed):**
 
-| Campo (JSON seed)        | Tipo   | Reglas                                                                 |
-| ------------------------ | ------ | ---------------------------------------------------------------------- |
-| `key`                    | texto  | Slug único de la receta (referencia interna del seed).                 |
-| `name`                   | texto  | **Único**. Nombre humano del proceso (p. ej. "Molienda de trigo").     |
-| `output`                 | texto  | `key` del **único** producto que produce.                              |
-| `output_qty_cent`        | entero | Cantidad producida por ejecución, en **centésimas** (>0).              |
-| `duration_sim_seconds`   | entero | Duración de **una** ejecución en **segundos simulados** (>0).          |
-| `wage_rate_cents_per_sec`| entero | Salario en centavos por segundo simulado (≥0, típicamente 0–3).        |
-| `inputs`                 | lista  | Cero o más `{ "product": <key>, "qty_cent": <entero > 0> }`.           |
+1. Una receta produce **exactamente un** producto; los subproductos se modelan
+   como recetas paralelas que consumen la misma materia prima (p. ej.
+   `planta_lactea`, `elab_mantequilla` y `elab_yogur` consumen `leche`).
+2. Los insumos no se repiten dentro de una receta.
+3. `qty_cent` está en centésimas de la unidad (`10000` = 100 kg/L; bienes
+   discretos en `unidad` con 1 pieza = `100`).
+4. Un `raw_primary` se produce con una receta **sin insumos**.
+5. Cada receta declara un `installation_type` existente y debe estar listada en
+   el array `recipes` de **ese mismo** tipo (cobertura exacta, sin huérfanas).
+6. `duration` se persiste como INTERVAL en **tiempo simulado**; el salario
+   corre en centavos por segundo **real** (sutileza `SIM_TIME_FACTOR`, ver
+   CLAUDE.md).
 
-**Restricciones duras del modelo (no negociables):**
+### 2.3 `installation_types` (ADR-021)
 
-1. **Una receta produce EXACTAMENTE un producto.** No existe salida múltiple ni
-   subproductos simultáneos en el esquema. Un proceso real con varias salidas se
-   modela como **varias recetas independientes** (ver §4.1).
-2. **Los insumos no se repiten** dentro de una receta (`product` único por receta).
-3. **`qty_cent` está en centésimas de la unidad del producto.** `10000` = 100
-   unidades (100 kg, 100 L, etc.); `100` = 1 unidad. Para bienes **discretos**
-   (un camión, un motor), usa `unit: "unidad"` y expresa 1 pieza como `100`.
-4. **Un recurso primario (`raw_primary`) se produce con una receta SIN insumos.**
-   Representa extracción/cultivo/cría (minería, pozo, bosque, campo, ordeña). Ver
-   los ejemplos `cultivo_trigo` / `ordena` del seed actual.
-5. `duration` se guarda como INTERVAL en **tiempo simulado**, no real. El salario
-   total de una ejecución = `wage_rate_cents_per_sec × duration_sim_seconds` y lo
-   calcula la aplicación; tú solo defines la tasa y la duración.
+Cada tipo agrupa recetas afines y es lo que el agente **compra/mejora** vía
+`POST /agents/me/installations`. El `level` (hectáreas / líneas) es el
+presupuesto de **concurrencia compartido** por las recetas del tipo. Precio del
+nivel n: `floor(base_price × (growth_bps/10000)^n)` (`lib/installations.ts`),
+acreditado al banco central vía `fee_ledger`.
 
-### 2.3 Capacidades por rol (contexto, opcional al enriquecer)
+| Campo JSON        | Reglas                                                    |
+| ----------------- | --------------------------------------------------------- |
+| `key`, `name`     | Únicos.                                                   |
+| `role`            | Rol que puede comprarlo (`primary_producer` \| `transformer`). |
+| `unit_label`      | Etiqueta del nivel ("hectáreas", "líneas", …).            |
+| `base_price_cents`| Precio del nivel 1 (centavos).                            |
+| `growth_bps`      | Factor de crecimiento por nivel (17000 = ×1.7).           |
+| `max_level`       | Nivel máximo comprable.                                   |
+| `recipes`         | Keys de las recetas que habilita (cada receta en exactamente un tipo). |
 
-El seed también asigna, por rol de agente
-(`primary_producer`, `transformer`, `consumer`, `trader`), qué recetas puede
-ejecutar y con cuántas instalaciones (`roles.*.capacities`). Al enriquecer el
-catálogo conviene, coherentemente:
-
-- Asignar las recetas **sin insumos** (extracción/cultivo) al `primary_producer`.
-- Asignar las recetas **con insumos** al `transformer`.
-- `consumer` y `trader` normalmente no tienen capacidades de producción.
-
-No es obligatorio ampliar las capacidades al añadir productos, pero si el objetivo
-es que la cadena "corra", cada receta nueva debería estar en las capacidades de
-algún rol.
+> Los roles del seed (`roles.*`) hoy solo declaran `initial_agents`; las
+> antiguas `capacities` por rol ya no existen — la capacidad productiva se
+> compra como instalación (los agentes **nacen sin instalaciones**).
 
 ---
 
-## 3. Reglas de mapeo: 5 niveles de origen → 3 categorías
+## 3. Tipos de instalación actuales
 
-El material de origen usa cinco niveles; este proyecto usa tres categorías. El
-mapeo es:
-
-| Nivel de origen                    | Categoría destino    |
-| ---------------------------------- | -------------------- |
-| Nivel 1 · Recursos Naturales       | `raw_primary`        |
-| Nivel 2 · Materiales Básicos       | `intermediate`       |
-| Nivel 3 · Materiales Industriales  | `intermediate`       |
-| Nivel 4 · Componentes              | `intermediate`       |
-| Nivel 5 · Productos Finales        | `final_consumption`  |
-
-Consecuencias:
-
-- La "profundidad" de la cadena (materia básica → industrial → componente) **se
-  conserva como recetas encadenadas** entre productos `intermediate`, aunque
-  todos compartan categoría. La categoría no limita el encadenamiento.
-- Un producto es `final_consumption` **solo si ninguna receta lo consume**. Si en
-  el futuro algo lo consumiera, pasa a `intermediate`.
-
----
-
-## 4. Diferencias respecto al material de origen (leer antes de traducir)
-
-### 4.1 Salida única: cómo modelar subproductos
-
-El origen define procesos con **varias salidas simultáneas** (refinería, molino,
-aserradero, planta láctea, procesadora de carne, trituradora). El esquema **no lo
-permite**. Cada salida se modela como una **receta independiente** que consume la
-misma materia prima:
-
-- **Refinería** (petróleo → gasolina + diésel + queroseno + lubricantes + asfalto)
-  → 5 recetas: `refino_gasolina`, `refino_diesel`, `refino_queroseno`,
-  `refino_lubricantes`, `refino_asfalto`, cada una con `inputs: [petroleo]`.
-- **Planta láctea** (leche → queso + mantequilla + yogur) → 3 recetas.
-- **Procesadora de carne** (ganado → carne + cuero) → 2 recetas.
-- **Molino** (trigo → harina + salvado) → `harina` (ya existe) + opcional `salvado`.
-- **Aserradero** (troncos → tablas + serrín) → `tablas` + opcional `serrin`.
-- **Trituradora** (piedra → grava + arena industrial) → 2 recetas.
-
-Los **subproductos son opcionales**: inclúyelos solo si vas a darles un uso
-económico (otra receta que los consuma o demanda de consumo). Un subproducto sin
-consumidor y sin demanda es ruido; prefiérelo omitir en v1.
-
-### 4.2 Familias logísticas y vehículos de transporte: FUERA de v1
-
-El origen clasifica cada recurso en una familia logística (granel sólido/líquido,
-carga general, contenedores, refrigerados, sobredimensionados) y define vehículos
-de transporte. **El esquema v1 no tiene columnas para esto** y el mercado no
-simula transporte físico. Por tanto:
-
-- **No** inventes columnas ni campos para familia logística o transporte.
-- La familia logística se incluye en las tablas de la §5 **solo como metadato
-  informativo** (útil si en el futuro se añade logística). Ignórala al generar
-  `seed-config.json`.
-- Los "vehículos de transporte" del origen (camión, tren, barco, avión) **sí**
-  existen aquí, pero como **productos finales fabricables y comerciables**
-  (`final_consumption`), no como mecánica de transporte.
-
-### 4.3 Insumos genéricos: normalización obligatoria
-
-El material de origen (sobre todo los productos finales) cita insumos vagos:
-"componentes eléctricos", "componentes mecánicos", "sistemas de navegación",
-"electrónica avanzada", "maquinaria pesada", "sistemas hidráulicos". El esquema
-exige referencias a productos concretos. **Resuelve cada término genérico a
-productos concretos del catálogo** usando esta tabla:
-
-| Término genérico del origen              | Productos concretos a usar como insumos            |
-| ---------------------------------------- | -------------------------------------------------- |
-| "componentes eléctricos"                 | `cableado`, `motor_electrico`                      |
-| "componentes mecánicos"                  | `rodamientos`, `perfil_metalico`                   |
-| "componentes electrónicos" / "electrónica" | `circuito_impreso`, `microchip`                  |
-| "electrónica avanzada"                   | `microchip`, `sensor`, `pantalla`                  |
-| "sistemas de navegación/control/señalización" | `sistema_control`                             |
-| "sistemas eléctricos"                    | `cableado`, `transformador`                        |
-| "sistemas hidráulicos"                   | `sistema_hidraulico`                               |
-| "maquinaria pesada" / "grúas industriales" | `grua` (producto final reutilizado como insumo)  |
-| "motores industriales" / "motor de combustión industrial" | `motor_combustion`               |
-| "cristales" / "cristales técnicos"       | `cristal_plano` / `cristal_tecnico`                |
-| "acero estructural" / "estructuras de acero" | `viga_acero` (+ `lamina_acero` si aplica)      |
-| "tanque especializado"                   | `tanque_especializado`                             |
-| "sistema de refrigeración" / "aislamiento térmico" | `sistema_refrigeracion` / `aislamiento_termico` |
-
-Los productos "nuevos" que esta normalización necesita y que no estaban
-explícitos en el origen (`silicio`, `sistema_control`, `sistema_hidraulico`,
-`motor_aeronautico`, `turbina`, `tanque_especializado`, `sistema_refrigeracion`,
-`aislamiento_termico`) están listados en la §5 y **deben crearse** como productos
-`intermediate`.
-
-### 4.4 Nota sobre duplicados de nombre
-
-- **Cobre:** el origen usa "Cobre" (mineral) y "Cobre refinado". Aquí:
-  `mineral_cobre` (`raw_primary`) y `cobre_refinado` (`intermediate`). Todo
-  consumo aguas abajo usa `cobre_refinado`.
-- **Transformador / Generador:** aparecen como *componente* (Nivel 4) y como
-  *producto final* (Nivel 5). Aquí: `transformador` y `generador` son componentes
-  `intermediate`; `transformador_electrico` y `generador_industrial` son los
-  productos finales comerciables. Reutiliza los componentes como insumos de los
-  finales.
-- **Refinería / Planta química, etc.:** el proceso de refinado es una **receta**
-  (`refino_*`); "Refinería de Petróleo" es además un **producto final** (edificio
-  fabricable). Son entidades distintas y ambas existen.
+| key | Nombre | Rol | Recetas | Precio base (¢) | Growth (bps) | Nivel máx |
+| --- | ------ | --- | ------- | --------------- | ------------ | --------- |
+| `campo` | Campo agrícola | primary_producer | 11 | 15000 | 17000 | 10 |
+| `granja` | Granja ganadera | primary_producer | 5 | 18000 | 17000 | 10 |
+| `mina` | Mina | primary_producer | 10 | 30000 | 17000 | 10 |
+| `cantera` | Cantera | primary_producer | 5 | 15000 | 17000 | 10 |
+| `pozo` | Pozo de extracción | primary_producer | 2 | 30000 | 17000 | 10 |
+| `bosque` | Bosque maderero | primary_producer | 1 | 15000 | 17000 | 10 |
+| `planta_agua` | Planta de captación de agua | primary_producer | 1 | 12000 | 17000 | 10 |
+| `agroindustria` | Agroindustria alimentaria | transformer | 18 | 40000 | 17000 | 10 |
+| `metalurgia` | Industria metalúrgica | transformer | 12 | 45000 | 17000 | 10 |
+| `materiales` | Fábrica de materiales de construcción | transformer | 7 | 40000 | 17000 | 10 |
+| `refineria` | Refinería petroquímica | transformer | 12 | 50000 | 17000 | 10 |
+| `aserradero` | Aserradero y papelera | transformer | 6 | 38000 | 17000 | 10 |
+| `electronica` | Planta de electrónica | transformer | 9 | 80000 | 17000 | 10 |
+| `componentes` | Fábrica de componentes mecánicos | transformer | 21 | 70000 | 17000 | 10 |
+| `ensamblaje` | Planta de ensamblaje final | transformer | 20 | 90000 | 17000 | 10 |
+| `construccion` | Constructora de infraestructura | transformer | 15 | 90000 | 17000 | 10 |
 
 ---
 
-## 5. Catálogo de productos
+## 4. Productos actuales
 
-Leyenda de columnas: **key** (slug del seed) · **Nombre** (name en DB) · **Unidad**
-sugerida · **Familia logística** (solo informativo, §4.2) · **Notas / usos**.
+Formato: **key** · Nombre · Unidad. (155 productos.)
 
-### 5.1 `raw_primary` — Recursos primarios (receta sin insumos)
+### 4.1 `raw_primary` — Recursos primarios
 
-#### Minería (granel sólido)
+| key | Nombre | Unidad |
+| --- | ------ | ------ |
+| `trigo` | Trigo | kg |
+| `maiz` | Maíz | kg |
+| `leche` | Leche | litro |
+| `tomate` | Tomate | kg |
+| `germinado` | Germinado | kg |
+| `hierro` | Hierro | kg |
+| `carbon` | Carbón | kg |
+| `mineral_cobre` | Mineral de cobre | kg |
+| `bauxita` | Bauxita | kg |
+| `litio` | Litio | kg |
+| `niquel` | Níquel | kg |
+| `oro` | Oro | kg |
+| `plata` | Plata | kg |
+| `uranio` | Uranio | kg |
+| `arena` | Arena | kg |
+| `piedra` | Piedra | kg |
+| `caliza` | Caliza | kg |
+| `arcilla` | Arcilla | kg |
+| `fosfato` | Fosfato | kg |
+| `sal` | Sal | kg |
+| `petroleo` | Petróleo | litro |
+| `gas_natural` | Gas natural | m3 |
+| `agua` | Agua | litro |
+| `troncos` | Troncos | kg |
+| `soya` | Soya | kg |
+| `algodon` | Algodón | kg |
+| `cana_azucar` | Caña de azúcar | kg |
+| `cafe` | Café | kg |
+| `cacao` | Cacao | kg |
+| `frutas` | Frutas | kg |
+| `verduras` | Verduras | kg |
+| `ganado_bovino` | Ganado bovino | unidad |
+| `cerdos` | Cerdos | unidad |
+| `pollos` | Pollos | unidad |
+| `lana` | Lana | kg |
 
-| key            | Nombre         | Unidad | Familia log. | Usos principales                          |
-| -------------- | -------------- | ------ | ------------ | ----------------------------------------- |
-| `hierro`       | Hierro         | kg     | Granel sólido | Acero, acero inoxidable                    |
-| `carbon`       | Carbón         | kg     | Granel sólido | Acero, energía, química                     |
-| `mineral_cobre`| Mineral de cobre | kg   | Granel sólido | Cobre refinado                             |
-| `bauxita`      | Bauxita        | kg     | Granel sólido | Aluminio                                   |
-| `litio`        | Litio          | kg     | Granel sólido | Baterías                                   |
-| `niquel`       | Níquel         | kg     | Granel sólido | Acero inoxidable, aleaciones               |
-| `oro`          | Oro            | kg     | Granel sólido | Circuitos impresos, electrónica            |
-| `plata`        | Plata          | kg     | Granel sólido | Electrónica, conductores                   |
-| `uranio`       | Uranio         | kg     | Granel sólido | Combustible nuclear (central nuclear)      |
-| `arena`        | Arena          | kg     | Granel sólido | Vidrio, hormigón, silicio                  |
-| `piedra`       | Piedra         | kg     | Granel sólido | Construcción, asfalto, grava               |
-| `caliza`       | Caliza         | kg     | Granel sólido | Cemento, química                           |
-| `arcilla`      | Arcilla        | kg     | Granel sólido | Ladrillos, cerámica                        |
-| `fosfato`      | Fosfato        | kg     | Granel sólido | Fertilizantes                              |
-| `sal`          | Sal            | kg     | Granel sólido | Química, alimentación                      |
+### 4.2 `intermediate` — Bienes intermedios
 
-#### Energía
+| key | Nombre | Unidad |
+| --- | ------ | ------ |
+| `harina` | Harina de trigo | kg |
+| `masa` | Masa nixtamalizada | kg |
+| `acero` | Acero | kg |
+| `acero_inoxidable` | Acero inoxidable | kg |
+| `aluminio` | Aluminio | kg |
+| `cobre_refinado` | Cobre refinado | kg |
+| `cemento` | Cemento | kg |
+| `hormigon` | Hormigón | kg |
+| `vidrio` | Vidrio | kg |
+| `ladrillos` | Ladrillos | unidad |
+| `asfalto` | Asfalto | kg |
+| `plastico` | Plástico | kg |
+| `caucho_sintetico` | Caucho sintético | kg |
+| `fertilizantes` | Fertilizantes | kg |
+| `productos_quimicos` | Productos químicos | litro |
+| `silicio` | Silicio | kg |
+| `tablas` | Tablas | kg |
+| `celulosa` | Celulosa | kg |
+| `papel` | Papel | kg |
+| `carton` | Cartón | kg |
+| `azucar` | Azúcar | kg |
+| `aceite_vegetal` | Aceite vegetal | litro |
+| `carne_procesada` | Carne procesada | kg |
+| `lacteos` | Lácteos | kg |
+| `gasolina` | Gasolina | litro |
+| `diesel` | Diésel | litro |
+| `queroseno` | Queroseno | litro |
+| `lubricantes` | Lubricantes | litro |
+| `viga_acero` | Vigas de acero | kg |
+| `lamina_acero` | Láminas de acero | kg |
+| `tubo_acero` | Tubos de acero | kg |
+| `perfil_metalico` | Perfiles metálicos | kg |
+| `lamina_aluminio` | Láminas de aluminio | kg |
+| `perfil_aluminio` | Perfiles de aluminio | kg |
+| `cable_cobre` | Cable de cobre | kg |
+| `bobina_cobre` | Bobinas de cobre | kg |
+| `cristal_plano` | Cristal plano | kg |
+| `cristal_tecnico` | Cristal técnico | kg |
+| `polimeros` | Polímeros | kg |
+| `resinas` | Resinas | kg |
+| `fibra_sintetica` | Fibra sintética | kg |
+| `lubricante_industrial` | Lubricante industrial | litro |
+| `madera_tratada` | Madera tratada | kg |
+| `contrachapado` | Contrachapado | kg |
+| `conservas` | Conservas | kg |
+| `piensos` | Piensos | kg |
+| `bebidas` | Bebidas | litro |
+| `chasis` | Chasis | unidad |
+| `motor_combustion` | Motor de combustión | unidad |
+| `caja_cambios` | Caja de cambios | unidad |
+| `suspension` | Suspensión | unidad |
+| `frenos` | Frenos | unidad |
+| `rodamientos` | Rodamientos | unidad |
+| `bomba_industrial` | Bomba industrial | unidad |
+| `motor_electrico` | Motor eléctrico | unidad |
+| `transformador` | Transformador | unidad |
+| `generador` | Generador | unidad |
+| `bateria` | Batería | unidad |
+| `cableado` | Cableado | kg |
+| `circuito_impreso` | Circuitos impresos | unidad |
+| `microchip` | Microchips | unidad |
+| `sensor` | Sensores | unidad |
+| `pantalla` | Pantallas | unidad |
+| `ventana` | Ventanas | unidad |
+| `puerta_industrial` | Puertas industriales | unidad |
+| `panel_prefabricado` | Panel prefabricado | unidad |
+| `tuberia` | Tuberías | kg |
+| `asiento` | Asientos | unidad |
+| `panel_interior` | Paneles interiores | unidad |
+| `neumatico` | Neumáticos | unidad |
+| `turbina` | Turbina | unidad |
+| `sistema_hidraulico` | Sistema hidráulico | unidad |
+| `motor_aeronautico` | Motor aeronáutico | unidad |
+| `sistema_control` | Sistema de control | unidad |
+| `tanque_especializado` | Tanque especializado | unidad |
+| `sistema_refrigeracion` | Sistema de refrigeración | unidad |
+| `aislamiento_termico` | Aislamiento térmico | kg |
 
-| key           | Nombre       | Unidad | Familia log.   | Usos principales                                   |
-| ------------- | ------------ | ------ | -------------- | -------------------------------------------------- |
-| `petroleo`    | Petróleo     | litro  | Granel líquido | Combustibles, plásticos, química, lubricantes, asfalto |
-| `gas_natural` | Gas Natural  | m3     | Granel líquido | Fertilizantes, química, energía                     |
-| `agua`        | Agua         | litro  | Granel líquido | Hormigón, bebidas, agricultura, industria           |
+### 4.3 `final_consumption` — Productos finales
 
-#### Forestal
-
-| key       | Nombre  | Unidad | Familia log.   | Usos principales             |
-| --------- | ------- | ------ | -------------- | ---------------------------- |
-| `troncos` | Troncos | kg     | Carga general  | Tablas, celulosa, papel      |
-
-#### Agricultura
-
-| key          | Nombre         | Unidad | Familia log.  | Usos principales          |
-| ------------ | -------------- | ------ | ------------- | ------------------------- |
-| `trigo`      | Trigo          | kg     | Granel sólido | Harina                    |
-| `maiz`       | Maíz           | kg     | Granel sólido | Masa, piensos             |
-| `soya`       | Soya           | kg     | Granel sólido | Aceite vegetal, piensos   |
-| `algodon`    | Algodón        | kg     | Carga general | Textiles                  |
-| `cana_azucar`| Caña de azúcar | kg     | Granel sólido | Azúcar                    |
-| `cafe`       | Café           | kg     | Carga general | Bebidas                   |
-| `cacao`      | Cacao          | kg     | Carga general | Chocolate / bebidas       |
-| `frutas`     | Frutas         | kg     | Refrigerados  | Conservas, consumo        |
-| `verduras`   | Verduras       | kg     | Refrigerados  | Conservas, consumo        |
-
-#### Ganadería
-
-| key            | Nombre        | Unidad | Familia log.  | Usos principales           |
-| -------------- | ------------- | ------ | ------------- | -------------------------- |
-| `ganado_bovino`| Ganado bovino | unidad | Refrigerados  | Carne procesada, cuero     |
-| `cerdos`       | Cerdos        | unidad | Refrigerados  | Carne procesada            |
-| `pollos`       | Pollos        | unidad | Refrigerados  | Carne procesada            |
-| `leche`        | Leche         | litro  | Refrigerados  | Queso, mantequilla, yogur  |
-| `lana`         | Lana          | kg     | Carga general | Textiles                   |
-
-### 5.2 `intermediate` — Materiales básicos
-
-| key               | Nombre              | Unidad | Familia log.   | Insumos de su receta (ver §6)         |
-| ----------------- | ------------------- | ------ | -------------- | ------------------------------------- |
-| `acero`           | Acero               | kg     | Carga general  | hierro, carbón                        |
-| `acero_inoxidable`| Acero inoxidable    | kg     | Carga general  | acero, níquel                         |
-| `aluminio`        | Aluminio            | kg     | Carga general  | bauxita                               |
-| `cobre_refinado`  | Cobre refinado      | kg     | Carga general  | mineral_cobre                         |
-| `cemento`         | Cemento             | kg     | Carga general  | caliza                                |
-| `hormigon`        | Hormigón            | kg     | Carga general  | cemento, arena, agua                  |
-| `vidrio`          | Vidrio              | kg     | Carga general  | arena                                 |
-| `ladrillos`       | Ladrillos           | unidad | Carga general  | arcilla                               |
-| `asfalto`         | Asfalto             | kg     | Granel líquido | petróleo, piedra                      |
-| `plastico`        | Plástico            | kg     | Carga general  | petróleo                              |
-| `caucho_sintetico`| Caucho sintético    | kg     | Carga general  | petróleo                              |
-| `fertilizantes`   | Fertilizantes       | kg     | Carga general  | gas_natural, fosfato                  |
-| `productos_quimicos`| Productos químicos| litro  | Granel líquido | petróleo, sal                         |
-| `silicio`         | Silicio             | kg     | Carga general  | arena  *(nuevo, ver §4.3)*            |
-| `tablas`          | Tablas              | kg     | Carga general  | troncos                               |
-| `papel`           | Papel               | kg     | Carga general  | celulosa (o troncos)                  |
-| `carton`          | Cartón              | kg     | Carga general  | papel                                 |
-| `harina`          | Harina de trigo     | kg     | Carga general  | trigo *(ya en seed actual)*           |
-| `azucar`          | Azúcar              | kg     | Carga general  | caña_azucar                           |
-| `aceite_vegetal`  | Aceite vegetal      | litro  | Granel líquido | soya                                  |
-| `carne_procesada` | Carne procesada     | kg     | Refrigerados   | ganado_bovino / cerdos / pollos       |
-| `lacteos`         | Lácteos             | kg     | Refrigerados   | leche (ver quesería/láctea)           |
-| `gasolina`        | Gasolina            | litro  | Granel líquido | petróleo                              |
-| `diesel`          | Diésel              | litro  | Granel líquido | petróleo                              |
-| `queroseno`       | Queroseno           | litro  | Granel líquido | petróleo                              |
-| `lubricantes`     | Lubricantes         | litro  | Granel líquido | petróleo                              |
-
-### 5.3 `intermediate` — Materiales industriales
-
-| key                 | Nombre                | Unidad | Familia log.   | Insumo(s) base       |
-| ------------------- | --------------------- | ------ | -------------- | -------------------- |
-| `viga_acero`        | Vigas de acero        | kg     | Carga general  | acero                |
-| `lamina_acero`      | Láminas de acero      | kg     | Carga general  | acero                |
-| `tubo_acero`        | Tubos de acero        | kg     | Carga general  | acero                |
-| `perfil_metalico`   | Perfiles metálicos    | kg     | Carga general  | acero                |
-| `lamina_aluminio`   | Láminas de aluminio   | kg     | Carga general  | aluminio             |
-| `perfil_aluminio`   | Perfiles de aluminio  | kg     | Carga general  | aluminio             |
-| `cable_cobre`       | Cable de cobre        | kg     | Carga general  | cobre_refinado       |
-| `bobina_cobre`      | Bobinas de cobre      | kg     | Carga general  | cobre_refinado       |
-| `cristal_plano`     | Cristal plano         | kg     | Carga general  | vidrio               |
-| `cristal_tecnico`   | Cristal técnico       | kg     | Carga general  | vidrio               |
-| `polimeros`         | Polímeros             | kg     | Carga general  | plástico             |
-| `resinas`           | Resinas               | kg     | Carga general  | productos_quimicos   |
-| `fibra_sintetica`   | Fibra sintética       | kg     | Carga general  | plástico             |
-| `lubricante_industrial` | Lubricante industrial | litro | Granel líquido | lubricantes       |
-| `madera_tratada`    | Madera tratada        | kg     | Carga general  | tablas               |
-| `contrachapado`     | Contrachapado         | kg     | Carga general  | tablas               |
-| `celulosa`          | Celulosa              | kg     | Carga general  | troncos              |
-| `conservas`         | Conservas             | kg     | Carga general  | frutas, verduras     |
-| `piensos`           | Piensos               | kg     | Carga general  | maíz, soya           |
-| `bebidas`           | Bebidas               | litro  | Carga general  | agua, azúcar         |
-
-#### Subproductos (opcionales, §4.1)
-
-| key             | Nombre           | Unidad | Proceso de origen        | Uso sugerido            |
-| --------------- | ---------------- | ------ | ------------------------ | ----------------------- |
-| `serrin`        | Serrín           | kg     | Aserradero (troncos)     | Biomasa / piensos       |
-| `cuero`         | Cuero            | kg     | Procesadora (ganado)     | Textiles / asientos     |
-| `queso`         | Queso fresco     | kg     | Planta láctea (leche)    | `final_consumption`     |
-| `mantequilla`   | Mantequilla      | kg     | Planta láctea (leche)    | `final_consumption`     |
-| `yogur`         | Yogur            | litro  | Planta láctea (leche)    | `final_consumption`     |
-| `salvado`       | Salvado          | kg     | Molino (trigo)           | Piensos                 |
-| `grava`         | Grava            | kg     | Trituradora (piedra)     | Hormigón / construcción |
-| `arena_industrial` | Arena industrial | kg  | Trituradora (piedra)     | Vidrio / hormigón       |
-
-> Nota: `queso`, `mantequilla` y `yogur` son de consumo final; si los incluyes,
-> márcalos `final_consumption`, no `intermediate`. El seed actual ya usa
-> `queso` como `final_consumption`.
-
-### 5.4 `intermediate` — Componentes
-
-| key                  | Nombre                | Unidad | Familia log.  | Insumos (ver §6)                    |
-| -------------------- | --------------------- | ------ | ------------- | ----------------------------------- |
-| `chasis`             | Chasis                | unidad | Contenedores  | viga_acero, lamina_acero            |
-| `motor_combustion`   | Motor de combustión   | unidad | Contenedores  | acero, aluminio, cable_cobre        |
-| `caja_cambios`       | Caja de cambios       | unidad | Contenedores  | acero                               |
-| `suspension`         | Suspensión            | unidad | Contenedores  | acero, caucho_sintetico             |
-| `frenos`             | Frenos                | unidad | Contenedores  | acero                               |
-| `rodamientos`        | Rodamientos           | unidad | Contenedores  | acero                               |
-| `bomba_industrial`   | Bombas industriales   | unidad | Contenedores  | acero, tubo_acero                   |
-| `motor_electrico`    | Motores eléctricos    | unidad | Contenedores  | bobina_cobre, acero                 |
-| `transformador`      | Transformadores       | unidad | Sobredimensionado | bobina_cobre, acero             |
-| `generador`          | Generadores           | unidad | Sobredimensionado | motor_combustion, acero         |
-| `bateria`            | Baterías              | unidad | Contenedores  | litio, plástico                     |
-| `cableado`           | Cableado              | kg     | Contenedores  | cable_cobre, plástico               |
-| `circuito_impreso`   | Circuitos impresos    | unidad | Contenedores  | oro, cobre_refinado, plástico       |
-| `microchip`          | Microchips            | unidad | Contenedores  | circuito_impreso, productos_quimicos, silicio |
-| `sensor`             | Sensores              | unidad | Contenedores  | circuito_impreso                    |
-| `pantalla`           | Pantallas             | unidad | Contenedores  | cristal_tecnico, circuito_impreso   |
-| `ventana`            | Ventanas              | unidad | Carga general | cristal_plano, perfil_aluminio      |
-| `puerta_industrial`  | Puertas industriales  | unidad | Carga general | acero, plástico                     |
-| `panel_prefabricado` | Panel prefabricado    | unidad | Carga general | hormigón, viga_acero                |
-| `tuberia`            | Tuberías              | kg     | Carga general | tubo_acero, plástico                |
-| `asiento`            | Asientos              | unidad | Contenedores  | fibra_sintetica, acero              |
-| `panel_interior`     | Paneles interiores    | unidad | Contenedores  | polímeros                           |
-| `neumatico`          | Neumáticos            | unidad | Contenedores  | caucho_sintetico                    |
-| `turbina`            | Turbina               | unidad | Sobredimensionado | acero, perfil_metalico  *(nuevo)* |
-| `sistema_hidraulico` | Sistema hidráulico    | unidad | Contenedores  | acero, tubo_acero, bomba_industrial *(nuevo)* |
-| `motor_aeronautico`  | Motor aeronáutico     | unidad | Sobredimensionado | aluminio, acero, microchip *(nuevo)* |
-| `sistema_control`    | Sistema de control    | unidad | Contenedores  | microchip, sensor, cableado *(nuevo)* |
-| `tanque_especializado` | Tanque especializado | unidad | Sobredimensionado | lamina_acero, tubo_acero *(nuevo)* |
-| `sistema_refrigeracion`| Sistema de refrigeración | unidad | Contenedores | motor_electrico, tuberia, productos_quimicos *(nuevo)* |
-| `aislamiento_termico`| Aislamiento térmico   | kg     | Carga general | polímeros, fibra_sintetica *(nuevo)* |
-
-### 5.5 `final_consumption` — Productos finales
-
-Un `final_consumption` no es insumo de ninguna receta. Aquí los "edificios" e
-"infraestructura" se modelan como productos finales **fabricables y
-comerciables** (el simulador no coloca edificios en un mapa).
-
-#### Vehículos de transporte
-
-| key                | Nombre             | Unidad | Insumos (resueltos, ver §4.3)                                        |
-| ------------------ | ------------------ | ------ | ------------------------------------------------------------------- |
-| `camion_carga`     | Camión de carga    | unidad | chasis, motor_combustion, caja_cambios, suspension, frenos, neumatico, cableado, sistema_control, cristal_plano |
-| `camion_cisterna`  | Camión cisterna    | unidad | camion_carga, tanque_especializado, bomba_industrial, tubo_acero    |
-| `camion_refrigerado`| Camión refrigerado| unidad | camion_carga, sistema_refrigeracion, aislamiento_termico            |
-| `locomotora_diesel`| Locomotora diésel  | unidad | motor_combustion, chasis, sistema_control, generador                |
-| `vagon_carga`      | Vagón de carga     | unidad | viga_acero, rodamientos, perfil_metalico                            |
-| `barco_carga`      | Barco de carga     | unidad | viga_acero, motor_combustion, sistema_control, cableado             |
-| `barco_petrolero`  | Barco petrolero    | unidad | barco_carga, tanque_especializado, bomba_industrial                 |
-| `avion_carga`      | Avión de carga     | unidad | lamina_aluminio, motor_aeronautico, sistema_control, cristal_tecnico |
-
-#### Infraestructura industrial (edificios fabricables)
-
-| key                | Nombre                        | Unidad | Insumos                                            |
-| ------------------ | ----------------------------- | ------ | -------------------------------------------------- |
-| `planta_industrial`| Planta industrial genérica    | unidad | acero, hormigón, vidrio, rodamientos               |
-| `refineria`        | Refinería de petróleo         | unidad | acero, tubo_acero, sistema_control, bomba_industrial |
-| `central_electrica`| Central eléctrica             | unidad | turbina, generador, acero, cableado                |
-| `planta_ensamblaje`| Planta de ensamblaje automotriz | unidad | acero, sistema_control, rodamientos, hormigón    |
-| `astillero`        | Astillero                     | unidad | acero, grua, sistema_control                       |
-| `fabrica_aeronaves`| Fábrica de aeronaves          | unidad | aluminio, microchip, motor_aeronautico, rodamientos |
-| `planta_quimica`   | Planta química                | unidad | acero, tubo_acero, bomba_industrial, sistema_control |
-
-#### Infraestructura de transporte
-
-| key                 | Nombre               | Unidad | Insumos                                  |
-| ------------------- | -------------------- | ------ | ---------------------------------------- |
-| `estacion_carga`    | Estación de carga    | unidad | acero, hormigón, cableado                |
-| `terminal_ferroviaria` | Terminal ferroviaria | unidad | acero, sistema_control, cableado      |
-| `puerto_comercial`  | Puerto comercial     | unidad | hormigón, acero, grua, cableado          |
-| `aeropuerto_carga`  | Aeropuerto de carga  | unidad | hormigón, acero, sistema_control, cableado |
-
-#### Consumo, maquinaria y energía
-
-| key                   | Nombre               | Unidad | Insumos                                       |
-| --------------------- | -------------------- | ------ | --------------------------------------------- |
-| `automovil`           | Automóvil            | unidad | chasis, motor_combustion, sistema_control, cristal_plano, neumatico, asiento, panel_interior |
-| `refrigerador`        | Refrigerador         | unidad | acero, sistema_refrigeracion, panel_interior  |
-| `lavadora`            | Lavadora             | unidad | acero, motor_electrico, sistema_control       |
-| `televisor`          | Televisor            | unidad | pantalla, circuito_impreso, plástico          |
-| `computadora`         | Computadora          | unidad | microchip, pantalla, plástico, cobre_refinado |
-| `telefono`            | Teléfono             | unidad | microchip, pantalla, bateria, circuito_impreso |
-| `excavadora`          | Excavadora           | unidad | acero, motor_combustion, sistema_hidraulico, sistema_control |
-| `grua`                | Grúa                 | unidad | acero, motor_combustion, sistema_hidraulico   |
-| `generador_industrial`| Generador industrial | unidad | acero, bobina_cobre, generador                |
-| `panel_solar`         | Panel solar          | unidad | cristal_tecnico, silicio, circuito_impreso    |
-| `turbina_eolica`      | Turbina eólica       | unidad | turbina, acero, sistema_control               |
-| `transformador_electrico`| Transformador eléctrico | unidad | cobre_refinado, acero, transformador     |
-
-#### Infraestructura urbana
-
-| key                   | Nombre                 | Unidad | Insumos                              |
-| --------------------- | ---------------------- | ------ | ------------------------------------ |
-| `edificio_residencial`| Edificio residencial   | unidad | hormigón, acero, ventana, cableado   |
-| `edificio_comercial`  | Edificio comercial     | unidad | hormigón, acero, ventana             |
-| `fabrica_urbana_ligera`| Fábrica urbana ligera | unidad | acero, hormigón, sistema_control     |
-| `almacen_logistico`   | Almacén logístico      | unidad | hormigón, acero, cableado            |
-
-#### Alimentos de consumo final (además del seed agrícola actual)
-
-| key           | Nombre        | Unidad | Insumos                     |
-| ------------- | ------------- | ------ | --------------------------- |
-| `queso`       | Queso fresco  | kg     | leche  *(ya en seed)*       |
-| `mantequilla` | Mantequilla   | kg     | leche                       |
-| `yogur`       | Yogur         | litro  | leche                       |
-| `chocolate`   | Chocolate     | kg     | cacao, azúcar               |
-| `textiles`    | Textiles      | kg     | algodón (o lana)            |
+| key | Nombre | Unidad |
+| --- | ------ | ------ |
+| `pan` | Pan | kg |
+| `tortilla` | Tortilla | kg |
+| `queso` | Queso fresco | kg |
+| `salsa` | Salsa de tomate | litro |
+| `camion_carga` | Camión de carga | unidad |
+| `camion_cisterna` | Camión cisterna | unidad |
+| `camion_refrigerado` | Camión refrigerado | unidad |
+| `locomotora_diesel` | Locomotora diésel | unidad |
+| `vagon_carga` | Vagón de carga | unidad |
+| `barco_carga` | Barco de carga | unidad |
+| `barco_petrolero` | Barco petrolero | unidad |
+| `avion_carga` | Avión de carga | unidad |
+| `planta_industrial` | Planta industrial genérica | unidad |
+| `refineria` | Refinería de petróleo | unidad |
+| `central_electrica` | Central eléctrica | unidad |
+| `planta_ensamblaje` | Planta de ensamblaje automotriz | unidad |
+| `astillero` | Astillero | unidad |
+| `fabrica_aeronaves` | Fábrica de aeronaves | unidad |
+| `planta_quimica` | Planta química | unidad |
+| `estacion_carga` | Estación de carga | unidad |
+| `terminal_ferroviaria` | Terminal ferroviaria | unidad |
+| `puerto_comercial` | Puerto comercial | unidad |
+| `aeropuerto_carga` | Aeropuerto de carga | unidad |
+| `automovil` | Automóvil | unidad |
+| `refrigerador` | Refrigerador | unidad |
+| `lavadora` | Lavadora | unidad |
+| `televisor` | Televisor | unidad |
+| `computadora` | Computadora | unidad |
+| `telefono` | Teléfono | unidad |
+| `excavadora` | Excavadora | unidad |
+| `grua` | Grúa | unidad |
+| `generador_industrial` | Generador industrial | unidad |
+| `panel_solar` | Panel solar | unidad |
+| `turbina_eolica` | Turbina eólica | unidad |
+| `transformador_electrico` | Transformador eléctrico | unidad |
+| `edificio_residencial` | Edificio residencial | unidad |
+| `edificio_comercial` | Edificio comercial | unidad |
+| `fabrica_urbana_ligera` | Fábrica urbana ligera | unidad |
+| `almacen_logistico` | Almacén logístico | unidad |
+| `mantequilla` | Mantequilla | kg |
+| `yogur` | Yogur | litro |
+| `chocolate` | Chocolate | kg |
+| `textiles` | Textiles | kg |
 
 ---
 
-## 6. Grafo de recetas (cadenas de producción)
+## 5. Recetas actuales (agrupadas por tipo de instalación)
 
-Cada fila es **una receta** = una salida. Los insumos listan solo *qué* productos
-se consumen; las **cantidades, duración y salario** se asignan según la §7. Las
-recetas de extracción (`raw_primary`) no llevan insumos.
+Formato: **key** · Nombre · Salida (`output` × `output_qty_cent`) · Duración
+(segundos simulados) · Salario (¢/s) · Insumos (`key×qty_cent`). Las recetas de
+extracción no llevan insumos (—).
 
-### 6.1 Extracción primaria (sin insumos → `raw_primary`)
+### 5.1 `campo` — Campo agrícola (primary_producer)
 
-Una receta por cada recurso de la §5.1. Ejemplos de nombres de receta:
-`mineria_hierro` → `hierro`, `mineria_carbon` → `carbon`, `pozo_petroleo` →
-`petroleo`, `pozo_gas` → `gas_natural`, `captacion_agua` → `agua`, `tala` →
-`troncos`, `cultivo_soya` → `soya`, `cria_bovino` → `ganado_bovino`, `ordena` →
-`leche` (ya existe), etc. Todas con `inputs: []`.
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `cultivo_trigo` | Cultivo de trigo | `trigo` | 50000 | 7200 | 1 | — |
+| `cultivo_maiz` | Cultivo de maíz | `maiz` | 60000 | 7200 | 1 | — |
+| `cultivo_tomate` | Cultivo de tomate | `tomate` | 30000 | 5400 | 1 | — |
+| `germinado_rapido` | Germinado rápido | `germinado` | 1000 | 60 | 1 | — |
+| `cultivo_soya` | Cultivo de soya | `soya` | 50000 | 7200 | 1 | — |
+| `cultivo_algodon` | Cultivo de algodón | `algodon` | 40000 | 7200 | 1 | — |
+| `cultivo_cana` | Cultivo de caña de azúcar | `cana_azucar` | 60000 | 7200 | 1 | — |
+| `cultivo_cafe` | Cultivo de café | `cafe` | 20000 | 7200 | 1 | — |
+| `cultivo_cacao` | Cultivo de cacao | `cacao` | 20000 | 7200 | 1 | — |
+| `cosecha_frutas` | Cosecha de frutas | `frutas` | 40000 | 5400 | 1 | — |
+| `cosecha_verduras` | Cosecha de verduras | `verduras` | 40000 | 5400 | 1 | — |
 
-### 6.2 Materiales básicos
+### 5.2 `granja` — Granja ganadera (primary_producer)
 
-| Receta (key)        | Salida              | Insumos                       |
-| ------------------- | ------------------- | ----------------------------- |
-| `fundicion_acero`   | acero               | hierro, carbón                |
-| `acero_inox`        | acero_inoxidable    | acero, níquel                 |
-| `refino_aluminio`   | aluminio            | bauxita                       |
-| `refino_cobre`      | cobre_refinado      | mineral_cobre                 |
-| `produccion_cemento`| cemento             | caliza                        |
-| `mezcla_hormigon`   | hormigón            | cemento, arena, agua          |
-| `fundicion_vidrio`  | vidrio              | arena                         |
-| `coccion_ladrillos` | ladrillos           | arcilla                       |
-| `produccion_asfalto`| asfalto             | petróleo, piedra              |
-| `sintesis_plastico` | plastico            | petróleo                      |
-| `sintesis_caucho`   | caucho_sintetico    | petróleo                      |
-| `produccion_fertilizantes` | fertilizantes | gas_natural, fosfato        |
-| `sintesis_quimicos` | productos_quimicos  | petróleo, sal                 |
-| `produccion_silicio`| silicio             | arena                         |
-| `aserrado`          | tablas              | troncos                       |
-| `produccion_celulosa`| celulosa           | troncos                       |
-| `produccion_papel`  | papel               | celulosa                      |
-| `produccion_carton` | carton              | papel                         |
-| `refino_azucar`     | azucar              | caña_azucar                   |
-| `prensado_aceite`   | aceite_vegetal      | soya                          |
-| `refino_gasolina`   | gasolina            | petróleo                      |
-| `refino_diesel`     | diesel              | petróleo                      |
-| `refino_queroseno`  | queroseno           | petróleo                      |
-| `refino_lubricantes`| lubricantes         | petróleo                      |
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `ordena` | Ordeña de vacas | `leche` | 20000 | 3600 | 2 | — |
+| `cria_bovino` | Cría de ganado bovino | `ganado_bovino` | 1000 | 7200 | 2 | — |
+| `cria_cerdos` | Cría de cerdos | `cerdos` | 2000 | 7200 | 2 | — |
+| `cria_pollos` | Cría de pollos | `pollos` | 5000 | 3600 | 1 | — |
+| `esquila` | Esquila de lana | `lana` | 10000 | 3600 | 1 | — |
 
-### 6.3 Materiales industriales
+### 5.3 `mina` — Mina (primary_producer)
 
-| Receta (key)         | Salida              | Insumos             |
-| -------------------- | ------------------- | ------------------- |
-| `laminado_viga`      | viga_acero          | acero               |
-| `laminado_lamina`    | lamina_acero        | acero               |
-| `extrusion_tubo`     | tubo_acero          | acero               |
-| `perfilado_metal`    | perfil_metalico     | acero               |
-| `laminado_aluminio`  | lamina_aluminio     | aluminio            |
-| `perfilado_aluminio` | perfil_aluminio     | aluminio            |
-| `trefilado_cable`    | cable_cobre         | cobre_refinado      |
-| `bobinado_cobre`     | bobina_cobre        | cobre_refinado      |
-| `templado_cristal`   | cristal_plano       | vidrio              |
-| `cristal_tecnico`    | cristal_tecnico     | vidrio              |
-| `polimerizacion`     | polimeros           | plástico            |
-| `produccion_resinas` | resinas             | productos_quimicos  |
-| `hilado_fibra`       | fibra_sintetica     | plástico            |
-| `madera_tratada`     | madera_tratada      | tablas              |
-| `contrachapado`      | contrachapado       | tablas              |
-| `enlatado_conservas` | conservas           | frutas, verduras    |
-| `produccion_piensos` | piensos             | maíz, soya          |
-| `embotellado_bebidas`| bebidas             | agua, azúcar        |
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `mineria_hierro` | Minería de hierro | `hierro` | 50000 | 7200 | 1 | — |
+| `mineria_carbon` | Minería de carbón | `carbon` | 50000 | 7200 | 1 | — |
+| `mineria_cobre` | Minería de cobre | `mineral_cobre` | 50000 | 7200 | 1 | — |
+| `mineria_bauxita` | Minería de bauxita | `bauxita` | 50000 | 7200 | 1 | — |
+| `mineria_litio` | Minería de litio | `litio` | 10000 | 7200 | 2 | — |
+| `mineria_niquel` | Minería de níquel | `niquel` | 30000 | 7200 | 1 | — |
+| `mineria_oro` | Minería de oro | `oro` | 2000 | 7200 | 2 | — |
+| `mineria_plata` | Minería de plata | `plata` | 3000 | 7200 | 2 | — |
+| `mineria_uranio` | Minería de uranio | `uranio` | 2000 | 7200 | 2 | — |
+| `mineria_fosfato` | Minería de fosfato | `fosfato` | 40000 | 7200 | 1 | — |
 
-### 6.4 Componentes
+### 5.4 `cantera` — Cantera (primary_producer)
 
-| Receta (key)          | Salida               | Insumos                                  |
-| --------------------- | -------------------- | ---------------------------------------- |
-| `ensamble_chasis`     | chasis               | viga_acero, lamina_acero                 |
-| `ensamble_motor`      | motor_combustion     | acero, aluminio, cable_cobre             |
-| `ensamble_caja`       | caja_cambios         | acero                                    |
-| `ensamble_suspension` | suspension           | acero, caucho_sintetico                  |
-| `ensamble_frenos`     | frenos               | acero                                    |
-| `ensamble_rodamientos`| rodamientos          | acero                                    |
-| `ensamble_bomba`      | bomba_industrial     | acero, tubo_acero                        |
-| `ensamble_motor_elec` | motor_electrico      | bobina_cobre, acero                      |
-| `ensamble_transformador` | transformador     | bobina_cobre, acero                      |
-| `ensamble_generador`  | generador            | motor_combustion, acero                  |
-| `ensamble_bateria`    | bateria              | litio, plástico                          |
-| `ensamble_cableado`   | cableado             | cable_cobre, plástico                    |
-| `ensamble_circuito`   | circuito_impreso     | oro, cobre_refinado, plástico            |
-| `ensamble_microchip`  | microchip            | circuito_impreso, productos_quimicos, silicio |
-| `ensamble_sensor`     | sensor               | circuito_impreso                         |
-| `ensamble_pantalla`   | pantalla             | cristal_tecnico, circuito_impreso        |
-| `ensamble_ventana`    | ventana              | cristal_plano, perfil_aluminio           |
-| `ensamble_puerta`     | puerta_industrial    | acero, plástico                          |
-| `ensamble_panel_pref` | panel_prefabricado   | hormigón, viga_acero                     |
-| `ensamble_tuberia`    | tuberia              | tubo_acero, plástico                     |
-| `ensamble_asiento`    | asiento              | fibra_sintetica, acero                   |
-| `ensamble_panel_int`  | panel_interior       | polímeros                                |
-| `ensamble_neumatico`  | neumatico            | caucho_sintetico                         |
-| `ensamble_turbina`    | turbina              | acero, perfil_metalico                   |
-| `ensamble_hidraulico` | sistema_hidraulico   | acero, tubo_acero, bomba_industrial      |
-| `ensamble_motor_aero` | motor_aeronautico    | aluminio, acero, microchip               |
-| `ensamble_control`    | sistema_control      | microchip, sensor, cableado              |
-| `ensamble_tanque`     | tanque_especializado | lamina_acero, tubo_acero                 |
-| `ensamble_refrig`     | sistema_refrigeracion| motor_electrico, tuberia, productos_quimicos |
-| `ensamble_aislamiento`| aislamiento_termico  | polímeros, fibra_sintetica               |
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `extraccion_arena` | Extracción de arena | `arena` | 50000 | 3600 | 1 | — |
+| `cantera_piedra` | Cantera de piedra | `piedra` | 50000 | 3600 | 1 | — |
+| `cantera_caliza` | Cantera de caliza | `caliza` | 50000 | 3600 | 1 | — |
+| `extraccion_arcilla` | Extracción de arcilla | `arcilla` | 50000 | 3600 | 1 | — |
+| `extraccion_sal` | Extracción de sal | `sal` | 40000 | 3600 | 1 | — |
 
-### 6.5 Productos finales
+### 5.5 `pozo` — Pozo de extracción (primary_producer)
 
-Ver §5.5: cada fila de esas tablas es una receta cuyo `output` es el producto
-final y cuyos `inputs` son los componentes listados. Nombres de receta sugeridos:
-`fab_camion_carga`, `fab_automovil`, `fab_computadora`, `constr_edificio_residencial`, etc.
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `pozo_petroleo` | Pozo petrolero | `petroleo` | 50000 | 7200 | 2 | — |
+| `pozo_gas` | Pozo de gas | `gas_natural` | 40000 | 7200 | 2 | — |
 
-### 6.6 Procesos multi-salida (subproductos, opcional)
+### 5.6 `bosque` — Bosque maderero (primary_producer)
 
-Si decides materializar subproductos (§4.1), añade recetas paralelas que consuman
-la misma materia prima:
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `tala` | Tala de árboles | `troncos` | 40000 | 7200 | 1 | — |
 
-| Receta (key)        | Salida        | Insumos  | Nota                         |
-| ------------------- | ------------- | -------- | ---------------------------- |
-| `molienda_salvado`  | salvado       | trigo    | Subproducto del molino       |
-| `aserrado_serrin`   | serrin        | troncos  | Subproducto del aserradero   |
-| `procesado_carne`   | carne_procesada | ganado_bovino | Salida principal        |
-| `curtido_cuero`     | cuero         | ganado_bovino | Subproducto de la res    |
-| `elab_queso`        | queso         | leche    | (ya existe como `queseria`)  |
-| `elab_mantequilla`  | mantequilla   | leche    | Salida paralela              |
-| `elab_yogur`        | yogur         | leche    | Salida paralela              |
-| `trituracion_grava` | grava         | piedra   | Salida principal trituradora |
-| `trituracion_arena` | arena_industrial | piedra | Salida paralela             |
+### 5.7 `planta_agua` — Planta de captación de agua (primary_producer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `captacion_agua` | Captación de agua | `agua` | 100000 | 1800 | 1 | — |
+
+### 5.8 `agroindustria` — Agroindustria alimentaria (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `molienda` | Molienda de trigo | `harina` | 8000 | 1800 | 2 | `trigo`×10000 |
+| `panaderia` | Panadería | `pan` | 10000 | 3600 | 3 | `harina`×8000 |
+| `nixtamalizado` | Nixtamalizado de maíz | `masa` | 18000 | 2700 | 2 | `maiz`×10000 |
+| `tortilleria` | Tortillería | `tortilla` | 9500 | 1800 | 2 | `masa`×10000 |
+| `queseria` | Quesería | `queso` | 1000 | 5400 | 3 | `leche`×10000 |
+| `salseria` | Salsería | `salsa` | 8000 | 2700 | 2 | `tomate`×10000 |
+| `refino_azucar` | Refino de azúcar | `azucar` | 20000 | 3600 | 2 | `cana_azucar`×50000 |
+| `prensado_aceite` | Prensado de aceite vegetal | `aceite_vegetal` | 15000 | 3600 | 2 | `soya`×40000 |
+| `procesado_carne` | Procesado de carne | `carne_procesada` | 25000 | 3600 | 3 | `ganado_bovino`×500 |
+| `planta_lactea` | Planta láctea | `lacteos` | 30000 | 3600 | 2 | `leche`×40000 |
+| `hilado_fibra` | Hilado de fibra sintética | `fibra_sintetica` | 16000 | 3600 | 2 | `plastico`×20000 |
+| `enlatado_conservas` | Enlatado de conservas | `conservas` | 35000 | 3600 | 2 | `frutas`×20000, `verduras`×20000 |
+| `produccion_piensos` | Producción de piensos | `piensos` | 35000 | 3600 | 2 | `maiz`×20000, `soya`×20000 |
+| `embotellado_bebidas` | Embotellado de bebidas | `bebidas` | 35000 | 3600 | 2 | `agua`×30000, `azucar`×10000 |
+| `elab_mantequilla` | Elaboración de mantequilla | `mantequilla` | 8000 | 3600 | 2 | `leche`×40000 |
+| `elab_yogur` | Elaboración de yogur | `yogur` | 25000 | 3600 | 2 | `leche`×30000 |
+| `elab_chocolate` | Elaboración de chocolate | `chocolate` | 20000 | 5400 | 3 | `cacao`×15000, `azucar`×10000 |
+| `elab_textiles` | Elaboración de textiles | `textiles` | 15000 | 5400 | 2 | `algodon`×20000 |
+
+### 5.9 `metalurgia` — Industria metalúrgica (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `fundicion_acero` | Fundición de acero | `acero` | 40000 | 5400 | 2 | `hierro`×40000, `carbon`×10000 |
+| `fundicion_inox` | Fundición de acero inoxidable | `acero_inoxidable` | 38000 | 5400 | 3 | `acero`×40000, `niquel`×5000 |
+| `refino_aluminio` | Refino de aluminio | `aluminio` | 25000 | 5400 | 2 | `bauxita`×50000 |
+| `refino_cobre` | Refino de cobre | `cobre_refinado` | 20000 | 5400 | 2 | `mineral_cobre`×50000 |
+| `laminado_viga` | Laminado de vigas | `viga_acero` | 18000 | 3600 | 2 | `acero`×20000 |
+| `laminado_lamina` | Laminado de láminas de acero | `lamina_acero` | 18000 | 3600 | 2 | `acero`×20000 |
+| `extrusion_tubo` | Extrusión de tubos | `tubo_acero` | 17000 | 3600 | 2 | `acero`×20000 |
+| `perfilado_metal` | Perfilado metálico | `perfil_metalico` | 18000 | 3600 | 2 | `acero`×20000 |
+| `laminado_aluminio` | Laminado de aluminio | `lamina_aluminio` | 13000 | 3600 | 2 | `aluminio`×15000 |
+| `perfilado_aluminio` | Perfilado de aluminio | `perfil_aluminio` | 13000 | 3600 | 2 | `aluminio`×15000 |
+| `trefilado_cable` | Trefilado de cable de cobre | `cable_cobre` | 14000 | 3600 | 2 | `cobre_refinado`×15000 |
+| `bobinado_cobre` | Bobinado de cobre | `bobina_cobre` | 13000 | 3600 | 2 | `cobre_refinado`×15000 |
+
+### 5.10 `materiales` — Fábrica de materiales de construcción (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `produccion_cemento` | Producción de cemento | `cemento` | 35000 | 3600 | 2 | `caliza`×40000 |
+| `mezcla_hormigon` | Mezcla de hormigón | `hormigon` | 40000 | 1800 | 2 | `cemento`×15000, `arena`×20000, `agua`×10000 |
+| `fundicion_vidrio` | Fundición de vidrio | `vidrio` | 30000 | 3600 | 2 | `arena`×40000 |
+| `coccion_ladrillos` | Cocción de ladrillos | `ladrillos` | 50000 | 3600 | 2 | `arcilla`×30000 |
+| `produccion_asfalto` | Producción de asfalto | `asfalto` | 40000 | 3600 | 2 | `petroleo`×20000, `piedra`×30000 |
+| `templado_cristal` | Templado de cristal plano | `cristal_plano` | 18000 | 3600 | 2 | `vidrio`×20000 |
+| `produccion_cristal_tecnico` | Producción de cristal técnico | `cristal_tecnico` | 15000 | 3600 | 3 | `vidrio`×20000 |
+
+### 5.11 `refineria` — Refinería petroquímica (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `sintesis_plastico` | Síntesis de plástico | `plastico` | 25000 | 3600 | 2 | `petroleo`×30000 |
+| `sintesis_caucho` | Síntesis de caucho | `caucho_sintetico` | 25000 | 3600 | 2 | `petroleo`×30000 |
+| `produccion_fertilizantes` | Producción de fertilizantes | `fertilizantes` | 35000 | 3600 | 2 | `gas_natural`×20000, `fosfato`×20000 |
+| `sintesis_quimicos` | Síntesis de productos químicos | `productos_quimicos` | 30000 | 3600 | 2 | `petroleo`×25000, `sal`×10000 |
+| `produccion_silicio` | Producción de silicio | `silicio` | 15000 | 5400 | 3 | `arena`×40000 |
+| `refino_gasolina` | Refino de gasolina | `gasolina` | 25000 | 3600 | 2 | `petroleo`×40000 |
+| `refino_diesel` | Refino de diésel | `diesel` | 25000 | 3600 | 2 | `petroleo`×40000 |
+| `refino_queroseno` | Refino de queroseno | `queroseno` | 20000 | 3600 | 2 | `petroleo`×40000 |
+| `refino_lubricantes` | Refino de lubricantes | `lubricantes` | 15000 | 3600 | 2 | `petroleo`×40000 |
+| `polimerizacion` | Polimerización | `polimeros` | 18000 | 3600 | 2 | `plastico`×20000 |
+| `produccion_resinas` | Producción de resinas | `resinas` | 17000 | 3600 | 2 | `productos_quimicos`×20000 |
+| `produccion_lubricante_ind` | Producción de lubricante industrial | `lubricante_industrial` | 18000 | 3600 | 2 | `lubricantes`×20000 |
+
+### 5.12 `aserradero` — Aserradero y papelera (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `aserrado` | Aserradero | `tablas` | 30000 | 3600 | 2 | `troncos`×40000 |
+| `produccion_celulosa` | Producción de celulosa | `celulosa` | 30000 | 3600 | 2 | `troncos`×40000 |
+| `produccion_papel` | Producción de papel | `papel` | 28000 | 3600 | 2 | `celulosa`×30000 |
+| `produccion_carton` | Producción de cartón | `carton` | 28000 | 3600 | 2 | `papel`×30000 |
+| `tratado_madera` | Tratado de madera | `madera_tratada` | 18000 | 3600 | 2 | `tablas`×20000 |
+| `produccion_contrachapado` | Producción de contrachapado | `contrachapado` | 17000 | 3600 | 2 | `tablas`×20000 |
+
+### 5.13 `electronica` — Planta de electrónica (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `ensamble_motor_elec` | Ensamblaje de motor eléctrico | `motor_electrico` | 100 | 5400 | 3 | `bobina_cobre`×4000, `acero`×5000 |
+| `ensamble_transformador` | Ensamblaje de transformador | `transformador` | 100 | 5400 | 3 | `bobina_cobre`×6000, `acero`×8000 |
+| `ensamble_bateria` | Ensamblaje de batería | `bateria` | 100 | 5400 | 3 | `litio`×3000, `plastico`×2000 |
+| `ensamble_cableado` | Ensamblaje de cableado | `cableado` | 8000 | 3600 | 2 | `cable_cobre`×5000, `plastico`×3000 |
+| `ensamble_circuito` | Ensamblaje de circuitos impresos | `circuito_impreso` | 100 | 5400 | 3 | `oro`×100, `cobre_refinado`×1000, `plastico`×500 |
+| `ensamble_microchip` | Fabricación de microchips | `microchip` | 100 | 7200 | 3 | `circuito_impreso`×100, `productos_quimicos`×500, `silicio`×1000 |
+| `ensamble_sensor` | Fabricación de sensores | `sensor` | 100 | 5400 | 3 | `circuito_impreso`×100 |
+| `ensamble_pantalla` | Fabricación de pantallas | `pantalla` | 100 | 5400 | 3 | `cristal_tecnico`×3000, `circuito_impreso`×100 |
+| `ensamble_control` | Ensamblaje de sistema de control | `sistema_control` | 100 | 5400 | 3 | `microchip`×200, `sensor`×200, `cableado`×2000 |
+
+### 5.14 `componentes` — Fábrica de componentes mecánicos (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `ensamble_chasis` | Ensamblaje de chasis | `chasis` | 100 | 5400 | 3 | `viga_acero`×8000, `lamina_acero`×6000 |
+| `ensamble_motor` | Ensamblaje de motor de combustión | `motor_combustion` | 100 | 7200 | 3 | `acero`×15000, `aluminio`×5000, `cable_cobre`×2000 |
+| `ensamble_caja` | Ensamblaje de caja de cambios | `caja_cambios` | 100 | 5400 | 3 | `acero`×8000 |
+| `ensamble_suspension` | Ensamblaje de suspensión | `suspension` | 100 | 5400 | 3 | `acero`×6000, `caucho_sintetico`×3000 |
+| `ensamble_frenos` | Ensamblaje de frenos | `frenos` | 100 | 5400 | 3 | `acero`×4000 |
+| `ensamble_rodamientos` | Ensamblaje de rodamientos | `rodamientos` | 200 | 5400 | 3 | `acero`×3000 |
+| `ensamble_bomba` | Ensamblaje de bomba industrial | `bomba_industrial` | 100 | 5400 | 3 | `acero`×5000, `tubo_acero`×3000 |
+| `ensamble_generador` | Ensamblaje de generador | `generador` | 100 | 5400 | 3 | `motor_combustion`×100, `acero`×10000 |
+| `ensamble_ventana` | Fabricación de ventanas | `ventana` | 100 | 3600 | 2 | `cristal_plano`×4000, `perfil_aluminio`×2000 |
+| `ensamble_puerta` | Fabricación de puertas industriales | `puerta_industrial` | 100 | 3600 | 2 | `acero`×6000, `plastico`×2000 |
+| `ensamble_panel_pref` | Fabricación de panel prefabricado | `panel_prefabricado` | 100 | 3600 | 2 | `hormigon`×15000, `viga_acero`×4000 |
+| `ensamble_tuberia` | Fabricación de tuberías | `tuberia` | 8000 | 3600 | 2 | `tubo_acero`×6000, `plastico`×2000 |
+| `ensamble_asiento` | Fabricación de asientos | `asiento` | 100 | 5400 | 3 | `fibra_sintetica`×3000, `acero`×2000 |
+| `ensamble_panel_int` | Fabricación de paneles interiores | `panel_interior` | 100 | 5400 | 2 | `polimeros`×4000 |
+| `ensamble_neumatico` | Fabricación de neumáticos | `neumatico` | 100 | 5400 | 3 | `caucho_sintetico`×5000 |
+| `ensamble_turbina` | Ensamblaje de turbina | `turbina` | 100 | 7200 | 3 | `acero`×20000, `perfil_metalico`×8000 |
+| `ensamble_hidraulico` | Ensamblaje de sistema hidráulico | `sistema_hidraulico` | 100 | 5400 | 3 | `acero`×8000, `tubo_acero`×4000, `bomba_industrial`×100 |
+| `ensamble_motor_aero` | Ensamblaje de motor aeronáutico | `motor_aeronautico` | 100 | 7200 | 3 | `aluminio`×15000, `acero`×10000, `microchip`×100 |
+| `ensamble_tanque` | Fabricación de tanque especializado | `tanque_especializado` | 100 | 5400 | 3 | `lamina_acero`×12000, `tubo_acero`×5000 |
+| `ensamble_refrig` | Ensamblaje de sistema de refrigeración | `sistema_refrigeracion` | 100 | 5400 | 3 | `motor_electrico`×100, `tuberia`×3000, `productos_quimicos`×2000 |
+| `ensamble_aislamiento` | Producción de aislamiento térmico | `aislamiento_termico` | 10000 | 3600 | 2 | `polimeros`×5000, `fibra_sintetica`×5000 |
+
+### 5.15 `ensamblaje` — Planta de ensamblaje final (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `fab_camion_carga` | Fabricación de camión de carga | `camion_carga` | 100 | 18000 | 3 | `chasis`×100, `motor_combustion`×100, `caja_cambios`×100, `suspension`×100, `frenos`×200, `neumatico`×600, `cableado`×3000, `sistema_control`×100, `cristal_plano`×2000 |
+| `fab_camion_cisterna` | Fabricación de camión cisterna | `camion_cisterna` | 100 | 18000 | 3 | `chasis`×100, `motor_combustion`×100, `tanque_especializado`×100, `bomba_industrial`×100, `neumatico`×600, `sistema_control`×100 |
+| `fab_camion_refrigerado` | Fabricación de camión refrigerado | `camion_refrigerado` | 100 | 18000 | 3 | `chasis`×100, `motor_combustion`×100, `sistema_refrigeracion`×100, `aislamiento_termico`×3000, `neumatico`×600, `sistema_control`×100 |
+| `fab_locomotora` | Fabricación de locomotora diésel | `locomotora_diesel` | 100 | 21600 | 3 | `motor_combustion`×200, `chasis`×100, `sistema_control`×100, `generador`×100 |
+| `fab_vagon` | Fabricación de vagón de carga | `vagon_carga` | 100 | 10800 | 3 | `viga_acero`×15000, `rodamientos`×800, `perfil_metalico`×8000 |
+| `fab_barco_carga` | Fabricación de barco de carga | `barco_carga` | 100 | 21600 | 3 | `viga_acero`×50000, `motor_combustion`×200, `sistema_control`×200, `cableado`×10000 |
+| `fab_barco_petrolero` | Fabricación de barco petrolero | `barco_petrolero` | 100 | 21600 | 3 | `viga_acero`×50000, `motor_combustion`×200, `tanque_especializado`×300, `bomba_industrial`×200, `sistema_control`×200 |
+| `fab_avion` | Fabricación de avión de carga | `avion_carga` | 100 | 21600 | 3 | `lamina_aluminio`×30000, `motor_aeronautico`×200, `sistema_control`×200, `cristal_tecnico`×5000 |
+| `fab_automovil` | Fabricación de automóvil | `automovil` | 100 | 14400 | 3 | `chasis`×100, `motor_combustion`×100, `sistema_control`×100, `cristal_plano`×1500, `neumatico`×400, `asiento`×200, `panel_interior`×100 |
+| `fab_refrigerador` | Fabricación de refrigerador | `refrigerador` | 100 | 7200 | 3 | `acero`×5000, `sistema_refrigeracion`×100, `panel_interior`×100 |
+| `fab_lavadora` | Fabricación de lavadora | `lavadora` | 100 | 7200 | 3 | `acero`×5000, `motor_electrico`×100, `sistema_control`×100 |
+| `fab_televisor` | Fabricación de televisor | `televisor` | 100 | 7200 | 3 | `pantalla`×100, `circuito_impreso`×100, `plastico`×2000 |
+| `fab_computadora` | Fabricación de computadora | `computadora` | 100 | 7200 | 3 | `microchip`×200, `pantalla`×100, `plastico`×2000, `cobre_refinado`×500 |
+| `fab_telefono` | Fabricación de teléfono | `telefono` | 100 | 5400 | 3 | `microchip`×100, `pantalla`×100, `bateria`×100, `circuito_impreso`×100 |
+| `fab_excavadora` | Fabricación de excavadora | `excavadora` | 100 | 18000 | 3 | `acero`×25000, `motor_combustion`×100, `sistema_hidraulico`×200, `sistema_control`×100 |
+| `fab_grua` | Fabricación de grúa | `grua` | 100 | 18000 | 3 | `acero`×25000, `motor_combustion`×100, `sistema_hidraulico`×200 |
+| `fab_generador_ind` | Fabricación de generador industrial | `generador_industrial` | 100 | 10800 | 3 | `acero`×10000, `bobina_cobre`×5000, `generador`×100 |
+| `fab_panel_solar` | Fabricación de panel solar | `panel_solar` | 100 | 7200 | 3 | `cristal_tecnico`×3000, `silicio`×2000, `circuito_impreso`×100 |
+| `fab_turbina_eolica` | Fabricación de turbina eólica | `turbina_eolica` | 100 | 18000 | 3 | `turbina`×100, `acero`×20000, `sistema_control`×100 |
+| `fab_transformador_elec` | Fabricación de transformador eléctrico | `transformador_electrico` | 100 | 10800 | 3 | `cobre_refinado`×8000, `acero`×10000, `transformador`×100 |
+
+### 5.16 `construccion` — Constructora de infraestructura (transformer)
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | ------- |
+| `constr_planta_industrial` | Construcción de planta industrial | `planta_industrial` | 100 | 18000 | 3 | `acero`×30000, `hormigon`×40000, `vidrio`×10000, `rodamientos`×400 |
+| `constr_refineria` | Construcción de refinería | `refineria` | 100 | 18000 | 3 | `acero`×40000, `tubo_acero`×20000, `sistema_control`×200, `bomba_industrial`×400 |
+| `constr_central_electrica` | Construcción de central eléctrica | `central_electrica` | 100 | 18000 | 3 | `turbina`×200, `generador`×200, `acero`×30000, `cableado`×10000 |
+| `constr_planta_ensamblaje` | Construcción de planta de ensamblaje | `planta_ensamblaje` | 100 | 18000 | 3 | `acero`×30000, `sistema_control`×200, `rodamientos`×400, `hormigon`×30000 |
+| `constr_astillero` | Construcción de astillero | `astillero` | 100 | 18000 | 3 | `acero`×40000, `sistema_hidraulico`×200, `sistema_control`×100 |
+| `constr_fabrica_aeronaves` | Construcción de fábrica de aeronaves | `fabrica_aeronaves` | 100 | 18000 | 3 | `aluminio`×30000, `microchip`×500, `motor_aeronautico`×100, `rodamientos`×400 |
+| `constr_planta_quimica` | Construcción de planta química | `planta_quimica` | 100 | 18000 | 3 | `acero`×30000, `tubo_acero`×15000, `bomba_industrial`×300, `sistema_control`×200 |
+| `constr_estacion` | Construcción de estación de carga | `estacion_carga` | 100 | 14400 | 3 | `acero`×20000, `hormigon`×30000, `cableado`×5000 |
+| `constr_terminal` | Construcción de terminal ferroviaria | `terminal_ferroviaria` | 100 | 14400 | 3 | `acero`×25000, `sistema_control`×200, `cableado`×5000 |
+| `constr_puerto` | Construcción de puerto comercial | `puerto_comercial` | 100 | 14400 | 3 | `hormigon`×50000, `acero`×30000, `sistema_hidraulico`×200, `cableado`×8000 |
+| `constr_aeropuerto` | Construcción de aeropuerto de carga | `aeropuerto_carga` | 100 | 14400 | 3 | `hormigon`×50000, `acero`×30000, `sistema_control`×300, `cableado`×8000 |
+| `constr_edificio_res` | Construcción de edificio residencial | `edificio_residencial` | 100 | 14400 | 3 | `hormigon`×60000, `acero`×20000, `ventana`×500, `cableado`×5000, `madera_tratada`×5000 |
+| `constr_edificio_com` | Construcción de edificio comercial | `edificio_comercial` | 100 | 14400 | 3 | `hormigon`×60000, `acero`×25000, `ventana`×800, `puerta_industrial`×300 |
+| `constr_fabrica_ligera` | Construcción de fábrica urbana ligera | `fabrica_urbana_ligera` | 100 | 14400 | 3 | `acero`×20000, `hormigon`×30000, `sistema_control`×100, `contrachapado`×3000 |
+| `constr_almacen` | Construcción de almacén logístico | `almacen_logistico` | 100 | 14400 | 3 | `hormigon`×40000, `acero`×25000, `cableado`×5000, `puerta_industrial`×200 |
 
 ---
 
-## 7. Guía de parámetros numéricos
+## 6. Guía de parámetros numéricos (para ampliar el catálogo)
 
-El grafo (§5–§6) fija **relaciones**; esta sección fija cómo elegir los **números**.
-Ancla de referencia: el catálogo agrícola existente (`infra/seed-config.json`).
+Rangos observados en el catálogo actual; mantenerlos al añadir recetas.
 
-### 7.1 Unidades y `qty_cent`
-
-- Todo en **centésimas**: `qty_cent = unidades × 100`. `10000` = 100 kg/L.
-- **Bienes discretos** (`unit: "unidad"`: motores, vehículos, edificios): 1 pieza
-  = `100`. Una receta que produce 1 camión → `output_qty_cent: 100`.
-- Mantén las unidades coherentes con la §5 (kg / litro / m3 / unidad).
-
-### 7.2 Rendimiento (relación insumo/salida)
-
-Referencia del seed actual: molienda consume 100 kg trigo (`10000`) y produce 80
-kg harina (`8000`); panadería consume 80 kg harina y produce 100 kg pan. Reglas:
-
-- Para transformaciones de materia continua (kg→kg, L→L), usa una **merma o
-  concentración realista** (rendimiento 0.5–1.2×). Ejemplo: fundición de acero
-  con algo de merma; refino con rendimiento < 1.
-- Para **ensamblajes discretos** (varios insumos → 1 pieza), define insumos en la
-  escala del producto (p. ej. 1 motor = `100`, 200 kg de acero = `20000`) y
-  `output_qty_cent: 100` (una pieza por ejecución) o un lote pequeño.
-- Todo `qty_cent` debe ser **entero positivo**.
-
-### 7.3 Duración (`duration_sim_seconds`)
-
-Referencia del seed: extracción/cultivo 3600–7200 s; transformación 1800–5400 s;
-proceso trivial (germinado) 60 s. Guía:
-
-- **Extracción primaria:** 3600–7200 s (más para minería pesada/petróleo).
-- **Materiales básicos e industriales:** 1800–5400 s.
-- **Componentes:** 2400–7200 s (más a mayor complejidad).
-- **Productos finales complejos** (vehículos, edificios, aeronaves): 7200–21600 s.
-
-Escala la duración con la profundidad/complejidad de la cadena: un avión tarda
-más que un tornillo.
-
-### 7.4 Salario (`wage_rate_cents_per_sec`)
-
-Referencia del seed: 1 (cultivo), 2 (molino/nixtamal), 3 (panadería/quesería).
-Mantén el rango **0–3**:
-
-- `1` — extracción/procesos simples.
-- `2` — transformación intermedia.
-- `3` — procesos intensivos / componentes / ensamblaje final.
-
-Puedes usar `0` solo para procesos sin mano de obra (raro; evítalo salvo diseño
-explícito).
-
-### 7.5 Coherencia económica (importante)
-
-Aunque el seed no valida precios, procura que el **coste acumulado** (insumos +
-salario) crezca a lo largo de la cadena, de modo que exista margen para que un
-producto final valga más que la suma de sus recursos. Un producto final debería
-depender (directa o indirectamente) de **≥3 cadenas distintas** (regla heredada,
-§9).
+- **`qty_cent`**: todo en centésimas (`10000` = 100 kg/L). Bienes discretos en
+  `unidad` con 1 pieza = `100`.
+- **Rendimiento**: transformaciones continuas con merma realista (p. ej.
+  `fundicion_acero`: 500 kg de insumos → 400 kg de acero). Ensamblajes
+  discretos: varios insumos → `output_qty_cent: 100` (1 pieza).
+- **Duración** (`duration_sim_seconds`): extracción 1800–7200; básicos e
+  industriales 1800–5400; componentes 3600–7200; finales 5400–21600 (locomotora,
+  barcos y avión en el tope). Excepción: `germinado_rapido` (60 s) existe para
+  los tests E2E.
+- **Salario** (`wage_rate_cents_per_sec`): 1 extracción simple, 2 transformación
+  intermedia, 3 componentes/ensamblaje/procesos intensivos.
+- **Coherencia económica**: el coste acumulado (insumos + salario) debe crecer a
+  lo largo de la cadena; un producto final depende (directa o indirectamente) de
+  ≥3 cadenas distintas.
+- Los **precios base de referencia** que usan los bots viven en
+  `bots-v1/config.yaml` (155 productos) y deben añadirse ahí para todo producto
+  nuevo, o los bots no sabrán valorarlo.
 
 ---
 
-## 8. Ejemplos completos en formato `seed-config.json`
+## 7. Checklist para ampliar el catálogo
 
-Fragmentos listos para pegar (respetan `backend/src/seed/seed-config.ts`).
+1. Cada `key` y cada `name` de producto/receta es **único**.
+2. Cada `output` e `input.product` apunta a un producto existente; sin insumos
+   repetidos por receta.
+3. Toda receta tiene exactamente un `output` y **declara `installation_type`**;
+   además está listada en `recipes` de ese mismo tipo (y solo de ese).
+4. `output_qty_cent > 0`, `duration_sim_seconds > 0`,
+   `wage_rate_cents_per_sec ≥ 0`, cada `input.qty_cent > 0` (enteros).
+5. Todo `raw_primary` tiene receta de extracción con `inputs: []` en un tipo de
+   `primary_producer`; las recetas con insumos van en tipos de `transformer`.
+6. Ningún `final_consumption` aparece como insumo (si lo hace, pasa a
+   `intermediate`).
+7. Producto nuevo ⇒ precio base en `bots-v1/config.yaml` (ver §6).
+8. Tras editar: `cd backend && bun run typecheck && bun test tests/unit/seed` y
+   un seed sobre DB vacía (`make clean-docker && make build && make run &&
+   make seed`) deben pasar la validación de
+   `backend/src/seed/seed-config.ts`.
 
-**Cadena del acero (recurso → básico → industrial → componente):**
-
-```json
-{
-  "key": "mineria_hierro",
-  "name": "Minería de hierro",
-  "output": "hierro",
-  "output_qty_cent": 50000,
-  "duration_sim_seconds": 7200,
-  "wage_rate_cents_per_sec": 1,
-  "inputs": []
-}
-```
+**Ejemplo mínimo de receta (formato actual, con `installation_type`):**
 
 ```json
 {
   "key": "fundicion_acero",
   "name": "Fundición de acero",
   "output": "acero",
+  "installation_type": "metalurgia",
   "output_qty_cent": 40000,
   "duration_sim_seconds": 5400,
   "wage_rate_cents_per_sec": 2,
@@ -688,115 +603,8 @@ Fragmentos listos para pegar (respetan `backend/src/seed/seed-config.ts`).
 }
 ```
 
-```json
-{
-  "key": "laminado_viga",
-  "name": "Laminado de vigas de acero",
-  "output": "viga_acero",
-  "output_qty_cent": 18000,
-  "duration_sim_seconds": 3600,
-  "wage_rate_cents_per_sec": 2,
-  "inputs": [{ "product": "acero", "qty_cent": 20000 }]
-}
-```
-
-**Ensamblaje discreto (producto en `unidad`):**
-
-```json
-{
-  "key": "ensamble_motor",
-  "name": "Ensamblaje de motor de combustión",
-  "output": "motor_combustion",
-  "output_qty_cent": 100,
-  "duration_sim_seconds": 7200,
-  "wage_rate_cents_per_sec": 3,
-  "inputs": [
-    { "product": "acero", "qty_cent": 15000 },
-    { "product": "aluminio", "qty_cent": 5000 },
-    { "product": "cable_cobre", "qty_cent": 2000 }
-  ]
-}
-```
-
-**Producto final (≥3 cadenas):**
-
-```json
-{
-  "key": "fab_camion_carga",
-  "name": "Fabricación de camión de carga",
-  "output": "camion_carga",
-  "output_qty_cent": 100,
-  "duration_sim_seconds": 18000,
-  "wage_rate_cents_per_sec": 3,
-  "inputs": [
-    { "product": "chasis", "qty_cent": 100 },
-    { "product": "motor_combustion", "qty_cent": 100 },
-    { "product": "caja_cambios", "qty_cent": 100 },
-    { "product": "suspension", "qty_cent": 100 },
-    { "product": "frenos", "qty_cent": 200 },
-    { "product": "neumatico", "qty_cent": 600 },
-    { "product": "cableado", "qty_cent": 3000 },
-    { "product": "sistema_control", "qty_cent": 100 },
-    { "product": "cristal_plano", "qty_cent": 2000 }
-  ]
-}
-```
-
-Y su producto correspondiente en `products`:
-
-```json
-{ "key": "camion_carga", "name": "Camión de carga", "unit": "unidad", "category": "final_consumption" }
-```
-
 ---
 
-## 9. Reglas de balance heredadas y checklist de validación
-
-**Reglas de diseño (del material de origen, aplicables aquí):**
-
-- Ningún recurso natural debe tener un único uso; todo material básico debería
-  alimentar ≥2 industrias distintas cuando sea posible.
-- Ningún producto final se fabrica directamente desde recursos naturales: debe
-  pasar por intermedios y depender de ≥3 cadenas industriales distintas.
-- Todo producto se rastrea hasta uno o varios `raw_primary`.
-- Reutiliza componentes en varios productos finales (cadenas largas e
-  interdependientes).
-
-**Checklist antes de commitear al `seed-config.json`:**
-
-1. Cada `key` de producto y de receta es **único**; cada `name` es **único**.
-2. Cada `output` de receta apunta a un `key` de producto existente.
-3. Cada `input.product` apunta a un `key` de producto existente; sin insumos
-   repetidos dentro de una receta.
-4. Toda receta tiene **exactamente un** `output`.
-5. `output_qty_cent > 0`, `duration_sim_seconds > 0`,
-   `wage_rate_cents_per_sec ≥ 0`, cada `input.qty_cent > 0` (todos enteros).
-6. Todo `raw_primary` tiene una receta de extracción con `inputs: []`.
-7. Ningún producto marcado `final_consumption` aparece como `input` de otra
-   receta (si aparece, debe ser `intermediate`).
-8. Categorías válidas: solo `raw_primary`, `intermediate`, `final_consumption`.
-9. `unit` coherente con `qty_cent` (discretos en `unidad` con piezas ×100).
-10. Idealmente, cada receta nueva se referencia en `roles.*.capacities` del rol
-    adecuado (extracción → `primary_producer`; con insumos → `transformer`).
-11. Tras editar, `cd backend && bun run seed` sobre una DB vacía debe pasar la
-    validación Zod e integridad referencial de `backend/src/seed/seed-config.ts`.
-
----
-
-## 10. Resumen de productos nuevos a crear
-
-Productos que la normalización de insumos (§4.3) exige y que conviene crear
-explícitamente como `intermediate`, aunque el material de origen no los detallara:
-
-`silicio`, `turbina`, `sistema_hidraulico`, `motor_aeronautico`,
-`sistema_control`, `tanque_especializado`, `sistema_refrigeracion`,
-`aislamiento_termico`.
-
-Y los `final_consumption` de alimentación derivados de subprocesos:
-`mantequilla`, `yogur`, `chocolate`, `textiles` (además de `queso`, ya en seed).
-
----
-
-*Fin del documento. Este catálogo es la referencia canónica para ampliar
-`infra/seed-config.json`. Ante conflicto con el esquema, mandan `specs/schema.sql`
-y la validación de `backend/src/seed/seed-config.ts`.*
+*Documento generado desde `infra/seed-config.json` (fuente de verdad). Ante
+conflicto con el esquema, mandan `specs/schema.sql` y la validación de
+`backend/src/seed/seed-config.ts`.*
