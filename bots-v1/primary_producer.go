@@ -158,6 +158,14 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	// (o está saturada), se COMPRA/MEJORA la instalación del tipo (ADR-021).
 	recipesActed := 0
 	buysActed := 0
+	// Los slots son un presupuesto compartido por tipo (ADR-021) y el estado
+	// local no se actualiza hasta que el engine ejecuta las acciones: sin
+	// descontar lo comprometido en este mismo tick, dos recetas del mismo tipo
+	// verían libre el mismo hueco y la segunda moriría con 422
+	// recipe_capacity_saturated. Ídem para compras duplicadas del mismo tipo
+	// (chocarían en expected_current_level).
+	slotsCommitted := make(map[string]int)
+	typesBought := make(map[string]bool)
 	recipeByOutput := make(map[string]models.Recipe)
 	for _, idx := range s.rnd.Perm(len(producible)) {
 		recipe := producible[idx]
@@ -192,15 +200,20 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		if !typeKnown {
 			continue
 		}
+		inst.AvailableSlots -= slotsCommitted[typ.Key]
+		if inst.AvailableSlots < 0 {
+			inst.AvailableSlots = 0
+		}
 
 		// Si es rentable pero la producción está bloqueada por instalación
 		// (no comprada o sin huecos), comprar/mejorar si hay capital de sobra.
 		if profitable && (!owned || inst.AvailableSlots <= 0) &&
-			buysActed < s.maxBuysPerTick {
+			!typesBought[typ.Key] && buysActed < s.maxBuysPerTick {
 			if buy, ok := installationBuyAction(inst, typ, owned, capitalAvail,
 				s.maxDesiredLevel, s.capitalReserveFactor); ok {
 				acts = append(acts, buy)
 				buysActed++
+				typesBought[typ.Key] = true
 				// El capital/estado reales se rebasearán en el próximo snapshot;
 				// no seguimos produciendo con esta receta este tick.
 				continue
@@ -232,6 +245,7 @@ func (s *PrimaryProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				ExecutionsPlanned: execs,
 			})
 			capitalAvail -= wage * int64(execs)
+			slotsCommitted[typ.Key] += execs
 		}
 	}
 

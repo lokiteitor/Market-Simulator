@@ -176,6 +176,14 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	handledInputs := make(map[string]bool) // varias recetas comparten insumos
 	recipesActed := 0
 	buysActed := 0
+	// Los slots son un presupuesto compartido por tipo (ADR-021) y el estado
+	// local no se actualiza hasta que el engine ejecuta las acciones: sin
+	// descontar lo comprometido en este mismo tick, dos recetas del mismo tipo
+	// verían libre el mismo hueco y la segunda moriría con 422
+	// recipe_capacity_saturated. Ídem para compras duplicadas del mismo tipo
+	// (chocarían en expected_current_level).
+	slotsCommitted := make(map[string]int)
+	typesBought := make(map[string]bool)
 	// Orden aleatorio: con el cap por tick, un orden fijo mataria de hambre a
 	// las recetas del final de la lista.
 	for _, idx := range s.rnd.Perm(len(producible)) {
@@ -192,6 +200,10 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		inst, typ, owned, typeKnown := installationForRecipe(ctx, recipe)
 		if !typeKnown {
 			continue
+		}
+		inst.AvailableSlots -= slotsCommitted[typ.Key]
+		if inst.AvailableSlots < 0 {
+			inst.AvailableSlots = 0
 		}
 
 		inputsCost, wage, revenue, priced := s.execEconomics(recipe)
@@ -211,11 +223,12 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		// A0. Comprar/mejorar la instalación del tipo si la receta es rentable
 		// pero la producción está bloqueada por falta de huecos (ADR-021).
 		if profitable && (!owned || inst.AvailableSlots <= 0) &&
-			buysActed < s.maxBuysPerTick {
+			!typesBought[typ.Key] && buysActed < s.maxBuysPerTick {
 			if buy, ok := installationBuyAction(inst, typ, owned, capitalAvail,
 				s.maxDesiredLevel, s.capitalReserveFactor); ok {
 				acts = append(acts, buy)
 				buysActed++
+				typesBought[typ.Key] = true
 				continue
 			}
 		}
@@ -247,6 +260,7 @@ func (s *TransformerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 					ExecutionsPlanned: execs,
 				})
 				capitalAvail -= wage * int64(execs)
+				slotsCommitted[typ.Key] += execs
 			}
 		} else if priced && !profitable {
 			ctx.Logger.Debug("receta pausada: sin margen a precios de mercado",
