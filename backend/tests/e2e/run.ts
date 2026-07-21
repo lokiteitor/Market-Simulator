@@ -53,6 +53,7 @@ import {
   expectedTradeNumbers,
   notionalCents,
   simSecondsToRealMs,
+  splitFeeForCity,
 } from "./expected";
 import {
   assert,
@@ -777,18 +778,23 @@ async function main(): Promise<void> {
         "capital vendedor: +cost − fee",
       );
 
-      // Los fees de AMBOS lados se acreditan al banco central (ADR-019): el
-      // saldo del banco sube exactamente fee_buyer + fee_seller (fee_ledger +
-      // suma de pendientes en GET /bank, sin esperar al sweeper).
+      // Los fees de ambos lados se reparten entre el banco (fee_ledger,
+      // ADR-019) y las ciudades (income_ledger, tasa de consumo ADR-020) según
+      // CITY_FEE_SHARE_BPS: el saldo del banco sube solo la parte del banco
+      // (GET /bank suma los pendientes de fee_ledger, sin esperar al sweeper).
       const bankAfter = expectStatus<{ bank_capital_available_cents: number }>(
         await api.get("/bank", { token: alice.accessToken }),
         200,
         "GET /bank (tras el trade)",
       );
+      const { bankShareCents } = splitFeeForCity(
+        trade.fee_buyer_cents + trade.fee_seller_cents,
+        config.cityIncome.cityFeeShareBps,
+      );
       assertEqual(
         bankAfter.bank_capital_available_cents,
-        bankBefore.bank_capital_available_cents + trade.fee_buyer_cents + trade.fee_seller_cents,
-        "capital del banco: + (fee_buyer + fee_seller)",
+        bankBefore.bank_capital_available_cents + bankShareCents,
+        "capital del banco: + parte del banco de (fee_buyer + fee_seller)",
       );
 
       // Orden pasiva queda partial con el resto.

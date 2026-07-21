@@ -14,6 +14,7 @@ import { simSecondsToRealMs, wageCentsForProcess } from "../../src/lib/simtime";
 export { notionalCents, feeCents, unitCostFromTotal } from "../../src/lib/money";
 export { reserveForQty, releaseForFill } from "../../src/lib/money";
 export { simSecondsToRealMs, wageCentsForProcess } from "../../src/lib/simtime";
+export { splitFeeForCity } from "../../src/services/city-income-service";
 export { config } from "../../src/config";
 
 export interface ExpectedTradeNumbers {
