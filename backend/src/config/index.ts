@@ -80,6 +80,19 @@ const EnvSchema = z
     GOLD_BANK_INITIAL_RESERVE_BPS: nonNegIntFromEnv(2000),
     GOLD_BANK_INITIAL_CAPITAL_CENTS: nonNegIntFromEnv(500000),
     GOLD_MIN_REGISTRATION_CAPITAL_CENTS: posIntFromEnv(10000),
+    // Yacimientos finitos genéricos (ADR-023). El tamaño de cada yacimiento se
+    // declara en EJECUCIONES de su receta y el seed lo convierte a qty_cent
+    // (ejecuciones × output_qty_cent); qué productos son finitos lo marca
+    // `finite: true` en infra/seed-config.json. El oro queda FUERA de este
+    // rango: su yacimiento lo dimensiona el bloque GOLD_DEPOSIT_* porque la
+    // paridad se deriva de él.
+    DEPOSIT_MIN_EXECUTIONS: posIntFromEnv(28000),
+    DEPOSIT_MAX_EXECUTIONS: posIntFromEnv(52000),
+    // Rendimiento decreciente: el rendimiento de una receta con yacimiento cae
+    // con la fracción restante (max(floor, remaining/inicial)). El suelo evita
+    // que la cola sea infinita; en él el coste unitario se multiplica por
+    // 10000/floor (×4 con 2500).
+    DEPOSIT_YIELD_FLOOR_BPS: posIntFromEnv(2500),
     // Bootstrap del agente admin (solo-monitoreo). Se crea con
     // `bun src/seed-admin.ts`; NO es registrable por /auth/register.
     ADMIN_USERNAME: z.string().min(3).max(64).default("admin"),
@@ -127,6 +140,14 @@ const EnvSchema = z
   .refine((e) => e.CITY_FEE_SHARE_BPS <= 10000, {
     message: "CITY_FEE_SHARE_BPS debe ser <= 10000 (fracción del fee)",
     path: ["CITY_FEE_SHARE_BPS"],
+  })
+  .refine((e) => e.DEPOSIT_MIN_EXECUTIONS <= e.DEPOSIT_MAX_EXECUTIONS, {
+    message: "DEPOSIT_MIN_EXECUTIONS debe ser <= MAX",
+    path: ["DEPOSIT_MIN_EXECUTIONS"],
+  })
+  .refine((e) => e.DEPOSIT_YIELD_FLOOR_BPS <= 10000, {
+    message: "DEPOSIT_YIELD_FLOOR_BPS debe ser <= 10000 (fracción del rendimiento)",
+    path: ["DEPOSIT_YIELD_FLOOR_BPS"],
   });
 
 /** Roles de agente (claves de `seedCapitalRanges`, snake_case como en la DB). */
@@ -187,6 +208,16 @@ export interface Config {
     bankInitialReserveBps: number;
     bankInitialCapitalCents: number;
     minRegistrationCapitalCents: number;
+  };
+  /**
+   * Yacimientos finitos genéricos (ADR-023): rango del sorteo en EJECUCIONES de
+   * la receta y suelo del rendimiento decreciente. No afecta al oro, cuyo
+   * yacimiento se dimensiona en `gold`.
+   */
+  deposits: {
+    minExecutions: number;
+    maxExecutions: number;
+    yieldFloorBps: number;
   };
   /** Credenciales del agente admin (solo-monitoreo); ver src/seed-admin.ts. */
   adminUsername: string;
@@ -280,6 +311,11 @@ function loadConfig(): Config {
       bankInitialReserveBps: e.GOLD_BANK_INITIAL_RESERVE_BPS,
       bankInitialCapitalCents: e.GOLD_BANK_INITIAL_CAPITAL_CENTS,
       minRegistrationCapitalCents: e.GOLD_MIN_REGISTRATION_CAPITAL_CENTS,
+    },
+    deposits: {
+      minExecutions: e.DEPOSIT_MIN_EXECUTIONS,
+      maxExecutions: e.DEPOSIT_MAX_EXECUTIONS,
+      yieldFloorBps: e.DEPOSIT_YIELD_FLOOR_BPS,
     },
     adminUsername: e.ADMIN_USERNAME,
     adminPassword: e.ADMIN_PASSWORD,

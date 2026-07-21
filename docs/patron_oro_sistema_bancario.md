@@ -68,10 +68,23 @@ El tamaño total de oro de la corrida `D` se sortea determinísticamente con
 - **Remanente minable** = el resto, registrado en `resource_deposit`
   (`qty_initial_cent = qty_remaining_cent = minable`).
 
-Cada materialización de un proceso que produce oro se **clampea** contra el yacimiento
-(`clampMint`): `minted = min(remaining, output_qty × ejecuciones)`. Cuando `remaining` llega
-a 0 se emite el evento `deposit_depleted` y ya no se puede minar más. El yacimiento finito es
-el techo duro de la expansión monetaria.
+Desde ADR-023 el oro ya **no** es el único recurso con yacimiento: comparte mecanismo con los
+15 recursos geológicos no renovables (ver `diseno_mercado_agricola.md` §19). Lo único que lo
+distingue es de dónde sale su tamaño — en centésimas y no en ejecuciones, porque la paridad se
+deriva de `D`.
+
+Eso significa que la minería de oro tiene **rendimiento decreciente** (`lib/deposits.ts`):
+
+```
+producido = min(floor(planificado × max(suelo, remaining/inicial)), remaining)
+```
+
+Cuando `remaining` llega a 0 se emite el evento `deposit_depleted`, se publica por broadcast y
+ya no se puede minar más. El yacimiento finito sigue siendo el techo duro de la expansión
+monetaria, pero ahora la acuñación **se frena progresivamente** en vez de pararse de golpe: con
+el suelo al 25% el coste unitario del oro se multiplica por 4 (820 → 3.280 ¢/kg). Sigue 60-100×
+por debajo del `window_bid` (~190.000–353.000 ¢/kg) con el `.env` actual, así que minar renta
+hasta el final; es un factor más a vigilar en esa calibración, no un riesgo activo.
 
 ### 2.3 La política monetaria (`gold_standard`)
 

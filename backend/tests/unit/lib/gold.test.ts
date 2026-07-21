@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  clampMint,
   goldWindow,
   issuanceCapacityCents,
   parityCentsPerUnit,
@@ -103,21 +102,5 @@ describe("splitDeposit", () => {
   });
 });
 
-describe("clampMint", () => {
-  test("yacimiento sobrado: se materializa todo lo producido", () => {
-    expect(clampMint(5000, 2000)).toEqual({ mintedQtyCent: 2000, remainingAfterCent: 3000 });
-  });
-
-  test("clamp parcial: queda menos que lo producido", () => {
-    expect(clampMint(1500, 2000)).toEqual({ mintedQtyCent: 1500, remainingAfterCent: 0 });
-  });
-
-  test("yacimiento agotado: minted 0", () => {
-    expect(clampMint(0, 2000)).toEqual({ mintedQtyCent: 0, remainingAfterCent: 0 });
-  });
-
-  test("rechaza negativos", () => {
-    expect(() => clampMint(-1, 100)).toThrow();
-    expect(() => clampMint(100, -1)).toThrow();
-  });
-});
+// El clamp de la producción contra el yacimiento se probó aquí mientras fue
+// exclusivo del oro; vive en tests/unit/lib/deposits.test.ts desde ADR-023.

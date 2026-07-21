@@ -790,12 +790,13 @@ export const marketSnapshotProduct = pgTable(
 );
 
 // =============================================================================
-// 9. PATRÓN ORO: YACIMIENTO FINITO Y BANCO CENTRAL
+// 9. YACIMIENTOS FINITOS Y PATRÓN ORO (BANCO CENTRAL)
 // =============================================================================
 
-// Stock global FINITO de un recurso primario; sorteado en el seed y agotado
-// por la producción (clamp en materializeProcess). Genérico por product_id;
-// en v1 solo se siembra para el oro.
+// Stock global FINITO de un recurso no renovable (ADR-023); sorteado en el seed
+// y agotado por la producción con RENDIMIENTO DECRECIENTE (lib/deposits.ts,
+// aplicado en materializeProcess). Se siembra para el oro y para los productos
+// marcados `finite` en el catálogo: los 15 recursos geológicos.
 export const resourceDeposit = pgTable(
   "resource_deposit",
   {

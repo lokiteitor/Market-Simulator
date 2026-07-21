@@ -49,6 +49,19 @@ func (c *Client) ListRecipes(ctx context.Context, outputProductID string) ([]mod
 	return resp, nil
 }
 
+// ListDeposits retrieves the finite deposits of non-renewable resources
+// (ADR-023). Unlike the rest of the catalog this response is DYNAMIC: the
+// remaining quantity and yield drop as the resource is mined, so callers must
+// refresh it periodically instead of caching it for the whole run.
+func (c *Client) ListDeposits(ctx context.Context) ([]models.Deposit, error) {
+	var resp []models.Deposit
+	err := c.do(ctx, http.MethodGet, "/catalog/deposits", nil, &resp, false)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // GetRecipe retrieves a specific recipe by its ID.
 func (c *Client) GetRecipe(ctx context.Context, recipeID string) (*models.Recipe, error) {
 	var resp models.Recipe

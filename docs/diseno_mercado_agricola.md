@@ -484,7 +484,7 @@ La corrida opera bajo un **patrón oro** que gobierna la masa monetaria. Este ap
 ### Componentes
 
 - **Banco central:** un agente especial (`central_bank`) creado por el seed con capital inicial configurable. No coloca órdenes; participa solo vía ventanilla y como receptor de fees.
-- **Yacimiento finito de oro:** el oro es un producto `raw_primary` cuyo total extraíble se sortea con la semilla maestra en un rango configurable (`resource_deposit`). La producción de oro se recorta a lo que queda en el yacimiento; al agotarse se emite `deposit_depleted` y no se puede minar más.
+- **Yacimiento finito de oro:** el oro es un producto `raw_primary` cuyo total extraíble se sortea con la semilla maestra en un rango configurable (`resource_deposit`). Es un caso particular del mecanismo general de yacimientos (§19): su producción rinde menos a medida que el yacimiento se vacía y al agotarse se emite `deposit_depleted`. Lo que lo distingue del resto es que su tamaño se declara en centésimas y no en ejecuciones, porque la paridad se deriva de él.
 - **Paridad y ventanilla:** el seed fija `parity = floor(M0 × coverage_bps / (100 × D))` (M0 = masa monetaria inicial, D = yacimiento). La **ventanilla acuñadora** compra oro a `window_bid` y lo vende a `window_ask` (paridad ± spread, ±5% por defecto), sin fees, vía `GET /bank` y `POST /bank/convert`.
 
 ### Reglas monetarias
@@ -498,3 +498,34 @@ La corrida opera bajo un **patrón oro** que gobierna la masa monetaria. Este ap
 ### Efecto económico
 
 El precio de mercado del oro queda anclado a la banda `[window_bid, window_ask]` ("gold points"): si el mercado paga menos que el banco, conviene monetizar en ventanilla; si paga más, conviene comprar al banco y vender en mercado. Los bots productores y traders explotan exactamente este arbitraje (ver `funcionamiento_bots.md` §6). El yacimiento finito impone un techo duro a la expansión monetaria de la corrida.
+
+---
+
+## 19. Yacimientos finitos y rendimiento decreciente (añadido 2026-07)
+
+Los recursos **no renovables** del catálogo no son infinitos: cada uno tiene un stock global (`resource_deposit`) que la producción va agotando. Son 16: los 15 geológicos marcados `finite: true` en `infra/seed-config.json` —hierro, carbón, petróleo, mineral de cobre, bauxita, litio, níquel, plata, uranio, piedra, caliza, arcilla, fosfato, sal y gas natural— más el oro, que ya lo tenía como parte del patrón oro (§18). Detalle de tablas y fórmulas en `documentacion_base_datos.md` §17; la decisión, en ADR-023.
+
+### Qué NO es finito, y por qué
+
+- **El agua.** Es la raíz única del grafo (ADR-022): la consumen 36 recetas y de ella cuelgan los 154 productos restantes. Un yacimiento de agua no sería escasez, sería el interruptor de apagado de la simulación.
+- **La arena.** Excluida a propósito pese a ser geológica: alimenta silicio, vidrio y hormigón, y por tanto toda la electrónica.
+- **Cultivos, ganadería y bosque.** Son biológicamente renovables. `tala` ya consume `semillas`, que es exactamente cómo se modela un bosque gestionado.
+
+### Rendimiento decreciente en vez de corte seco
+
+La mina no produce a pleno rendimiento hasta pararse de golpe: rinde **menos cuanto más vacía está**.
+
+```
+yield_bps = max(suelo, floor(restante × 10000 / inicial))     # suelo: DEPOSIT_YIELD_FLOOR_BPS, 25% por defecto
+producido = min(floor(planificado × yield_bps / 10000), restante)
+```
+
+La razón es de dominio, no de implementación: hierro y carbón alimentan el acero (56 productos aguas abajo cada uno) y el petróleo otros 58. Un corte binario mataría esas cadenas de un tick al siguiente y sin aviso, sin sustituto ni reciclaje que las rescate. Con rendimiento decreciente el ajuste es gradual y **se propaga solo al precio**: el salario y los insumos se pagan enteros produzca lo que produzca la mina, así que el `unit_cost_cents` del lote sube según se vacía el yacimiento, los productores suben su suelo de venta y el mercado reasigna producción mucho antes del agotamiento.
+
+Efecto secundario del suelo: la cola es larga a propósito. Un yacimiento dimensionado para 40.000 ejecuciones da en la práctica para unas 95.000 (≈2,4×), como la de una mina moribunda que sigue rascando mineral pobre.
+
+### Consecuencias para los clientes
+
+- El estado vivo se lee en `GET /catalog/deposits`, el único `/catalog/*` **dinámico**, con `yield_bps` ya calculado por el servidor.
+- Una estrategia que valore recetas con `output_qty_cent` a pelo **sobreestima su producción** en cuanto el yacimiento baja del 100%, y acaba minando a pérdida convencida de que gana. Hay que multiplicar por `yield_bps` (ver `funcionamiento_bots.md`).
+- Al llegar a 0 se emite `deposit_depleted` en el `event_log` y por **broadcast** WS; a partir de ahí arrancar esa receta responde 422 `resource_depleted`.

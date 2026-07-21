@@ -82,7 +82,7 @@ El `city-income-sweeper` del Worker reparte lo pendiente entre las ciudades acti
 ```
 
 Las ciudades están **exentas de quiebra** (cumplirían la condición §8 entre repartos y el login rechaza a los quebrados). La lista canónica de capitales vive en `infra/cities.json`, **fuente única** compartida por el seed del backend y el binario `bots-ciudad`.
-- La producción de oro se clampea contra un yacimiento finito (`resource_deposit`).
+- **Yacimientos finitos (ADR-023)**: los 15 recursos geológicos no renovables (`finite: true` en el catálogo) más el oro tienen `resource_deposit` y se agotan. La producción NO rinde el output nominal: rinde `min(floor(planificado × max(DEPOSIT_YIELD_FLOOR_BPS, restante/inicial)), restante)` (`lib/deposits.ts`), así que el coste unitario del lote sube solo al vaciarse el yacimiento y la escasez se traduce en precio sin lógica de precios. Quedan fuera a propósito el **agua** (raíz del grafo: agotarla apaga la economía), la **arena** y todo lo renovable. El tamaño se sortea en EJECUCIONES (`DEPOSIT_MIN/MAX_EXECUTIONS` × el output de su receta), de ahí que un producto finito deba tener **una sola** receta que lo produzca; el oro es la excepción (su tamaño sale de `GOLD_DEPOSIT_*` porque la paridad se deriva de él). Estado vivo en `GET /catalog/deposits` (único `/catalog/*` dinámico, con `yield_bps` calculado) + broadcast `deposit_depleted` al llegar a 0. **Los clientes que valoren recetas deben multiplicar por `yield_bps`** o producen a pérdida (ver `effectiveOutputQtyCent` en `bots-v1/producer.go`).
 
 ## Bots (`bots-v1/` + `go-sdk/`)
 
@@ -101,4 +101,4 @@ La estrategia consumidor y los helpers puros (humanización, dinero, market view
 
 ## Documentación
 
-`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso, ADR-021 economía de instalaciones, ADR-022 cadena conexa con raíz única), `documentacion_base_datos.md` (las 24 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`. Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.
+`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso, ADR-021 economía de instalaciones, ADR-022 cadena conexa con raíz única, ADR-023 yacimientos finitos con rendimiento decreciente), `documentacion_base_datos.md` (las 24 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`. Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.

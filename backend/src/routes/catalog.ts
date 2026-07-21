@@ -12,6 +12,7 @@ import { z } from "zod";
 import { catalogController } from "../controllers/catalog-controller";
 import { installationController } from "../controllers/installation-controller";
 import {
+  DepositSchema,
   ListRecipesQuerySchema,
   ProductIdParamsSchema,
   ProductSchema,
@@ -66,6 +67,19 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     },
     // 404 unknown_recipe lo lanza el service.
     async (req) => catalogController.getRecipe(req.params.recipe_id),
+  );
+
+  // Yacimientos finitos (ADR-023). Único /catalog/* DINÁMICO: el remanente y el
+  // rendimiento bajan con cada extracción, así que los clientes lo refrescan
+  // periódicamente en vez de cachearlo para toda la corrida.
+  r.get(
+    "/catalog/deposits",
+    {
+      schema: {
+        response: { 200: z.array(DepositSchema) },
+      },
+    },
+    async () => catalogController.listDeposits(),
   );
 
   // Catálogo de tipos de instalación comprables (ADR-021).

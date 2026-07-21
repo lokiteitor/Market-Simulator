@@ -147,177 +147,177 @@ Los 16 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022)
 
 ## 4. Productos actuales
 
-Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6). (155 productos.)
+Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, cuyo rendimiento decae al vaciarse). (155 productos, 15 con yacimiento más el oro, que lo recibe del patrón oro.)
 
 ### 4.1 `raw_primary` — Recursos naturales extraídos
 
-| key | Nombre | Unidad | Precio (¢) |
-| --- | ------ | ------ | ---------- |
-| `trigo` | Trigo | kg | 20 |
-| `maiz` | Maíz | kg | 17 |
-| `leche` | Leche | litro | 50 |
-| `tomate` | Tomate | kg | 25 |
-| `hierro` | Hierro | kg | 20 |
-| `carbon` | Carbón | kg | 20 |
-| `mineral_cobre` | Mineral de cobre | kg | 20 |
-| `bauxita` | Bauxita | kg | 20 |
-| `litio` | Litio | kg | 204 |
-| `niquel` | Níquel | kg | 34 |
-| `oro` | Oro | kg | 820 |
-| `plata` | Plata | kg | 680 |
-| `uranio` | Uranio | kg | 1020 |
-| `arena` | Arena | kg | 10 |
-| `piedra` | Piedra | kg | 10 |
-| `caliza` | Caliza | kg | 10 |
-| `arcilla` | Arcilla | kg | 10 |
-| `fosfato` | Fosfato | kg | 26 |
-| `sal` | Sal | kg | 13 |
-| `petroleo` | Petróleo | litro | 41 |
-| `gas_natural` | Gas natural | m3 | 51 |
-| `agua` | Agua | litro | 10 |
-| `troncos` | Troncos | kg | 25 |
-| `soya` | Soya | kg | 20 |
-| `algodon` | Algodón | kg | 25 |
-| `cana_azucar` | Caña de azúcar | kg | 17 |
-| `cafe` | Café | kg | 51 |
-| `cacao` | Cacao | kg | 51 |
-| `frutas` | Frutas | kg | 19 |
-| `verduras` | Verduras | kg | 19 |
-| `ganado_bovino` | Ganado bovino | unidad | 2016 |
-| `cerdos` | Cerdos | unidad | 1008 |
-| `pollos` | Pollos | unidad | 101 |
-| `lana` | Lana | kg | 50 |
+| key | Nombre | Unidad | Precio (¢) | Yacimiento |
+| --- | ------ | ------ | ---------- | ---------- |
+| `trigo` | Trigo | kg | 20 | — |
+| `maiz` | Maíz | kg | 17 | — |
+| `leche` | Leche | litro | 50 | — |
+| `tomate` | Tomate | kg | 25 | — |
+| `hierro` | Hierro | kg | 20 | ✔ |
+| `carbon` | Carbón | kg | 20 | ✔ |
+| `mineral_cobre` | Mineral de cobre | kg | 20 | ✔ |
+| `bauxita` | Bauxita | kg | 20 | ✔ |
+| `litio` | Litio | kg | 204 | ✔ |
+| `niquel` | Níquel | kg | 34 | ✔ |
+| `oro` | Oro | kg | 820 | — |
+| `plata` | Plata | kg | 680 | ✔ |
+| `uranio` | Uranio | kg | 1020 | ✔ |
+| `arena` | Arena | kg | 10 | — |
+| `piedra` | Piedra | kg | 10 | ✔ |
+| `caliza` | Caliza | kg | 10 | ✔ |
+| `arcilla` | Arcilla | kg | 10 | ✔ |
+| `fosfato` | Fosfato | kg | 26 | ✔ |
+| `sal` | Sal | kg | 13 | ✔ |
+| `petroleo` | Petróleo | litro | 41 | ✔ |
+| `gas_natural` | Gas natural | m3 | 51 | ✔ |
+| `agua` | Agua | litro | 10 | — |
+| `troncos` | Troncos | kg | 25 | — |
+| `soya` | Soya | kg | 20 | — |
+| `algodon` | Algodón | kg | 25 | — |
+| `cana_azucar` | Caña de azúcar | kg | 17 | — |
+| `cafe` | Café | kg | 51 | — |
+| `cacao` | Cacao | kg | 51 | — |
+| `frutas` | Frutas | kg | 19 | — |
+| `verduras` | Verduras | kg | 19 | — |
+| `ganado_bovino` | Ganado bovino | unidad | 2016 | — |
+| `cerdos` | Cerdos | unidad | 1008 | — |
+| `pollos` | Pollos | unidad | 101 | — |
+| `lana` | Lana | kg | 50 | — |
 
 ### 4.2 `intermediate` — Bienes intermedios
 
-| key | Nombre | Unidad | Precio (¢) |
-| --- | ------ | ------ | ---------- |
-| `semillas` | Semillas | kg | 26 |
-| `harina` | Harina de trigo | kg | 70 |
-| `masa` | Masa nixtamalizada | kg | 39 |
-| `acero` | Acero | kg | 52 |
-| `acero_inoxidable` | Acero inoxidable | kg | 102 |
-| `aluminio` | Aluminio | kg | 83 |
-| `cobre_refinado` | Cobre refinado | kg | 104 |
-| `cemento` | Cemento | kg | 32 |
-| `hormigon` | Hormigón | kg | 26 |
-| `vidrio` | Vidrio | kg | 37 |
-| `ladrillos` | Ladrillos | unidad | 20 |
-| `asfalto` | Asfalto | kg | 46 |
-| `plastico` | Plástico | kg | 78 |
-| `caucho_sintetico` | Caucho sintético | kg | 78 |
-| `fertilizantes` | Fertilizantes | kg | 65 |
-| `productos_quimicos` | Productos químicos | litro | 63 |
-| `silicio` | Silicio | kg | 135 |
-| `tablas` | Tablas | kg | 57 |
-| `celulosa` | Celulosa | kg | 57 |
-| `papel` | Papel | kg | 87 |
-| `carton` | Cartón | kg | 119 |
-| `azucar` | Azúcar | kg | 79 |
-| `aceite_vegetal` | Aceite vegetal | litro | 101 |
-| `carne_procesada` | Carne procesada | kg | 84 |
-| `lacteos` | Lácteos | kg | 91 |
-| `gasolina` | Gasolina | litro | 94 |
-| `diesel` | Diésel | litro | 94 |
-| `queroseno` | Queroseno | litro | 118 |
-| `lubricantes` | Lubricantes | litro | 157 |
-| `viga_acero` | Vigas de acero | kg | 98 |
-| `lamina_acero` | Láminas de acero | kg | 98 |
-| `tubo_acero` | Tubos de acero | kg | 104 |
-| `perfil_metalico` | Perfiles metálicos | kg | 98 |
-| `lamina_aluminio` | Láminas de aluminio | kg | 151 |
-| `perfil_aluminio` | Perfiles de aluminio | kg | 151 |
-| `cable_cobre` | Cable de cobre | kg | 163 |
-| `bobina_cobre` | Bobinas de cobre | kg | 175 |
-| `cristal_plano` | Cristal plano | kg | 81 |
-| `cristal_tecnico` | Cristal técnico | kg | 121 |
-| `polimeros` | Polímeros | kg | 127 |
-| `resinas` | Resinas | kg | 116 |
-| `fibra_sintetica` | Fibra sintética | kg | 143 |
-| `lubricante_industrial` | Lubricante industrial | litro | 214 |
-| `madera_tratada` | Madera tratada | kg | 103 |
-| `contrachapado` | Contrachapado | kg | 109 |
-| `conservas` | Conservas | kg | 42 |
-| `piensos` | Piensos | kg | 42 |
-| `bebidas` | Bebidas | litro | 44 |
-| `chasis` | Chasis | unidad | 29920 |
-| `motor_combustion` | Motor de combustión | unidad | 36810 |
-| `caja_cambios` | Caja de cambios | unidad | 20360 |
-| `suspension` | Suspensión | unidad | 21660 |
-| `frenos` | Frenos | unidad | 18280 |
-| `rodamientos` | Rodamientos | unidad | 8880 |
-| `bomba_industrial` | Bomba industrial | unidad | 21920 |
-| `motor_electrico` | Motor eléctrico | unidad | 25800 |
-| `transformador` | Transformador | unidad | 30860 |
-| `generador` | Generador | unidad | 58210 |
-| `bateria` | Batería | unidad | 23880 |
-| `cableado` | Cableado | kg | 221 |
-| `circuito_impreso` | Circuitos impresos | unidad | 18450 |
-| `microchip` | Microchips | unidad | 41715 |
-| `sensor` | Sensores | unidad | 34650 |
-| `pantalla` | Pantallas | unidad | 38280 |
-| `ventana` | Ventanas | unidad | 13460 |
-| `puerta_industrial` | Puertas industriales | unidad | 11880 |
-| `panel_prefabricado` | Panel prefabricado | unidad | 15020 |
-| `tuberia` | Tuberías | kg | 188 |
-| `asiento` | Asientos | unidad | 21530 |
-| `panel_interior` | Paneles interiores | unidad | 15880 |
-| `neumatico` | Neumáticos | unidad | 20100 |
-| `turbina` | Turbina | unidad | 39840 |
-| `sistema_hidraulico` | Sistema hidráulico | unidad | 46440 |
-| `motor_aeronautico` | Motor aeronáutico | unidad | 80965 |
-| `sistema_control` | Sistema de control | unidad | 173350 |
-| `tanque_especializado` | Tanque especializado | unidad | 33160 |
-| `sistema_refrigeracion` | Sistema de refrigeración | unidad | 48900 |
-| `aislamiento_termico` | Aislamiento térmico | kg | 207 |
+| key | Nombre | Unidad | Precio (¢) | Yacimiento |
+| --- | ------ | ------ | ---------- | ---------- |
+| `semillas` | Semillas | kg | 26 | — |
+| `harina` | Harina de trigo | kg | 70 | — |
+| `masa` | Masa nixtamalizada | kg | 39 | — |
+| `acero` | Acero | kg | 52 | — |
+| `acero_inoxidable` | Acero inoxidable | kg | 102 | — |
+| `aluminio` | Aluminio | kg | 83 | — |
+| `cobre_refinado` | Cobre refinado | kg | 104 | — |
+| `cemento` | Cemento | kg | 32 | — |
+| `hormigon` | Hormigón | kg | 26 | — |
+| `vidrio` | Vidrio | kg | 37 | — |
+| `ladrillos` | Ladrillos | unidad | 20 | — |
+| `asfalto` | Asfalto | kg | 46 | — |
+| `plastico` | Plástico | kg | 78 | — |
+| `caucho_sintetico` | Caucho sintético | kg | 78 | — |
+| `fertilizantes` | Fertilizantes | kg | 65 | — |
+| `productos_quimicos` | Productos químicos | litro | 63 | — |
+| `silicio` | Silicio | kg | 135 | — |
+| `tablas` | Tablas | kg | 57 | — |
+| `celulosa` | Celulosa | kg | 57 | — |
+| `papel` | Papel | kg | 87 | — |
+| `carton` | Cartón | kg | 119 | — |
+| `azucar` | Azúcar | kg | 79 | — |
+| `aceite_vegetal` | Aceite vegetal | litro | 101 | — |
+| `carne_procesada` | Carne procesada | kg | 84 | — |
+| `lacteos` | Lácteos | kg | 91 | — |
+| `gasolina` | Gasolina | litro | 94 | — |
+| `diesel` | Diésel | litro | 94 | — |
+| `queroseno` | Queroseno | litro | 118 | — |
+| `lubricantes` | Lubricantes | litro | 157 | — |
+| `viga_acero` | Vigas de acero | kg | 98 | — |
+| `lamina_acero` | Láminas de acero | kg | 98 | — |
+| `tubo_acero` | Tubos de acero | kg | 104 | — |
+| `perfil_metalico` | Perfiles metálicos | kg | 98 | — |
+| `lamina_aluminio` | Láminas de aluminio | kg | 151 | — |
+| `perfil_aluminio` | Perfiles de aluminio | kg | 151 | — |
+| `cable_cobre` | Cable de cobre | kg | 163 | — |
+| `bobina_cobre` | Bobinas de cobre | kg | 175 | — |
+| `cristal_plano` | Cristal plano | kg | 81 | — |
+| `cristal_tecnico` | Cristal técnico | kg | 121 | — |
+| `polimeros` | Polímeros | kg | 127 | — |
+| `resinas` | Resinas | kg | 116 | — |
+| `fibra_sintetica` | Fibra sintética | kg | 143 | — |
+| `lubricante_industrial` | Lubricante industrial | litro | 214 | — |
+| `madera_tratada` | Madera tratada | kg | 103 | — |
+| `contrachapado` | Contrachapado | kg | 109 | — |
+| `conservas` | Conservas | kg | 42 | — |
+| `piensos` | Piensos | kg | 42 | — |
+| `bebidas` | Bebidas | litro | 44 | — |
+| `chasis` | Chasis | unidad | 29920 | — |
+| `motor_combustion` | Motor de combustión | unidad | 36810 | — |
+| `caja_cambios` | Caja de cambios | unidad | 20360 | — |
+| `suspension` | Suspensión | unidad | 21660 | — |
+| `frenos` | Frenos | unidad | 18280 | — |
+| `rodamientos` | Rodamientos | unidad | 8880 | — |
+| `bomba_industrial` | Bomba industrial | unidad | 21920 | — |
+| `motor_electrico` | Motor eléctrico | unidad | 25800 | — |
+| `transformador` | Transformador | unidad | 30860 | — |
+| `generador` | Generador | unidad | 58210 | — |
+| `bateria` | Batería | unidad | 23880 | — |
+| `cableado` | Cableado | kg | 221 | — |
+| `circuito_impreso` | Circuitos impresos | unidad | 18450 | — |
+| `microchip` | Microchips | unidad | 41715 | — |
+| `sensor` | Sensores | unidad | 34650 | — |
+| `pantalla` | Pantallas | unidad | 38280 | — |
+| `ventana` | Ventanas | unidad | 13460 | — |
+| `puerta_industrial` | Puertas industriales | unidad | 11880 | — |
+| `panel_prefabricado` | Panel prefabricado | unidad | 15020 | — |
+| `tuberia` | Tuberías | kg | 188 | — |
+| `asiento` | Asientos | unidad | 21530 | — |
+| `panel_interior` | Paneles interiores | unidad | 15880 | — |
+| `neumatico` | Neumáticos | unidad | 20100 | — |
+| `turbina` | Turbina | unidad | 39840 | — |
+| `sistema_hidraulico` | Sistema hidráulico | unidad | 46440 | — |
+| `motor_aeronautico` | Motor aeronáutico | unidad | 80965 | — |
+| `sistema_control` | Sistema de control | unidad | 173350 | — |
+| `tanque_especializado` | Tanque especializado | unidad | 33160 | — |
+| `sistema_refrigeracion` | Sistema de refrigeración | unidad | 48900 | — |
+| `aislamiento_termico` | Aislamiento térmico | kg | 207 | — |
 
 ### 4.3 `final_consumption` — Productos finales
 
-| key | Nombre | Unidad | Precio (¢) |
-| --- | ------ | ------ | ---------- |
-| `pan` | Pan | kg | 164 |
-| `tortilla` | Tortilla | kg | 79 |
-| `queso` | Queso fresco | kg | 2120 |
-| `salsa` | Salsa de tomate | litro | 99 |
-| `camion_carga` | Camión de carga | unidad | 501510 |
-| `camion_cisterna` | Camión cisterna | unidad | 469760 |
-| `camion_refrigerado` | Camión refrigerado | unidad | 469790 |
-| `locomotora_diesel` | Locomotora diésel | unidad | 399900 |
-| `vagon_carga` | Vagón de carga | unidad | 125980 |
-| `barco_carga` | Barco de carga | unidad | 556220 |
-| `barco_petrolero` | Barco petrolero | unidad | 677440 |
-| `avion_carga` | Avión de carga | unidad | 624780 |
-| `planta_industrial` | Planta industrial genérica | unidad | 119220 |
-| `refineria` | Refinería de petróleo | unidad | 529980 |
-| `central_electrica` | Central eléctrica | unidad | 287800 |
-| `planta_ensamblaje` | Planta de ensamblaje automotriz | unidad | 459620 |
-| `astillero` | Astillero | unidad | 341030 |
-| `fabrica_aeronaves` | Fábrica de aeronaves | unidad | 403960 |
-| `planta_quimica` | Planta química | unidad | 497660 |
-| `estacion_carga` | Estación de carga | unidad | 72450 |
-| `terminal_ferroviaria` | Terminal ferroviaria | unidad | 413950 |
-| `puerto_comercial` | Puerto comercial | unidad | 182360 |
-| `aeropuerto_carga` | Aeropuerto de carga | unidad | 609530 |
-| `automovil` | Automóvil | unidad | 423835 |
-| `refrigerador` | Refrigerador | unidad | 88980 |
-| `lavadora` | Lavadora | unidad | 223350 |
-| `televisor` | Televisor | unidad | 79890 |
-| `computadora` | Computadora | unidad | 145390 |
-| `telefono` | Teléfono | unidad | 138525 |
-| `excavadora` | Excavadora | unidad | 370040 |
-| `grua` | Grúa | unidad | 196690 |
-| `generador_industrial` | Generador industrial | unidad | 104560 |
-| `panel_solar` | Panel solar | unidad | 46380 |
-| `turbina_eolica` | Turbina eólica | unidad | 277590 |
-| `transformador_electrico` | Transformador eléctrico | unidad | 76780 |
-| `edificio_residencial` | Edificio residencial | unidad | 152700 |
-| `edificio_comercial` | Edificio comercial | unidad | 215120 |
-| `fabrica_urbana_ligera` | Fábrica urbana ligera | unidad | 238020 |
-| `almacen_logistico` | Almacén logístico | unidad | 101410 |
-| `mantequilla` | Mantequilla | kg | 340 |
-| `yogur` | Yogur | litro | 89 |
-| `chocolate` | Chocolate | kg | 159 |
-| `textiles` | Textiles | kg | 105 |
+| key | Nombre | Unidad | Precio (¢) | Yacimiento |
+| --- | ------ | ------ | ---------- | ---------- |
+| `pan` | Pan | kg | 164 | — |
+| `tortilla` | Tortilla | kg | 79 | — |
+| `queso` | Queso fresco | kg | 2120 | — |
+| `salsa` | Salsa de tomate | litro | 99 | — |
+| `camion_carga` | Camión de carga | unidad | 501510 | — |
+| `camion_cisterna` | Camión cisterna | unidad | 469760 | — |
+| `camion_refrigerado` | Camión refrigerado | unidad | 469790 | — |
+| `locomotora_diesel` | Locomotora diésel | unidad | 399900 | — |
+| `vagon_carga` | Vagón de carga | unidad | 125980 | — |
+| `barco_carga` | Barco de carga | unidad | 556220 | — |
+| `barco_petrolero` | Barco petrolero | unidad | 677440 | — |
+| `avion_carga` | Avión de carga | unidad | 624780 | — |
+| `planta_industrial` | Planta industrial genérica | unidad | 119220 | — |
+| `refineria` | Refinería de petróleo | unidad | 529980 | — |
+| `central_electrica` | Central eléctrica | unidad | 287800 | — |
+| `planta_ensamblaje` | Planta de ensamblaje automotriz | unidad | 459620 | — |
+| `astillero` | Astillero | unidad | 341030 | — |
+| `fabrica_aeronaves` | Fábrica de aeronaves | unidad | 403960 | — |
+| `planta_quimica` | Planta química | unidad | 497660 | — |
+| `estacion_carga` | Estación de carga | unidad | 72450 | — |
+| `terminal_ferroviaria` | Terminal ferroviaria | unidad | 413950 | — |
+| `puerto_comercial` | Puerto comercial | unidad | 182360 | — |
+| `aeropuerto_carga` | Aeropuerto de carga | unidad | 609530 | — |
+| `automovil` | Automóvil | unidad | 423835 | — |
+| `refrigerador` | Refrigerador | unidad | 88980 | — |
+| `lavadora` | Lavadora | unidad | 223350 | — |
+| `televisor` | Televisor | unidad | 79890 | — |
+| `computadora` | Computadora | unidad | 145390 | — |
+| `telefono` | Teléfono | unidad | 138525 | — |
+| `excavadora` | Excavadora | unidad | 370040 | — |
+| `grua` | Grúa | unidad | 196690 | — |
+| `generador_industrial` | Generador industrial | unidad | 104560 | — |
+| `panel_solar` | Panel solar | unidad | 46380 | — |
+| `turbina_eolica` | Turbina eólica | unidad | 277590 | — |
+| `transformador_electrico` | Transformador eléctrico | unidad | 76780 | — |
+| `edificio_residencial` | Edificio residencial | unidad | 152700 | — |
+| `edificio_comercial` | Edificio comercial | unidad | 215120 | — |
+| `fabrica_urbana_ligera` | Fábrica urbana ligera | unidad | 238020 | — |
+| `almacen_logistico` | Almacén logístico | unidad | 101410 | — |
+| `mantequilla` | Mantequilla | kg | 340 | — |
+| `yogur` | Yogur | litro | 89 | — |
+| `chocolate` | Chocolate | kg | 159 | — |
+| `textiles` | Textiles | kg | 105 | — |
 
 ## 5. Recetas actuales (agrupadas por tipo de instalación)
 
@@ -592,6 +592,14 @@ Rangos observados en el catálogo actual; mantenerlos al añadir recetas.
   (window_bid ~190.000-353.000 ¢/kg, dominado por
   `GOLD_BANK_INITIAL_CAPITAL_CENTS`), pero es la restricción a revisar si se
   toca cualquiera de los dos lados. Ver `infra/.env.docker`.
+- **`finite` (yacimientos, ADR-023)**: marca un recurso como **no renovable**;
+  el seed le da un `resource_deposit` y su rendimiento decae al vaciarse. Solo
+  para recursos geológicos (`mina`, `cantera`, `pozo`) y con **una sola receta**
+  que los produzca — con dos, la conversión de `DEPOSIT_MIN/MAX_EXECUTIONS` a
+  centésimas sería ambigua y `parseSeedConfig` lo rechaza. **Nunca** marcar el
+  `agua` (raíz del grafo: la consumen 36 recetas, agotarla apaga la economía) ni
+  el `oro` (su yacimiento sale de `GOLD_DEPOSIT_*`). El conjunto exacto lo fija
+  `catalog-graph.test.ts`, para que ampliarlo sea una decisión y no un descuido.
 - **Coherencia económica**: el coste acumulado (insumos + salario) debe crecer a
   lo largo de la cadena; un producto final depende (directa o indirectamente) de
   ≥3 cadenas distintas.

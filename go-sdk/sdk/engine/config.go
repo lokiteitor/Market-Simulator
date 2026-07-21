@@ -25,6 +25,11 @@ type BotConfig struct {
 	// dejar de martillar la API mientras se recupera capital (crítico en modo
 	// swarm). 0 usa el default del engine (60s).
 	InsufficientCapitalBackoffSeconds int `yaml:"insufficient_capital_backoff_seconds"`
+	// DepositRefreshSeconds: cada cuánto se relee GET /catalog/deposits
+	// (ADR-023). El rendimiento de un yacimiento se mueve en horas, así que el
+	// default (300 s) sobra; lo que NO se puede es no refrescarlo nunca, o el
+	// bot seguiría valorando la receta con el output nominal. 0 usa el default.
+	DepositRefreshSeconds int `yaml:"deposit_refresh_seconds"`
 }
 
 type RetryConfig struct {

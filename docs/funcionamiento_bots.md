@@ -165,7 +165,10 @@ Detalles de escala dentro del proceso:
 
 1. **Autenticación** (`AuthManager.PerformAuth`, ver 4.2).
 2. Descarga el **catálogo** (`GET /catalog/products`, `GET /catalog/recipes`,
-   `GET /catalog/installation-types` — para mapear `recipe.installation_type_id` → tipo y precios).
+   `GET /catalog/installation-types` — para mapear `recipe.installation_type_id` → tipo y precios)
+   y los **yacimientos** (`GET /catalog/deposits`, ADR-023). Estos últimos NO son estáticos: se
+   refrescan cada `deposit_refresh_seconds` (default 300 s). Si la descarga falla el bot arranca
+   igual, asumiendo recursos inagotables (el comportamiento previo a ADR-023).
 3. Descarga el **snapshot** del agente (`GET /agents/me?events_limit=100`) y reconstruye el
    estado local: capital, inventario, **instalaciones**, órdenes activas, procesos.
 4. `strategy.Initialize()` — cada bot **muestrea sus parámetros individuales** (márgenes,
@@ -216,7 +219,8 @@ El engine parsea: `order_executed`, `order_expired`, `order_cancelled`,
 `transformation_completed`, `bankruptcy_notice`, `agent_joined`, `agent_bankrupt`,
 `trade_printed`, `gold_converted`, `city_income`, `installation_purchased` (este último
 rebasea la instalación local con el estado absoluto del commit; el capital lo cubre el
-resync post-compra). Los `trade_printed` alimentan las EMAs de MarketView y
+resync post-compra) y `deposit_depleted` (broadcast: deja el yacimiento local a 0 sin esperar
+al refresco periódico, y con él muere la receta de ese recurso). Los `trade_printed` alimentan las EMAs de MarketView y
 disparan re-cotización event-driven en los traders. Tras una reconexión WS se recarga el
 snapshot con jitter de 0–5 s.
 
@@ -278,6 +282,14 @@ Estrategia productora única (ADR-022): cubre desde el pozo de agua hasta la con
 - **Economía por ejecución** (`execEconomics`): insumos valorados a `fair` + salario vs.
   ingreso del output. Rentable si `revenue ≥ (insumos + salario) × (1 + minMargin)`. Con
   `inputs: []` (las dos recetas del agua) degenera a coste = puro salario.
+- **Yacimientos (ADR-023):** el ingreso NO se calcula con el `output_qty_cent` de la receta sino
+  con el **output efectivo**, `effectiveOutputQtyCent` = nominal × `yield_bps` / 10000. Es la
+  corrección que impide minar a pérdida: el salario y los insumos se pagan enteros produzca lo
+  que produzca la mina, así que con el yacimiento al 50% valorar la receta por su output nominal
+  hace creer que se gana el doble de lo que se gana. El mismo output efectivo alimenta el suelo
+  de venta (`costPU`), de modo que la escasez sube el precio pedido. Con `yield_bps == 0` la
+  receta se salta entera: ni se produce (el servidor responde 422 `resource_depleted`) ni se
+  compra instalación para ella, pero **sí se sigue vendiendo** el stock extraído antes.
 - **Coste salarial:** `wage = wage_rate × duration × sim_time_factor` por ejecución (el salario
   se cobra por segundos simulados y `duration_seconds` llega en reales; de ahí el factor).
 - **Oferta elástica:** solo produce si el fair cubre coste + margen. Si el producto se
@@ -399,6 +411,7 @@ server:
 
 sim_time_factor: 5          # DEBE coincidir con SIM_TIME_FACTOR del backend
 max_recipes_per_tick: 8
+deposit_refresh_seconds: 300  # relectura de GET /catalog/deposits (ADR-023)
 
 market:                     # parámetros de MarketView
   ema_alpha: 0.25

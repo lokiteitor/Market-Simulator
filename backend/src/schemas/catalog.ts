@@ -48,6 +48,29 @@ export const RecipeSchema = z.object({
 
 export type RecipeDto = z.infer<typeof RecipeSchema>;
 
+/**
+ * Yacimiento finito de un recurso no renovable (openapi Deposit, ADR-023).
+ *
+ * A diferencia de productos y recetas, este sub-recurso del catálogo es
+ * DINÁMICO: `qty_remaining_cent` y `yield_bps` cambian con cada materialización
+ * que extrae del yacimiento.
+ */
+export const DepositSchema = z.object({
+  product_id: z.uuid(),
+  /** `key` del producto: evita al cliente cruzar con /catalog/products. */
+  product_key: z.string(),
+  qty_initial_cent: z.number().int().min(0),
+  qty_remaining_cent: z.number().int().min(0),
+  /**
+   * Rendimiento actual sobre el output nominal de la receta (10000 = 100%). Lo
+   * calcula el servidor para que el cliente no replique la fórmula ni tenga que
+   * conocer el suelo configurado.
+   */
+  yield_bps: z.number().int().min(0).max(10000),
+});
+
+export type DepositDto = z.infer<typeof DepositSchema>;
+
 /** Path param `{product_id}` (openapi ProductIdPath, format uuid). */
 export const ProductIdParamsSchema = z.object({ product_id: z.uuid() });
 

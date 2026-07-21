@@ -15,6 +15,14 @@ const SeedProductSchema = z.object({
   name: z.string().min(1),
   unit: z.string().min(1),
   category: z.enum(productCategory.enumValues),
+  /**
+   * Recurso NO renovable con yacimiento finito (ADR-023). El tamaño no se
+   * declara aquí: el seed lo sortea en el rango global DEPOSIT_MIN/MAX_EXECUTIONS
+   * y lo convierte a qty_cent con el output de su receta (de ahí que exija una
+   * receta única). El oro NO se marca aquí: su yacimiento lo dimensiona el
+   * bloque GOLD_DEPOSIT_* porque la paridad monetaria se deriva de él.
+   */
+  finite: z.boolean().optional(),
 });
 
 const SeedRecipeInputSchema = z.object({
@@ -117,6 +125,27 @@ export function parseSeedConfig(rawJson: string): SeedConfig {
         );
       }
       inputProducts.add(input.product);
+    }
+  }
+
+  // --- Yacimientos finitos (ADR-023) -----------------------------------------
+  // El tamaño se declara en EJECUCIONES de la receta y el seed lo convierte a
+  // qty_cent multiplicando por su output. Con dos recetas produciendo el mismo
+  // recurso la conversión sería ambigua, así que se exige una y solo una. De
+  // paso esto excluye por construcción al agua (dos pozos), que es la raíz del
+  // grafo y jamás debe agotarse.
+  const recipesByOutput = new Map<string, number>();
+  for (const r of cfg.recipes) {
+    recipesByOutput.set(r.output, (recipesByOutput.get(r.output) ?? 0) + 1);
+  }
+  for (const p of cfg.products) {
+    if (p.finite !== true) continue;
+    const n = recipesByOutput.get(p.key) ?? 0;
+    if (n !== 1) {
+      throw new Error(
+        `seed-config: producto "${p.key}" marcado finite pero lo producen ${n} recetas; ` +
+          "un yacimiento exige exactamente una (el tamaño se deriva de su output_qty_cent)",
+      );
     }
   }
 

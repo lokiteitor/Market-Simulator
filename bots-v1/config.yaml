@@ -23,6 +23,12 @@ sim_time_factor: 5
 # de martillar la API y cede el lugar al siguiente. 0 = default del SDK (60s).
 insufficient_capital_backoff_seconds: 120
 
+# Cada cuanto se releen los yacimientos finitos (ADR-023, GET /catalog/deposits).
+# El rendimiento de un yacimiento cae en horas, asi que 300 s sobra; lo que no
+# puede es no refrescarse nunca, o el bot seguiria valorando la mineria con el
+# output nominal de la receta y produciria a perdida. 0 = default del SDK (300).
+deposit_refresh_seconds: 300
+
 # Configuración de rotación de bots para simular actividad humana:
 # - max_active: cantidad máxima de bots activos concurrentemente (0 para sin límite, ejecuta todos)
 # - active_duration: cuánto tiempo juega cada bot antes de dormir y rotar (ej. "10m", "600s", "1h")

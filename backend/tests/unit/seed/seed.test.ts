@@ -164,6 +164,30 @@ describe("parseSeedConfig", () => {
     );
   });
 
+  test("acepta finite en un producto con receta única", () => {
+    const cfg = baseConfig();
+    cfg.products[0]!.finite = true;
+    expect(parseSeedConfig(JSON.stringify(cfg)).products[0]?.finite).toBe(true);
+  });
+
+  test("rechaza finite en un producto con dos recetas (tamaño ambiguo)", () => {
+    const cfg = baseConfig();
+    cfg.products[0]!.finite = true;
+    cfg.recipes.push({ ...cfg.recipes[0]!, key: "cultivo_trigo_2", name: "Cultivo de trigo 2" });
+    cfg.installation_types[0]!.recipes.push("cultivo_trigo_2");
+    expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
+      /marcado finite pero lo producen 2 recetas/,
+    );
+  });
+
+  test("rechaza finite en un producto que nadie produce", () => {
+    const cfg = baseConfig();
+    cfg.products[2]!.finite = true; // `pan`: sin receta en la config mínima
+    expect(() => parseSeedConfig(JSON.stringify(cfg))).toThrow(
+      /marcado finite pero lo producen 0 recetas/,
+    );
+  });
+
   test("rechaza roles incompletos", () => {
     const cfg: Record<string, unknown> = { ...baseConfig() };
     cfg.roles = { transformer: { initial_agents: 1 } };

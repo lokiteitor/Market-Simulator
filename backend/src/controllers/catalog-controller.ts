@@ -10,16 +10,25 @@
  * 12 s reales). Se redondea al entero más cercano con piso 1 (openapi:
  * integer, minimum 1).
  */
+import { config } from "../config";
 import type { ProductRow, RecipeInputRow } from "../db/schema";
+import { depositYieldBps } from "../lib/deposits";
 import { cachedJson } from "../lib/read-cache";
 import { intervalToSimSeconds, simSecondsToRealMs } from "../lib/simtime";
-import type { ProductDto, RecipeDto, RecipeInputDto } from "../schemas/catalog";
+import type { DepositDto, ProductDto, RecipeDto, RecipeInputDto } from "../schemas/catalog";
+import type { DepositWithProduct } from "../repositories/deposit-repository";
 import { catalogService, type RecipeWithInputs } from "../services/catalog-service";
 
 // El catálogo es estático durante la corrida (solo lo escribe el seed, que es
 // idempotente y puede re-ejecutarse con el core vivo): TTL de 60 s en vez de
 // infinito para que un re-seed se refleje solo, sin invalidación explícita.
 const CATALOG_TTL_MS = 60_000;
+
+// Los yacimientos SÍ cambian durante la corrida (ADR-023), así que su TTL es
+// corto. Aun así se cachea: es la única lectura del catálogo que el enjambre
+// repite periódicamente, y 5 s de staleness no cambian ninguna decisión (el
+// rendimiento se mueve en horas, no en segundos).
+const DEPOSITS_TTL_MS = 5_000;
 
 /** INTERVAL simulado de la DB → segundos REALES enteros (openapi `duration_seconds`). */
 export function recipeDurationRealSeconds(durationInterval: string): number {
@@ -59,6 +68,20 @@ export function toRecipeDto(row: RecipeWithInputs): RecipeDto {
   };
 }
 
+export function toDepositDto(row: DepositWithProduct): DepositDto {
+  return {
+    product_id: row.productId,
+    product_key: row.productKey,
+    qty_initial_cent: row.qtyInitialCent,
+    qty_remaining_cent: row.qtyRemainingCent,
+    yield_bps: depositYieldBps(
+      row.qtyInitialCent,
+      row.qtyRemainingCent,
+      config.deposits.yieldFloorBps,
+    ),
+  };
+}
+
 export const catalogController = {
   async listProducts(): Promise<ProductDto[]> {
     return cachedJson("products", "cache:catalog:products", CATALOG_TTL_MS, async () => {
@@ -85,5 +108,12 @@ export const catalogController = {
 
   async getRecipe(recipeId: string): Promise<RecipeDto> {
     return toRecipeDto(await catalogService.getRecipe(recipeId));
+  },
+
+  async listDeposits(): Promise<DepositDto[]> {
+    return cachedJson("deposits", "cache:catalog:deposits", DEPOSITS_TTL_MS, async () => {
+      const rows = await catalogService.listDeposits();
+      return rows.map(toDepositDto);
+    });
   },
 };

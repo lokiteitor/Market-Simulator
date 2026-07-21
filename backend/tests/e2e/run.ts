@@ -33,6 +33,7 @@ import {
   type AcquireInstallationResponse,
   type AgentRole,
   type AgentSnapshot,
+  type Deposit,
   type EventItem,
   type InventoryLot,
   type InventoryPosition,
@@ -350,6 +351,50 @@ async function main(): Promise<void> {
       404,
       "GET /catalog/products/{uuid inexistente}",
     );
+  });
+
+  await step("4b. catálogo: yacimientos finitos (ADR-023)", async () => {
+    const deposits = expectStatus<Deposit[]>(
+      await api.get("/catalog/deposits"),
+      200,
+      "GET /catalog/deposits",
+    );
+    const porProducto = new Map(deposits.map((d) => [d.product_key, d]));
+
+    // Cada producto `finite` del catálogo tiene su yacimiento sembrado...
+    const finitos = seedCfg.products.filter((p) => p.finite === true).map((p) => p.key);
+    assert(finitos.length > 0, "el seed-config declara al menos un recurso finito");
+    for (const key of finitos) {
+      assert(porProducto.has(key), `recurso finito "${key}" sin yacimiento — ¿corrió el seed?`);
+    }
+    // ...y el oro el suyo, que viene del patrón oro y NO se declara en el catálogo.
+    assert(porProducto.has("oro"), "el oro debe tener yacimiento (patrón oro)");
+    assertEqual(deposits.length, finitos.length + 1, "yacimientos = recursos finitos + oro");
+
+    // Lo que NO debe agotarse nunca: el agua es la raíz del grafo (ADR-022) y
+    // la arena está excluida a propósito. Si alguna aparece aquí, el catálogo
+    // se marcó mal y la corrida acabará estrangulándose sola.
+    assert(!porProducto.has("agua"), "el agua NUNCA debe tener yacimiento (raíz del grafo)");
+    assert(!porProducto.has("arena"), "la arena está excluida de los yacimientos a propósito");
+
+    for (const d of deposits) {
+      assert(
+        d.qty_remaining_cent >= 0 && d.qty_remaining_cent <= d.qty_initial_cent,
+        `remanente de "${d.product_key}" fuera de [0, inicial]`,
+      );
+      assert(
+        d.yield_bps >= 0 && d.yield_bps <= 10000,
+        `yield_bps de "${d.product_key}" fuera de [0, 10000]`,
+      );
+      // Coherencia rendimiento↔remanente en las dos puntas: sin remanente no se
+      // produce nada, y un yacimiento intacto rinde el output nominal.
+      if (d.qty_remaining_cent === 0) {
+        assertEqual(d.yield_bps, 0, `yacimiento agotado de "${d.product_key}" debe rendir 0`);
+      }
+      if (d.qty_remaining_cent === d.qty_initial_cent && d.qty_initial_cent > 0) {
+        assertEqual(d.yield_bps, 10000, `yacimiento intacto de "${d.product_key}" rinde 100%`);
+      }
+    }
   });
 
   // ---- 5-6. Registro de agentes (2 llamadas de auth) -----------------------

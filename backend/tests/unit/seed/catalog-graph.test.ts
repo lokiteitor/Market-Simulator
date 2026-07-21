@@ -12,6 +12,8 @@
  *      de la nada.
  *   3. Todo producto tiene al menos una receta que lo produce.
  *   4. Ningún `final_consumption` se usa como insumo (si se usa, es intermedio).
+ *   5. Los recursos con yacimiento finito (ADR-023) son exactamente los
+ *      geológicos no renovables: ni el agua (raíz), ni la arena, ni el oro.
  */
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
@@ -72,6 +74,38 @@ describe("grafo del catálogo", () => {
       r.inputs.filter((i) => finales.has(i.product)).map((i) => `${r.key}←${i.product}`),
     );
     expect(usados).toEqual([]);
+  });
+
+  test("el conjunto de recursos con yacimiento es exactamente el esperado", async () => {
+    // Guardarraíl de ADR-023. Marcar `finite` un producto es irreversible dentro
+    // de una corrida: cuando se agota, su cadena entera muere. Los tres casos
+    // que este test impide de verdad son marcar el AGUA (raíz del grafo: la
+    // consumen 36 recetas), marcar la ARENA (excluida a propósito: alimenta
+    // silicio, vidrio y hormigón) y marcar el ORO (su yacimiento lo siembra el
+    // patrón oro, y duplicarlo revienta la PK de resource_deposit).
+    const cfg = await loadCatalog();
+    const finitos = cfg.products.filter((p) => p.finite === true).map((p) => p.key);
+    expect([...finitos].sort()).toEqual(
+      [
+        "arcilla", "bauxita", "caliza", "carbon", "fosfato", "gas_natural", "hierro",
+        "litio", "mineral_cobre", "niquel", "petroleo", "piedra", "plata", "sal", "uranio",
+      ].sort(),
+    );
+    expect(finitos).not.toContain(ROOT_PRODUCT);
+    expect(finitos).not.toContain("arena");
+    expect(finitos).not.toContain("oro");
+  });
+
+  test("todo recurso finito es extractivo: nada renovable ni industrial se agota", async () => {
+    // Un intermedio con yacimiento no tendría sentido físico (se fabrica, no se
+    // extrae) y campo/granja/bosque son renovables por definición.
+    const cfg = await loadCatalog();
+    const tipoDeReceta = new Map(cfg.recipes.map((r) => [r.output, r.installation_type]));
+    const GEOLOGICOS = new Set(["mina", "cantera", "pozo"]);
+    const fuera = cfg.products
+      .filter((p) => p.finite === true && !GEOLOGICOS.has(tipoDeReceta.get(p.key) ?? ""))
+      .map((p) => `${p.key}=${tipoDeReceta.get(p.key)}`);
+    expect(fuera).toEqual([]);
   });
 
   test("las extractivas gastan entre el 25% y el 35% de su coste en insumos", async () => {

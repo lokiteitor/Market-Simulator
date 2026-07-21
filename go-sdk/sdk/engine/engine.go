@@ -199,6 +199,18 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.state.SetInstallationTypes(installationTypes)
 
+	// Yacimientos finitos (ADR-023). A diferencia del resto del catálogo NO son
+	// estáticos, así que además de leerlos aquí hay un refresco periódico más
+	// abajo. Un fallo NO aborta el arranque: sin yacimientos el bot valora las
+	// recetas con su output nominal, que es exactamente el comportamiento
+	// anterior a ADR-023 (conservador, no incorrecto).
+	if deposits, err := e.client.ListDeposits(e.ctx); err != nil {
+		e.logger.Warn("failed to download deposits catalog, assuming infinite resources", "error", err)
+	} else {
+		e.state.SetDeposits(deposits)
+		e.logger.Info("deposits loaded", "count", len(deposits))
+	}
+
 	// 3. Download snapshot
 	e.logger.Info("downloading agent snapshot...")
 	snap, err := e.client.GetAgentSnapshot(e.ctx, 100)
@@ -268,7 +280,17 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.executeActions(ctx, actionsList)
 	})
 
-	// 9. Start background event dispatcher
+	// 9. Refresco periódico de yacimientos (ADR-023). Barato (≤20 filas, cacheado
+	// 5 s en el servidor) y de período largo: lo que se vigila se mueve en horas.
+	depositInterval := time.Duration(e.config.Bot.DepositRefreshSeconds) * time.Second
+	if depositInterval <= 0 {
+		depositInterval = 5 * time.Minute
+	}
+	e.scheduler.SchedulePeriodic(depositInterval, func(ctx context.Context) {
+		e.refreshDeposits(ctx)
+	})
+
+	// 10. Start background event dispatcher
 	e.wg.Add(1)
 	go e.eventDispatcher()
 
@@ -353,6 +375,22 @@ func (e *Engine) resyncSnapshot() {
 	}
 	e.state.Rebuild(snap)
 	e.logger.Info("local state synchronized with server snapshot")
+}
+
+// refreshDeposits relee los yacimientos finitos (ADR-023). Best-effort: si
+// falla se conserva la vista anterior, que envejece despacio.
+func (e *Engine) refreshDeposits(ctx context.Context) {
+	deposits, err := e.client.ListDeposits(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			e.logger.Debug("deposit refresh aborted by shutdown", "error", err)
+		} else {
+			e.logger.Warn("failed to refresh deposits, keeping previous view", "error", err)
+		}
+		return
+	}
+	e.state.SetDeposits(deposits)
+	e.logger.Debug("deposits refreshed", "count", len(deposits))
 }
 
 // capitalBackoff es la pausa tras un insufficient_capital confirmado por el
@@ -507,6 +545,17 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 					"type", action.Type())
 				go e.resyncSnapshot()
 				return
+			}
+			// resource_depleted (ADR-023): el yacimiento del recurso llegó a 0 y
+			// la vista local venía vieja (se perdió el broadcast, o el bot
+			// arrancó justo después). Refrescar los yacimientos deja la receta
+			// marcada como muerta y la estrategia deja de intentarla; el resto
+			// del lote sí puede ejecutarse (afecta a UNA receta, no al agente).
+			if errors.As(err, &apiErr) && apiErr.HasCode(client.CodeResourceDepleted) {
+				e.logger.Info("resource depleted confirmed by server, refreshing deposits",
+					"type", action.Type())
+				go e.refreshDeposits(e.ctx)
+				continue
 			}
 			e.logger.Error("failed to execute action", "type", action.Type(), "error", err)
 		}

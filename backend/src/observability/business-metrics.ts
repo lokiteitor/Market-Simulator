@@ -11,8 +11,10 @@
  */
 import { Gauge } from "prom-client";
 import { sql } from "drizzle-orm";
+import { config } from "../config";
 import { withTransaction, type Tx } from "../db";
 import { agent } from "../db/schema";
+import { depositYieldBps } from "../lib/deposits";
 import { bankRepository } from "../repositories/bank-repository";
 import { depositRepository } from "../repositories/deposit-repository";
 import { feeLedgerRepository } from "../repositories/fee-ledger-repository";
@@ -89,11 +91,37 @@ async function fetchGoldView(tx: Tx): Promise<GoldView | null> {
   };
 }
 
+/** Yacimiento finito para gauges: remanente y rendimiento (ADR-023). */
+interface DepositView {
+  productId: string;
+  productName: string;
+  qtyInitialCent: number;
+  qtyRemainingCent: number;
+  yieldBps: number;
+}
+
+async function fetchDepositViews(tx: Tx): Promise<DepositView[]> {
+  const rows = await depositRepository.listAll(tx);
+  return rows.map((r) => ({
+    productId: r.productId,
+    productName: r.productName,
+    qtyInitialCent: r.qtyInitialCent,
+    qtyRemainingCent: r.qtyRemainingCent,
+    yieldBps: depositYieldBps(
+      r.qtyInitialCent,
+      r.qtyRemainingCent,
+      config.deposits.yieldFloorBps,
+    ),
+  }));
+}
+
 interface BusinessSnapshot {
   overview: OverviewView;
   byRole: AgentsByRoleView[];
   installations: InstallationsByTypeView[];
   market: MarketProductView[];
+  /** Yacimientos finitos con su rendimiento actual (ADR-023). */
+  deposits: DepositView[];
   gold: GoldView | null;
   /** Ingreso de ciudades pendiente de repartir, por fuente (`wage` / `tax`). */
   cityIncomePending: Array<{ source: string; cents: number }>;
@@ -116,6 +144,7 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
           byRole: await monitoringRepository.agentsByRole(tx),
           installations: await monitoringRepository.installationsByType(tx),
           market: await monitoringRepository.marketByProduct(tx),
+          deposits: await fetchDepositViews(tx),
           gold: await fetchGoldView(tx),
           cityIncomePending: await incomeLedgerRepository.sumUnmaterializedBySource(tx),
         }),
@@ -280,6 +309,42 @@ new Gauge({
     if (s === null) return;
     this.reset();
     for (const p of s.market) this.set(productLabels(p), p.totalInventory);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Yacimientos finitos (ADR-023). El rendimiento es la lectura útil: dice a qué
+// ritmo se está vaciando cada recurso y, como multiplica el output de la receta,
+// es también el factor por el que se encarece producirlo.
+// ---------------------------------------------------------------------------
+
+new Gauge({
+  name: "market_deposit_remaining_cent",
+  help: "Remanente del yacimiento por recurso no renovable (centésimas de unidad)",
+  labelNames: ["product", "product_id"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    for (const d of s.deposits) {
+      this.set({ product: d.productName, product_id: d.productId }, d.qtyRemainingCent);
+    }
+  },
+});
+
+new Gauge({
+  name: "market_deposit_yield_bps",
+  help: "Rendimiento actual del yacimiento sobre el output nominal (10000 = 100%)",
+  labelNames: ["product", "product_id"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    for (const d of s.deposits) {
+      this.set({ product: d.productName, product_id: d.productId }, d.yieldBps);
+    }
   },
 });
 

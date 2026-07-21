@@ -1,6 +1,6 @@
 # 📚 Documentación Base de Datos — Simulación de Mercado Agrícola
 
-## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (transformadores —el único rol productivo, ADR-022—, consumidores, traders y ciudades) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora, yacimiento finito de oro y emisión respaldada).
+## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (transformadores —el único rol productivo, ADR-022—, consumidores, traders y ciudades) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario, **yacimientos finitos** en los recursos no renovables (ADR-023) y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada).
 
 ---
 
@@ -57,7 +57,7 @@ El modelo cubre los siguientes dominios:
 - ✅ **Transacciones (trades)**: registro inmutable de ejecuciones con fees, identidades de ambas contrapartes y producto.
 - ✅ **Procesos de transformación**: ciclo de vida de producción con ejecuciones secuenciales, salario upfront, y materialización lazy + sweeper.
 - ✅ **Inventario por lotes (FIFO)**: trazabilidad de costo por lote, COGS por trade, costo de producción por proceso.
-- ✅ **Patrón oro**: política monetaria de la corrida (`gold_standard`), conversiones de ventanilla (`gold_conversion` + `conversion_lot_consumption`) y yacimientos finitos (`resource_deposit`).
+- ✅ **Patrón oro y yacimientos**: política monetaria de la corrida (`gold_standard`), conversiones de ventanilla (`gold_conversion` + `conversion_lot_consumption`) y yacimientos finitos de los recursos no renovables (`resource_deposit`, ADR-023).
 - ✅ **Event log append-only**: registro inmutable de toda mutación de estado para auditoría y derivación de estado.
 - ✅ **Snapshots agregados**: materialización periódica de métricas globales (masa monetaria, inventario total, bid/ask).
 - ✅ **Configuración de corrida**: semilla maestra y parámetros para reproducibilidad del setup inicial.
@@ -94,7 +94,7 @@ Desglose por dominio:
 
 - **DDL canónico**: `specs/schema.sql`. El schema Drizzle (`backend/src/db/schema.ts`) es su espejo ejecutable; ambos se modifican en el mismo commit.
 - **Migraciones**: **no se usan migraciones incrementales.** `schema.sql` manda: cualquier cambio de esquema se aplica recreando la base desde cero (`clean-docker` + re-seed). Es viable porque cada corrida es efímera y se arranca desde cero.
-- **Seeds**: `backend/src/seed/` con el catálogo de `infra/seed-config.json` (productos, recetas, capacidades por rol) y la semilla maestra (`MASTER_SEED`). El seed también crea el banco central, sortea el yacimiento de oro y fija la paridad del patrón oro.
+- **Seeds**: `backend/src/seed/` con el catálogo de `infra/seed-config.json` (productos, recetas, capacidades por rol) y la semilla maestra (`MASTER_SEED`). El seed también crea el banco central, sortea los yacimientos (el de oro y los de los 15 recursos no renovables) y fija la paridad del patrón oro.
 - **Configuración**: archivo `.env` (`infra/.env.docker`) cargado al arrancar el proceso. Incluye semilla maestra, parámetros de fees, factor de tiempo, rangos de capital por rol y parámetros del patrón oro (`BANK_USERNAME`, `GOLD_PRODUCT_KEY`, `GOLD_COVERAGE_RATIO_BPS`, `GOLD_WINDOW_SPREAD_BPS`, `GOLD_DEPOSIT_MIN/MAX_QTY_CENT`, `GOLD_BANK_INITIAL_CAPITAL_CENTS`). La configuración es estática durante la corrida.
 
 ---
@@ -141,7 +141,7 @@ CREATE TABLE product (
 
 | Valor               | Descripción                                                                 |
 | ------------------- | --------------------------------------------------------------------------- |
-| `raw_primary`       | Recurso natural extraído del entorno (minería, cantera, pozo, cultivo, cría). Desde ADR-022 su receta también consume insumos: la única sin insumos es la del agua. |
+| `raw_primary`       | Recurso natural extraído del entorno (minería, cantera, pozo, cultivo, cría). Desde ADR-022 su receta también consume insumos: la única sin insumos es la del agua. Los 15 geológicos (más el oro) son **no renovables**: tienen `resource_deposit` y se agotan (ADR-023). |
 | `intermediate`      | Producto resultante de transformación intermedia (tiene insumos y salidas). |
 | `final_consumption` | Producto destinado al consumo final, retirado del sistema por consumidores. |
 
@@ -1073,7 +1073,25 @@ CREATE INDEX idx_gold_conversion_agent_time ON gold_conversion (agent_id, execut
 
 ### 17. resource_deposit
 
-**Descripción**: yacimiento finito de un recurso. Actualmente solo el oro tiene yacimiento: su tamaño se sortea en `[GOLD_DEPOSIT_MIN_QTY_CENT, GOLD_DEPOSIT_MAX_QTY_CENT]` con la semilla maestra. La materialización de procesos que producen un recurso con yacimiento se **clampea** a lo que queda: `producido = min(remaining, output_qty × ejecuciones)`.
+**Descripción** (ADR-023): stock global finito de un recurso **no renovable**. Hay 16 filas: los 15 recursos geológicos marcados `finite: true` en `infra/seed-config.json` (hierro, carbón, petróleo, cobre, bauxita, litio, níquel, plata, uranio, piedra, caliza, arcilla, fosfato, sal, gas natural) más el oro. Quedan fuera a propósito el **agua** (raíz única del grafo, ADR-022: agotarla apagaría la economía), la **arena** y todo lo renovable (cultivos, ganadería, bosque gestionado).
+
+El tamaño se sortea con la semilla maestra, pero por dos vías distintas:
+
+| | Origen del tamaño | Por qué |
+| --- | --- | --- |
+| Oro | `[GOLD_DEPOSIT_MIN_QTY_CENT, GOLD_DEPOSIT_MAX_QTY_CENT]`, en centésimas | La paridad se deriva de él: `parity = floor(M0 × coverage / (100 × D))` |
+| Los otros 15 | `[DEPOSIT_MIN_EXECUTIONS, DEPOSIT_MAX_EXECUTIONS]` × `output_qty_cent` de su receta | Declarar el tamaño en ejecuciones es legible y se autoajusta si cambia el rendimiento de la receta |
+
+Por eso un producto `finite` debe tener **exactamente una** receta que lo produzca (`parseSeedConfig` lo valida): con dos, la conversión ejecuciones→`qty_cent` sería ambigua.
+
+**Rendimiento decreciente**: la materialización de un proceso que produce un recurso con yacimiento no rinde el output nominal, sino
+
+```
+yield_bps = max(DEPOSIT_YIELD_FLOOR_BPS, floor(remaining × 10000 / inicial))
+producido = min(floor(planificado × yield_bps / 10000), remaining)
+```
+
+El salario y los insumos se pagan enteros produzca lo que produzca la mina, así que `unit_cost_cents` del lote sube solo a medida que el yacimiento se vacía: **la escasez se traduce en precio sin ningún código de precios**. El `min` contra el remanente es lo que garantiza que el yacimiento llegue a 0 de verdad en la cola, cuando el rendimiento ya está clavado en el suelo.
 
 ```sql
 -- Tabla
@@ -1088,8 +1106,11 @@ CREATE TABLE resource_deposit (
 
 #### Reglas de Negocio
 
-- Cuando `qty_remaining_cent` llega a 0 se emite el evento `deposit_depleted`; a partir de ahí las recetas de ese recurso materializan 0 unidades.
-- El yacimiento finito acota la masa monetaria máxima alcanzable vía acuñación (patrón oro estricto).
+- La fila se bloquea `FOR UPDATE` en la materialización, **después** del proceso: mismo orden de locks en la materialización lazy y en el sweeper, así que no hay ciclos.
+- Cuando `qty_remaining_cent` llega a 0 se emite el evento `deposit_depleted` (evento del sistema, sin `agent_id`) y se publica como notificación **broadcast**. A partir de ahí `POST /transformations` sobre esa receta responde 422 `resource_depleted`; el fail-fast evita quemar salario e insumos para producir 0, porque **no hay reembolsos**.
+- El rendimiento se evalúa al **materializar**, no al arrancar: un proceso largo iniciado con el yacimiento al 80% puede materializar al 40% y producir menos de lo que su dueño esperaba.
+- El estado en vivo se consulta en `GET /catalog/deposits` (con `yield_bps` ya calculado) y se exporta como `market_deposit_remaining_cent` / `market_deposit_yield_bps`.
+- El yacimiento de oro, además, acota la masa monetaria máxima alcanzable vía acuñación (patrón oro estricto).
 
 ---
 

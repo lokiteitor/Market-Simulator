@@ -1,5 +1,5 @@
 {
-  "$comment": "Catálogo del simulador (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L; discretos: 100 = 1 unidad). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Raíz ÚNICA del grafo: `agua` (pozo_agua_profundo / pozo_somero, sin insumos); toda receta restante consume algo (ADR-022). Un solo rol productivo: transformer.",
+  "$comment": "Catálogo del simulador (CONTRATOS §13). Cantidades en centésimas de unidad (qty_cent: 10000 = 100 kg/L; discretos: 100 = 1 unidad). Duraciones en segundos SIMULADOS. wage_rate_cents_per_sec en centavos por segundo simulado (0-3). Raíz ÚNICA del grafo: `agua` (pozo_agua_profundo / pozo_somero, sin insumos); toda receta restante consume algo (ADR-022). Un solo rol productivo: transformer. `finite: true` marca los recursos NO renovables con yacimiento (ADR-023): exige UNA sola receta que los produzca, el tamaño se sortea en DEPOSIT_MIN/MAX_EXECUTIONS y el rendimiento decae al vaciarse. El oro NO se marca aquí (su yacimiento sale de GOLD_DEPOSIT_*); el agua tampoco puede (raíz del grafo, dos recetas).",
   "products": [
     {
       "key": "trigo",
@@ -71,37 +71,43 @@
       "key": "hierro",
       "name": "Hierro",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "carbon",
       "name": "Carbón",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "mineral_cobre",
       "name": "Mineral de cobre",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "bauxita",
       "name": "Bauxita",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "litio",
       "name": "Litio",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "niquel",
       "name": "Níquel",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "oro",
@@ -113,13 +119,15 @@
       "key": "plata",
       "name": "Plata",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "uranio",
       "name": "Uranio",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "arena",
@@ -131,43 +139,50 @@
       "key": "piedra",
       "name": "Piedra",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "caliza",
       "name": "Caliza",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "arcilla",
       "name": "Arcilla",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "fosfato",
       "name": "Fosfato",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "sal",
       "name": "Sal",
       "unit": "kg",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "petroleo",
       "name": "Petróleo",
       "unit": "litro",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "gas_natural",
       "name": "Gas natural",
       "unit": "m3",
-      "category": "raw_primary"
+      "category": "raw_primary",
+      "finite": true
     },
     {
       "key": "agua",

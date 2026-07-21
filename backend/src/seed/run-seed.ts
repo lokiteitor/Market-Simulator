@@ -37,6 +37,7 @@ import { inventoryRepository } from "../repositories/inventory-repository";
 import { buildAgentPlan } from "./agent-plan";
 import { parseCitiesConfig } from "./cities";
 import { buildCityPlan } from "./city-plan";
+import { buildDepositPlan } from "./deposit-plan";
 import { buildGoldPlan, type GoldPlan } from "./gold-plan";
 import { parseSeedConfig, seedConfigHash } from "./seed-config";
 
@@ -54,6 +55,8 @@ interface SeedSummary {
   totalCapitalCents: number;
   byRole: Record<AgentRoleKey, { agents: number; capitalCents: number }>;
   cities: { count: number; capitalCents: number };
+  /** Yacimientos finitos sembrados (sin contar el del oro). */
+  deposits: Array<{ productKey: string; executions: number; qtyInitialCent: number }>;
   gold: GoldPlan;
 }
 
@@ -81,6 +84,15 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
   if (!cfg.products.some((p) => p.key === config.gold.productKey)) {
     throw new Error(
       `seed: GOLD_PRODUCT_KEY "${config.gold.productKey}" no existe en el catálogo del seed-config`,
+    );
+  }
+  // El oro tiene su propio yacimiento (sorteado en centésimas por gold-plan,
+  // porque la paridad se deriva de él). Marcarlo `finite` sembraría dos veces
+  // el mismo product_id y reventaría contra la PK de resource_deposit.
+  if (cfg.products.some((p) => p.key === config.gold.productKey && p.finite === true)) {
+    throw new Error(
+      `seed: el producto-respaldo "${config.gold.productKey}" no debe marcarse finite; ` +
+        "su yacimiento lo dimensiona el bloque GOLD_DEPOSIT_*",
     );
   }
 
@@ -172,6 +184,21 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
         })),
       );
       recipeInputCount += r.inputs.length;
+    }
+
+    // --- Yacimientos finitos (ADR-023) ---------------------------------------
+    // Los recursos no renovables marcados `finite` en el catálogo. El oro va
+    // aparte, más abajo, junto al resto del patrón oro.
+    const depositPlan = buildDepositPlan(cfg, {
+      masterSeed: config.masterSeed,
+      minExecutions: config.deposits.minExecutions,
+      maxExecutions: config.deposits.maxExecutions,
+    });
+    for (const entry of depositPlan) {
+      await depositRepository.insertDeposit(tx, {
+        productId: mustGet(productIdByKey, entry.productKey, "producto"),
+        qtyInitialCent: entry.qtyInitialCent,
+      });
     }
 
     // Los agentes NO reciben instalaciones al sembrarse (ADR-021): nacen sin
@@ -319,6 +346,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       totalCapitalCents,
       byRole,
       cities: { count: citiesSeeded, capitalCents: totalCityCapitalCents },
+      deposits: depositPlan,
       gold,
     };
     return summary;
@@ -344,6 +372,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       byRole: result.byRole,
       totalCapitalCents: result.totalCapitalCents,
       cities: result.cities,
+      deposits: result.deposits,
       gold: result.gold,
     },
     "Seed completado",

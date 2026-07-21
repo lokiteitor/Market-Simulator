@@ -15,6 +15,8 @@ export interface SeedProduct {
   name: string;
   unit: string;
   category: string;
+  /** Recurso no renovable con yacimiento finito (ADR-023). */
+  finite?: boolean;
 }
 
 export interface SeedRecipeInput {

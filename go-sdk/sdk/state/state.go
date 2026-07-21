@@ -32,6 +32,10 @@ type StateManager struct {
 	productsByKey     map[string]models.Product
 	recipes           map[string]models.Recipe
 	publicAgents      map[string]models.AgentPublic
+	// Yacimientos finitos (ADR-023), keyed por product_id. NO es catálogo
+	// estático: se refresca periódicamente y por la notificación
+	// deposit_depleted. Un producto sin entrada aquí es inagotable.
+	deposits map[string]models.Deposit
 
 	cachedInventory        []models.InventoryPosition
 	cachedActiveOrders     []models.Order
@@ -61,6 +65,7 @@ func NewStateManager() *StateManager {
 		productsByKey:         make(map[string]models.Product),
 		recipes:               make(map[string]models.Recipe),
 		publicAgents:          make(map[string]models.AgentPublic),
+		deposits:              make(map[string]models.Deposit),
 		inventoryDirty:        true,
 		activeOrdersDirty:     true,
 		runningProcessesDirty: true,
@@ -416,6 +421,17 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			agent.BankruptAt = &e.BankruptAt
 			s.publicAgents[e.AgentID] = agent
 		}
+
+	case events.DepositDepleted:
+		// Broadcast (ADR-023): el yacimiento se agotó para todo el mercado, no
+		// solo para quien lo vació. Aplicarlo ya evita que la estrategia siga
+		// valorando esa receta hasta el próximo refresco periódico.
+		d, ok := s.deposits[e.ProductID]
+		if ok {
+			d.QtyRemainingCent = 0
+			d.YieldBps = 0
+			s.deposits[e.ProductID] = d
+		}
 	}
 }
 
@@ -610,6 +626,27 @@ func (s *StateManager) SetInstallationTypes(types []models.InstallationType) {
 	for _, t := range types {
 		s.installationTypes[t.InstallationTypeID] = t
 	}
+}
+
+// SetDeposits reemplaza la vista de yacimientos finitos (ADR-023). Se llama al
+// arrancar y en cada refresco: la respuesta del servidor es la verdad completa,
+// así que se sustituye el mapa entero en vez de fusionar.
+func (s *StateManager) SetDeposits(deposits []models.Deposit) {
+	s.Lock()
+	defer s.Unlock()
+	s.deposits = make(map[string]models.Deposit, len(deposits))
+	for _, d := range deposits {
+		s.deposits[d.ProductID] = d
+	}
+}
+
+// Deposit devuelve el yacimiento de un producto; ok=false si el recurso es
+// inagotable (la inmensa mayoría del catálogo).
+func (s *StateManager) Deposit(productID string) (models.Deposit, bool) {
+	s.RLock()
+	defer s.RUnlock()
+	d, ok := s.deposits[productID]
+	return d, ok
 }
 
 // installationKeyForRecipeLocked mapea recipe → key de su tipo de instalación.

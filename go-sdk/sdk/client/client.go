@@ -41,6 +41,12 @@ const CodeInsufficientCapital = "insufficient_capital"
 // inventario local venía adelantado respecto al servidor (drift optimista).
 const CodeInsufficientInventory = "insufficient_inventory"
 
+// CodeResourceDepleted es el código de sub-error que el backend devuelve (422)
+// al arrancar una transformación cuyo recurso tiene el yacimiento en 0
+// (ADR-023). Señala que la vista local de yacimientos venía vieja: la receta
+// está muerta para el resto de la corrida, no es un fallo transitorio.
+const CodeResourceDepleted = "resource_depleted"
+
 // HasCode indica si el Problem+JSON trae un sub-error con ese código.
 func (e *APIError) HasCode(code string) bool {
 	for _, err := range e.Problem.Errors {

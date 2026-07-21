@@ -292,6 +292,35 @@ paths:
               schema: { $ref: '#/components/schemas/Recipe' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /catalog/deposits:
+    get:
+      tags: [catalog]
+      summary: Yacimientos finitos de los recursos no renovables
+      description: |
+        Devuelve el yacimiento de cada recurso no renovable (ADR-023). A
+        diferencia del resto de `/catalog/*`, esta respuesta **NO es estática**:
+        `qty_remaining_cent` y `yield_bps` bajan con cada materialización que
+        extrae del yacimiento, así que los clientes deben refrescarla
+        periódicamente en vez de cachearla para toda la corrida.
+
+        `yield_bps` es el rendimiento actual sobre el output nominal de la
+        receta (`max(suelo, restante/inicial)`, 10000 = 100%). Multiplica lo que
+        una ejecución produce de verdad: valorar una receta con
+        `output_qty_cent` a pelo sobreestima la producción y lleva a producir a
+        pérdida. Con 0 la receta ya no produce nada y
+        `POST /transformations` responde 422 `resource_depleted`.
+
+        Un producto sin entrada en esta lista es inagotable.
+      security: []
+      responses:
+        '200':
+          description: Lista de yacimientos (una entrada por recurso finito).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Deposit' }
+
   /catalog/installation-types:
     get:
       tags: [catalog]
@@ -785,7 +814,7 @@ paths:
             `insufficient_capacity`, `insufficient_inventory`,
             `insufficient_capital`, `unknown_recipe`, `agent_bankrupt`,
             `resource_depleted` (el yacimiento del producto de salida está
-            agotado; ver resource_deposit del patrón oro).
+            agotado y la receta ya no produce nada; ver `GET /catalog/deposits`).
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -1236,6 +1265,37 @@ components:
           description: Unidad de medida del producto (ej. `kg`, `L`, `cabezas`).
         category: { $ref: '#/components/schemas/ProductCategory' }
         created_at: { type: string, format: date-time }
+
+    Deposit:
+      type: object
+      description: |
+        Yacimiento finito de un recurso no renovable (ADR-023). Dinámico: el
+        remanente y el rendimiento bajan con cada extracción.
+      required:
+        [product_id, product_key, qty_initial_cent, qty_remaining_cent, yield_bps]
+      properties:
+        product_id: { type: string, format: uuid }
+        product_key:
+          type: string
+          description: |
+            `key` del producto (ej. `carbon`), para no obligar a cruzar con
+            `/catalog/products`.
+        qty_initial_cent:
+          type: integer
+          minimum: 0
+          description: Tamaño sorteado en el seed, en centésimas de unidad.
+        qty_remaining_cent:
+          type: integer
+          minimum: 0
+          description: Lo que queda por extraer, en centésimas de unidad.
+        yield_bps:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: |
+            Rendimiento actual sobre el output nominal de la receta
+            (10000 = 100%, 0 = agotada). Es `max(suelo, restante/inicial)`; el
+            suelo lo fija `DEPOSIT_YIELD_FLOOR_BPS` en el servidor.
 
     RecipeInput:
       type: object
@@ -1978,6 +2038,8 @@ x-websocket-channel:
           - trade_printed        # por suscripción: cada trade de un producto suscrito (payload = Trade)
           - gold_converted       # personal: conversión en la ventanilla del banco (payload = GoldConversion)
           - city_income          # personal (solo rol `city`): ingreso recurrente del flujo circular (payload = { amount_cents })
+          - installation_purchased # personal: compra o mejora de instalación (payload = InstallationStatus + amountChargedCents)
+          - deposit_depleted     # broadcast: un yacimiento llegó a 0 (payload = { product_id, qty_initial_cent, process_id })
       occurred_at: { type: string, format: date-time }
       payload:
         type: object

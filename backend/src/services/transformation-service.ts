@@ -11,6 +11,7 @@
  *     sweep global (FOR UPDATE SKIP LOCKED + LIMIT); abren su PROPIA tx y
  *     publican notificaciones SOLO post-commit.
  */
+import { config } from "../config";
 import { withTransaction, type Tx } from "../db";
 import type {
   InventoryLotRow,
@@ -26,7 +27,7 @@ import {
   type ProcessCompletedPayload,
   type ProcessStartedPayload,
 } from "../lib/event-log";
-import { clampMint } from "../lib/gold";
+import { depositYield } from "../lib/deposits";
 import { unitCostFromTotal } from "../lib/money";
 import {
   intervalToSimSeconds,
@@ -181,6 +182,8 @@ interface MaterializedProcess {
   completedAt: Date;
   payload: ProcessCompletedPayload;
   bankruptcy: BankruptcyNotice | null;
+  /** No null solo en la materialización que dejó el yacimiento en 0 (ADR-023). */
+  depositDepleted: DepositDepletedPayload | null;
 }
 
 /**
@@ -226,6 +229,19 @@ async function publishMaterialized(results: MaterializedProcess[]): Promise<void
       payload: r.payload,
     };
     await safePublish("transformation_completed", () => publishToAgent(r.agentId, n));
+    if (r.depositDepleted !== null) {
+      // Broadcast: el yacimiento es global y la noticia le importa a todo el
+      // mundo (quien lo minaba deja de poder; quien compraba el recurso ve
+      // desaparecer la oferta). Evento raro, exactamente el caso de uso del
+      // canal `broadcast`.
+      await safePublish("deposit_depleted", () =>
+        publishBroadcast({
+          type: "deposit_depleted",
+          occurred_at: r.completedAt.toISOString(),
+          payload: r.depositDepleted,
+        }),
+      );
+    }
     if (r.bankruptcy !== null) {
       await publishBankruptcy(r.bankruptcy);
     }
@@ -257,25 +273,31 @@ async function materializeProcess(
   const totalCostCents = inputsTotalCostCents(consumptions) + proc.wagePaidCents;
   const qtyPlannedCent = qtyTimesExecutions(rec.outputQty, proc.executionsPlanned);
 
-  // Yacimiento finito (patrón oro): si el producto de salida tiene
-  // resource_deposit, la producción se CLAMPEA a lo que queda (min(remaining,
-  // planificado)) y el remanente se decrementa en la MISMA tx. Orden de locks:
-  // proceso (ya bloqueado por el caller) → depósito. Si el clamp deja 0, no se
-  // crea lote (CHECK qty_original > 0): el salario/insumos se pierden, igual
-  // que en una cancelación (política sin reembolsos).
+  // Yacimiento finito (ADR-023): si el producto de salida tiene
+  // resource_deposit, la producción rinde MENOS cuanto más vacío esté el
+  // yacimiento (rendimiento decreciente, lib/deposits.ts) y el remanente se
+  // decrementa por lo realmente extraído, en la MISMA tx. Orden de locks:
+  // proceso (ya bloqueado por el caller) → depósito. El coste unitario del lote
+  // sube solo: el mismo salario e insumos se reparten entre menos unidades. Si
+  // el rendimiento deja 0, no se crea lote (CHECK qty_original > 0): el
+  // salario/insumos se pierden, igual que en una cancelación (política sin
+  // reembolsos).
   let qtyProducedCent = qtyPlannedCent;
   let depositDepleted: DepositDepletedPayload | null = null;
   const deposit = await depositRepository.lockDeposit(tx, rec.outputProductId);
   if (deposit !== undefined) {
-    const { mintedQtyCent, remainingAfterCent } = clampMint(
+    const { producedQtyCent, remainingAfterCent } = depositYield(
+      deposit.qtyInitialCent,
       deposit.qtyRemainingCent,
       qtyPlannedCent,
+      config.deposits.yieldFloorBps,
     );
-    qtyProducedCent = mintedQtyCent;
-    if (mintedQtyCent > 0) {
-      const ok = await depositRepository.decrement(tx, rec.outputProductId, mintedQtyCent);
+    qtyProducedCent = producedQtyCent;
+    if (producedQtyCent > 0) {
+      const ok = await depositRepository.decrement(tx, rec.outputProductId, producedQtyCent);
       if (!ok) {
-        // Inalcanzable: la fila está bloqueada FOR UPDATE y el clamp ya acotó.
+        // Inalcanzable: la fila está bloqueada FOR UPDATE y depositYield ya
+        // acotó lo extraído al remanente.
         throw new Error(
           `materializeProcess: decremento del depósito de ${rec.outputProductId} falló`,
         );
@@ -327,7 +349,7 @@ async function materializeProcess(
     bankruptcy = { agentId: proc.agentId, username: agentRow?.username ?? "" };
   }
 
-  return { agentId: proc.agentId, completedAt, payload, bankruptcy };
+  return { agentId: proc.agentId, completedAt, payload, bankruptcy, depositDepleted };
 }
 
 /** Materialización lazy de los vencidos del agente (FOR UPDATE, sin SKIP). */

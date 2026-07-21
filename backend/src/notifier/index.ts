@@ -36,7 +36,10 @@ export type NotificationType =
   | "city_income"
   // Personal: el agente compró o mejoró una instalación (ADR-021).
   // Payload = objeto InstallationStatus del openapi.
-  | "installation_purchased";
+  | "installation_purchased"
+  // Broadcast: un yacimiento llegó a 0 y su receta ya no puede producir
+  // (ADR-023). Payload = { product_id, qty_initial_cent, process_id }.
+  | "deposit_depleted";
 
 export interface Notification {
   type: NotificationType;

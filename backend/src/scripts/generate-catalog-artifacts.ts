@@ -103,17 +103,23 @@ function tablasCatalogo(): string {
   }
   out.push("");
 
+  const finitos = cfg.products.filter((p) => p.finite === true);
   out.push("## 4. Productos actuales\n");
   out.push(
     "Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; " +
-      `§6). (${cfg.products.length} productos.)\n`,
+      `§6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, ` +
+      `cuyo rendimiento decae al vaciarse). (${cfg.products.length} productos, ` +
+      `${finitos.length} con yacimiento más el oro, que lo recibe del patrón oro.)\n`,
   );
   SECCIONES.forEach((s, i) => {
     out.push(`### 4.${i + 1} ${s.docTitle}\n`);
-    out.push("| key | Nombre | Unidad | Precio (¢) |");
-    out.push("| --- | ------ | ------ | ---------- |");
+    out.push("| key | Nombre | Unidad | Precio (¢) | Yacimiento |");
+    out.push("| --- | ------ | ------ | ---------- | ---------- |");
     for (const p of productosDe(s.category)) {
-      out.push(`| \`${p.key}\` | ${p.name} | ${p.unit} | ${costs.unitPriceCents(p.key)} |`);
+      out.push(
+        `| \`${p.key}\` | ${p.name} | ${p.unit} | ${costs.unitPriceCents(p.key)} | ` +
+          `${p.finite === true ? "✔" : "—"} |`,
+      );
     }
     out.push("");
   });

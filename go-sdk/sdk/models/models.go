@@ -90,6 +90,23 @@ type InstallationType struct {
 	MaxLevel           int    `json:"max_level"`
 }
 
+// Deposit es el yacimiento finito de un recurso no renovable (ADR-023).
+//
+// A diferencia del resto del catálogo NO es estático: YieldBps baja a medida
+// que el yacimiento se vacía y multiplica el output real de la receta, así que
+// una estrategia que valore recetas con OutputQtyCent a pelo sobreestima lo que
+// va a producir. Se refresca periódicamente vía GET /catalog/deposits.
+type Deposit struct {
+	ProductID  string `json:"product_id"`
+	ProductKey string `json:"product_key"`
+	// QtyInitialCent es el tamaño sorteado en el seed; QtyRemainingCent, lo que
+	// queda por extraer.
+	QtyInitialCent   int64 `json:"qty_initial_cent"`
+	QtyRemainingCent int64 `json:"qty_remaining_cent"`
+	// YieldBps: rendimiento sobre el output nominal (10000 = 100%, 0 = agotado).
+	YieldBps int64 `json:"yield_bps"`
+}
+
 type InventoryPosition struct {
 	ProductID        string `json:"product_id"`
 	QtyAvailableCent int64  `json:"qty_available_cent"`

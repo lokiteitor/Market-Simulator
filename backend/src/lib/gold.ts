@@ -99,30 +99,6 @@ export function issuanceCapacityCents(
   return Number(capacity);
 }
 
-/**
- * Clampea la cantidad planificada a producir contra el remanente disponible en el yacimiento.
- * Retorna la cantidad real a minar y el remanente posterior.
- */
-export function clampMint(
-  qtyRemainingCent: number,
-  qtyPlannedCent: number
-): { mintedQtyCent: number; remainingAfterCent: number } {
-  if (!Number.isSafeInteger(qtyRemainingCent) || qtyRemainingCent < 0) {
-    throw new Error(
-      `clampMint: qtyRemainingCent debe ser un entero >= 0; recibido: ${qtyRemainingCent}`,
-    );
-  }
-  if (!Number.isSafeInteger(qtyPlannedCent) || qtyPlannedCent < 0) {
-    throw new Error(
-      `clampMint: qtyPlannedCent debe ser un entero >= 0; recibido: ${qtyPlannedCent}`,
-    );
-  }
-  const remaining = BigInt(qtyRemainingCent);
-  const planned = BigInt(qtyPlannedCent);
-  const minted = remaining < planned ? remaining : planned;
-  const after = remaining - minted;
-  return {
-    mintedQtyCent: Number(minted),
-    remainingAfterCent: Number(after),
-  };
-}
+// El clamp de la producción contra el yacimiento vive en `lib/deposits.ts`
+// (`depositYield`): dejó de ser exclusivo del oro cuando los yacimientos se
+// generalizaron a todos los recursos no renovables (ADR-023).

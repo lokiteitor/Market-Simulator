@@ -418,6 +418,13 @@ func (c *Client) parseWSEvent(msg []byte) (events.Event, error) {
 		}
 		p.PurchasedAt = env.OccurredAt
 		ev = p
+	case "deposit_depleted":
+		var p events.DepositDepleted
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.DepletedAt = env.OccurredAt
+		ev = p
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", env.Type)
 	}

@@ -166,11 +166,32 @@ func (s *ProducerStrategy) outputFair(productID string) (int64, bool) {
 	return fair, has
 }
 
+// effectiveOutputQtyCent es lo que una ejecucion produce DE VERDAD: el output
+// nominal de la receta escalado por el rendimiento de su yacimiento (ADR-023).
+//
+// Para los ~140 productos inagotables devuelve el output tal cual. Para los 15
+// recursos no renovables cae con el vaciado del yacimiento, y usarlo importa:
+// el salario y los insumos se pagan enteros produzca lo que produzca la mina,
+// asi que valorar la receta con el output nominal cuando el yacimiento esta a
+// la mitad hace creer que se gana el doble de lo que se gana. Un bot que ignore
+// esto mina a perdida convencido de que le renta.
+func effectiveOutputQtyCent(ctx *strategy.Context, recipe models.Recipe) int64 {
+	dep, ok := ctx.State.Deposit(recipe.OutputProductID)
+	if !ok {
+		return recipe.OutputQtyCent
+	}
+	return recipe.OutputQtyCent * dep.YieldBps / 10000
+}
+
 // execEconomics valora una ejecucion de la receta a precios fair: coste de
 // insumos, salario e ingreso del output. ok=false si falta el fair de alguna
 // pata (sin valoracion no hay decision). Con `inputs: []` (la raíz del
-// catálogo) inputsCost es 0 y el coste es puro salario.
-func (s *ProducerStrategy) execEconomics(recipe models.Recipe) (inputsCost, wage, revenue int64, ok bool) {
+// catálogo) inputsCost es 0 y el coste es puro salario. El ingreso se calcula
+// sobre el output EFECTIVO, no el nominal (ADR-023).
+func (s *ProducerStrategy) execEconomics(
+	ctx *strategy.Context,
+	recipe models.Recipe,
+) (inputsCost, wage, revenue int64, ok bool) {
 	for _, input := range recipe.Inputs {
 		fairIn, has := s.view.Fair(input.ProductID)
 		if !has {
@@ -183,7 +204,7 @@ func (s *ProducerStrategy) execEconomics(recipe models.Recipe) (inputsCost, wage
 		return 0, 0, 0, false
 	}
 	wage = s.wagePerExecCents(recipe)
-	revenue = notionalCents(recipe.OutputQtyCent, fairOut)
+	revenue = notionalCents(effectiveOutputQtyCent(ctx, recipe), fairOut)
 	return inputsCost, wage, revenue, true
 }
 
@@ -234,7 +255,15 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		if !typeKnown || !owned {
 			continue // solo lo que este bot produce de verdad
 		}
+		// El output sigue siendo "nuestro" aunque el yacimiento se haya agotado:
+		// lo extraido antes del agotamiento hay que poder venderlo (si no, se
+		// queda muerto en el inventario por el filtro de mas abajo).
 		recipeByOutput[recipe.OutputProductID] = recipe
+		if effectiveOutputQtyCent(ctx, recipe) <= 0 {
+			// Pero no reservar insumos para una receta que ya no produce nada:
+			// seria retirar del mercado agua que otros si pueden aprovechar.
+			continue
+		}
 		buffLevel := max(inst.Level, 1)
 		for _, input := range recipe.Inputs {
 			target := input.QtyRequiredCent * int64(buffLevel) * int64(s.p.bufferExecs)
@@ -264,7 +293,15 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			inst.AvailableSlots = 0
 		}
 
-		inputsCost, wage, revenue, priced := s.execEconomics(recipe)
+		// Yacimiento agotado (ADR-023): la receta esta muerta para el resto de
+		// la corrida. Ni producir (el servidor responde 422 resource_depleted)
+		// ni comprar la instalacion para producirla.
+		outputEfectivo := effectiveOutputQtyCent(ctx, recipe)
+		if outputEfectivo <= 0 {
+			continue
+		}
+
+		inputsCost, wage, revenue, priced := s.execEconomics(ctx, recipe)
 		profitable := priced && float64(revenue) >= float64(inputsCost+wage)*(1+s.p.minMargin)
 
 		if !profitable && priced {
@@ -273,7 +310,7 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			// Si no hay asks o el mejor ask es caro, consideramos que la receta es viable para producir.
 			floor := float64(inputsCost+wage) * (1 + s.p.minMargin)
 			topOut := s.view.Top(ctx, recipe.OutputProductID)
-			if topOut == nil || topOut.BestAsk == nil || float64(notionalCents(recipe.OutputQtyCent, topOut.BestAsk.PriceCents)) >= floor {
+			if topOut == nil || topOut.BestAsk == nil || float64(notionalCents(outputEfectivo, topOut.BestAsk.PriceCents)) >= floor {
 				profitable = true
 			}
 		}
@@ -438,9 +475,25 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		if pos.QtyAvailableCent <= 0 {
 			continue
 		}
+		// Suelo de venta: coste por unidad REALMENTE producida (ADR-023). Con el
+		// yacimiento a medias el mismo coste sale de la mitad de kilos, asi que
+		// el suelo sube — que es justo la senal de escasez que debe llegar al
+		// precio de mercado.
 		var costPU int64
-		if inputsCost, wage, _, priced := s.execEconomics(recipe); priced && recipe.OutputQtyCent > 0 {
-			costPU = (inputsCost + wage) * 100 / recipe.OutputQtyCent
+		if inputsCost, wage, _, priced := s.execEconomics(ctx, recipe); priced {
+			base := effectiveOutputQtyCent(ctx, recipe)
+			if base <= 0 {
+				// Yacimiento agotado: el output efectivo es 0 y dividir por el
+				// nominal es lo conservador — lo que queda en inventario costo
+				// MAS, porque se extrajo con rendimiento parcial. Sin esta pata
+				// costPU quedaria en 0 (coste desconocido para sellAtMarket) y
+				// el bot remataria sin suelo justo el bien mas escaso del
+				// mercado: el de un recurso que ya nadie puede volver a extraer.
+				base = recipe.OutputQtyCent
+			}
+			if base > 0 {
+				costPU = (inputsCost + wage) * 100 / base
+			}
 		}
 		acts = append(acts, sellAtMarket(ctx, s.rnd, s.view, pos, costPU, sellParams{
 			minMargin:     s.p.minMargin,

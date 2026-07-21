@@ -47,8 +47,11 @@ type GlobalConfig struct {
 	MaxRecipesPerTick int                 `yaml:"max_recipes_per_tick"`
 	// Backoff (segundos reales) cuando el servidor rechaza una acción con 422
 	// insufficient_capital: el bot duerme y cede API/CPU al resto del enjambre.
-	InsufficientCapitalBackoffSeconds int                    `yaml:"insufficient_capital_backoff_seconds"`
-	MaxActive                         int                    `yaml:"max_active"`
+	InsufficientCapitalBackoffSeconds int `yaml:"insufficient_capital_backoff_seconds"`
+	// Cada cuánto se releen los yacimientos finitos (ADR-023). 0 = default del
+	// SDK (300 s).
+	DepositRefreshSeconds int                    `yaml:"deposit_refresh_seconds"`
+	MaxActive             int                    `yaml:"max_active"`
 	ActiveDuration                    string                 `yaml:"active_duration"`
 	Scale                             int                    `yaml:"scale"`
 	Prices                            map[string]interface{} `yaml:"prices"`
@@ -322,6 +325,7 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 			AutoRegister:                      botCfg.AutoRegister,
 			TickIntervalSeconds:               botCfg.TickIntervalSeconds,
 			InsufficientCapitalBackoffSeconds: globalCfg.InsufficientCapitalBackoffSeconds,
+			DepositRefreshSeconds:             globalCfg.DepositRefreshSeconds,
 		},
 		Logging: globalCfg.Logging,
 		Retry:   globalCfg.Retry,

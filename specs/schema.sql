@@ -546,15 +546,20 @@ CREATE TABLE market_snapshot_product (
 
 
 -- =============================================================================
--- 9. PATRÓN ORO: YACIMIENTO FINITO Y BANCO CENTRAL
+-- 9. YACIMIENTOS FINITOS Y PATRÓN ORO (BANCO CENTRAL)
 -- =============================================================================
 --
--- resource_deposit: stock global FINITO de un recurso primario. La receta que
--- produce ese producto agota el depósito al materializarse (clamp: se produce
--- min(remaining, producido); al llegar a 0 el producto deja de ser minable).
--- El tamaño inicial se sortea en el seed con rngFor(MASTER_SEED, ...).
--- Genérica por product_id para admitir otros recursos finitos en el futuro;
--- en v1 solo se siembra para el oro (GOLD_PRODUCT_KEY).
+-- resource_deposit: stock global FINITO de un recurso no renovable (ADR-023).
+-- La receta que produce ese producto agota el depósito al materializarse, con
+-- RENDIMIENTO DECRECIENTE: produce floor(planificado × max(suelo,
+-- remaining/inicial)) acotado al remanente, así que el mismo salario e insumos
+-- rinden menos cuanto más vacío está el yacimiento y el coste unitario del lote
+-- sube solo. Al llegar a 0 se emite `deposit_depleted` y la receta deja de
+-- producir (422 resource_depleted al arrancarla).
+-- Se siembra para el oro (tamaño en GOLD_DEPOSIT_*, porque la paridad se deriva
+-- de él) y para los productos marcados `finite` en infra/seed-config.json
+-- (tamaño en DEPOSIT_MIN/MAX_EXECUTIONS × el output de su receta). Ambos
+-- sorteados con rngFor(MASTER_SEED, ...).
 CREATE TABLE resource_deposit (
     product_id          UUID            PRIMARY KEY REFERENCES product(product_id),
     -- >= 0: con GOLD_BANK_INITIAL_RESERVE_BPS=10000 todo el sorteo va al banco

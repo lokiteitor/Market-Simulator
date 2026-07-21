@@ -8,6 +8,10 @@ import { withTransaction } from "../db";
 import type { ProductRow, RecipeInputRow, RecipeRow } from "../db/schema";
 import { domainError } from "../lib/errors";
 import { catalogRepository } from "../repositories/catalog-repository";
+import {
+  depositRepository,
+  type DepositWithProduct,
+} from "../repositories/deposit-repository";
 
 /** Receta con sus insumos ensamblados (openapi `Recipe.inputs`). */
 export interface RecipeWithInputs extends RecipeRow {
@@ -62,6 +66,14 @@ export const catalogService = {
         inputs: byRecipe.get(r.recipeId) ?? [],
       }));
     });
+  },
+
+  /**
+   * Yacimientos finitos (ADR-023). ÚNICA lectura dinámica de este service: el
+   * remanente baja con cada materialización que extrae del yacimiento.
+   */
+  async listDeposits(): Promise<DepositWithProduct[]> {
+    return withTransaction((tx) => depositRepository.listAll(tx));
   },
 
   /** @throws DomainError unknown_recipe (404) */

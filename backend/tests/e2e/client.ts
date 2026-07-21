@@ -131,6 +131,15 @@ export interface Product {
   created_at: string;
 }
 
+/** Yacimiento finito de un recurso no renovable (openapi Deposit, ADR-023). */
+export interface Deposit {
+  product_id: string;
+  product_key: string;
+  qty_initial_cent: number;
+  qty_remaining_cent: number;
+  yield_bps: number;
+}
+
 export interface RecipeInput {
   product_id: string;
   qty_required_cent: number;

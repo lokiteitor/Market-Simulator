@@ -1,14 +1,22 @@
 /**
- * Repositorio de resource_deposit (yacimientos finitos del patrón oro).
+ * Repositorio de resource_deposit (yacimientos finitos de los recursos no
+ * renovables, ADR-023).
  *
  * Patrón lock-then-update: la materialización de producción bloquea la fila
- * del depósito (FOR UPDATE) DESPUÉS de haber bloqueado el proceso, calcula el
- * clamp en aplicación (lib/gold.clampMint) y decrementa. Orden de locks
- * consistente entre la materialización lazy y el sweeper ⇒ sin ciclos.
+ * del depósito (FOR UPDATE) DESPUÉS de haber bloqueado el proceso, calcula lo
+ * realmente extraído en aplicación (lib/deposits.depositYield, rendimiento
+ * decreciente) y decrementa. Orden de locks consistente entre la
+ * materialización lazy y el sweeper ⇒ sin ciclos.
  */
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import type { Tx } from "../db";
-import { resourceDeposit, type ResourceDepositRow } from "../db/schema";
+import { product, resourceDeposit, type ResourceDepositRow } from "../db/schema";
+
+/** Fila de yacimiento con la `key` de su producto (lecturas públicas y métricas). */
+export interface DepositWithProduct extends ResourceDepositRow {
+  productKey: string;
+  productName: string;
+}
 
 export const depositRepository = {
   /** Alta del yacimiento (solo seed): arranca con remanente = inicial. */
@@ -53,6 +61,26 @@ export const depositRepository = {
       )
       .returning({ productId: resourceDeposit.productId });
     return rows.length > 0;
+  },
+
+  /**
+   * Todos los yacimientos con la key/nombre de su producto, sin lock: lectura
+   * pública (GET /catalog/deposits) y gauges de negocio. Son ≤ 20 filas, así que
+   * no se pagina; el orden por key la hace estable entre llamadas.
+   */
+  async listAll(tx: Tx): Promise<DepositWithProduct[]> {
+    return tx
+      .select({
+        productId: resourceDeposit.productId,
+        qtyInitialCent: resourceDeposit.qtyInitialCent,
+        qtyRemainingCent: resourceDeposit.qtyRemainingCent,
+        createdAt: resourceDeposit.createdAt,
+        productKey: product.key,
+        productName: product.name,
+      })
+      .from(resourceDeposit)
+      .innerJoin(product, eq(product.productId, resourceDeposit.productId))
+      .orderBy(asc(product.key));
   },
 
   /** Remanente sin lock (fail-fast de startTransformation), o undefined si no hay depósito. */

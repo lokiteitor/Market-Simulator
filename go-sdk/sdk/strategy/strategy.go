@@ -23,6 +23,10 @@ type ReadOnlyState interface {
 	ProductByKey(key string) (models.Product, bool)
 	CatalogRecipes() []models.Recipe
 	Recipe(recipeID string) (models.Recipe, bool)
+	// Deposit: yacimiento finito del producto (ADR-023), ok=false si el recurso
+	// es inagotable. YieldBps multiplica el output REAL de la receta, así que
+	// una estrategia que valore producción debe aplicarlo a OutputQtyCent.
+	Deposit(productID string) (models.Deposit, bool)
 	// Installations: instalaciones compradas por el agente (ADR-021), keyed por
 	// tipo. Installation resuelve una por su key de tipo. InstallationTypeByID
 	// resuelve un tipo del catálogo por el UUID que trae cada receta.

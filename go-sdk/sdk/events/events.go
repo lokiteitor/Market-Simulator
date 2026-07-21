@@ -121,6 +121,19 @@ type InstallationPurchased struct {
 
 func (e InstallationPurchased) Occurred() time.Time { return e.PurchasedAt }
 
+// DepositDepleted: un yacimiento finito llegó a 0 y su receta ya no puede
+// producir (ADR-023). Broadcast: la noticia le importa a todo el mundo, no solo
+// a quien lo agotó — quien minaba ese recurso debe dejar de intentarlo y quien
+// lo compraba ve desaparecer la oferta para siempre.
+type DepositDepleted struct {
+	ProductID      string    `json:"product_id"`
+	QtyInitialCent int64     `json:"qty_initial_cent"`
+	ProcessID      string    `json:"process_id"`
+	DepletedAt     time.Time `json:"-"`
+}
+
+func (e DepositDepleted) Occurred() time.Time { return e.DepletedAt }
+
 type WSConnected struct {
 	ConnectedAt time.Time
 }
