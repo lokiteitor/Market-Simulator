@@ -74,7 +74,7 @@ bun run worker              # worker BullMQ en otra terminal
 | `bun run dev`         | `bun --watch src/server.ts`           | API en modo desarrollo con reload        |
 | `bun run start`       | `bun src/server.ts`                   | API                                      |
 | `bun run worker`      | `bun src/worker.ts`                   | Worker de jobs (BullMQ)                  |
-| `bun run seed`        | `bun src/seed.ts`                     | Seed idempotente (catálogo + agentes)    |
+| `bun run seed`        | `bun src/seed/cli.ts`                     | Seed idempotente (catálogo + agentes)    |
 | `bun run snapshot`    | `bun src/scripts/enqueue-snapshot.ts` | Encola un snapshot de mercado on-demand  |
 | `bun run typecheck`   | `tsc --noEmit`                        | Typecheck estricto                       |
 | `bun run test`        | `bun test tests/unit`                 | Tests unitarios puros (sin DB)           |

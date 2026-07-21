@@ -6,7 +6,7 @@
     "dev": "bun --watch src/server.ts",
     "start": "bun src/server.ts",
     "worker": "bun src/worker.ts",
-    "seed": "bun src/seed.ts",
+    "seed": "bun src/seed/cli.ts",
     "seed:admin": "bun src/seed-admin.ts",
     "snapshot": "bun src/scripts/enqueue-snapshot.ts",
     "backfill:product-keys": "bun src/scripts/backfill-product-keys.ts",

@@ -94,7 +94,7 @@ Desglose por dominio:
 
 - **DDL canónico**: `specs/schema.sql`. El schema Drizzle (`backend/src/db/schema.ts`) es su espejo ejecutable; ambos se modifican en el mismo commit.
 - **Migraciones**: **no se usan migraciones incrementales.** `schema.sql` manda: cualquier cambio de esquema se aplica recreando la base desde cero (`clean-docker` + re-seed). Es viable porque cada corrida es efímera y se arranca desde cero.
-- **Seeds**: `backend/src/seed.ts` con el catálogo de `infra/seed-config.json` (productos, recetas, capacidades por rol) y la semilla maestra (`MASTER_SEED`). El seed también crea el banco central, sortea el yacimiento de oro y fija la paridad del patrón oro.
+- **Seeds**: `backend/src/seed/` con el catálogo de `infra/seed-config.json` (productos, recetas, capacidades por rol) y la semilla maestra (`MASTER_SEED`). El seed también crea el banco central, sortea el yacimiento de oro y fija la paridad del patrón oro.
 - **Configuración**: archivo `.env` (`infra/.env.docker`) cargado al arrancar el proceso. Incluye semilla maestra, parámetros de fees, factor de tiempo, rangos de capital por rol y parámetros del patrón oro (`BANK_USERNAME`, `GOLD_PRODUCT_KEY`, `GOLD_COVERAGE_RATIO_BPS`, `GOLD_WINDOW_SPREAD_BPS`, `GOLD_DEPOSIT_MIN/MAX_QTY_CENT`, `GOLD_BANK_INITIAL_CAPITAL_CENTS`). La configuración es estática durante la corrida.
 
 ---

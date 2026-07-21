@@ -135,7 +135,7 @@ services:
   seed:
     build: *app-build
     image: mercado-agricola-app:local
-    command: ["bun", "src/seed.ts"]
+    command: ["bun", "src/seed/cli.ts"]
     env_file:
       - .env.docker
     profiles: ["seed"]

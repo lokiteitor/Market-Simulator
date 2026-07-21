@@ -40,7 +40,7 @@ con él sin romper el `bun run seed`.
 ## 2. Modelo de datos objetivo (contrato del catálogo)
 
 El esquema real vive en `specs/schema.sql` (espejo en
-`backend/src/db/schema.ts`). El seed se valida con Zod en `backend/src/seed.ts`.
+`backend/src/db/schema.ts`). El seed se valida con Zod en `backend/src/seed/seed-config.ts`.
 Estas son las **tres tablas** del catálogo y sus reglas.
 
 ### 2.1 `product` — un ítem del catálogo
@@ -657,7 +657,7 @@ depender (directa o indirectamente) de **≥3 cadenas distintas** (regla heredad
 
 ## 8. Ejemplos completos en formato `seed-config.json`
 
-Fragmentos listos para pegar (respetan `backend/src/seed.ts`).
+Fragmentos listos para pegar (respetan `backend/src/seed/seed-config.ts`).
 
 **Cadena del acero (recurso → básico → industrial → componente):**
 
@@ -779,7 +779,7 @@ Y su producto correspondiente en `products`:
 10. Idealmente, cada receta nueva se referencia en `roles.*.capacities` del rol
     adecuado (extracción → `primary_producer`; con insumos → `transformer`).
 11. Tras editar, `cd backend && bun run seed` sobre una DB vacía debe pasar la
-    validación Zod e integridad referencial de `backend/src/seed.ts`.
+    validación Zod e integridad referencial de `backend/src/seed/seed-config.ts`.
 
 ---
 
@@ -799,4 +799,4 @@ Y los `final_consumption` de alimentación derivados de subprocesos:
 
 *Fin del documento. Este catálogo es la referencia canónica para ampliar
 `infra/seed-config.json`. Ante conflicto con el esquema, mandan `specs/schema.sql`
-y la validación de `backend/src/seed.ts`.*
+y la validación de `backend/src/seed/seed-config.ts`.*

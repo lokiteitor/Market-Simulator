@@ -3,7 +3,7 @@
 > **Estado:** documento vivo, refleja el código a 2026-07-13 (commits `564aba90` "Se implemento el patron oro" y `c9327e56` "Capital para 10000 agentes").
 > Implementación: `backend/src/lib/gold.ts` (aritmética pura), `backend/src/services/bank-service.ts`
 > (ventanilla), `backend/src/services/agent-service.ts` (emisión en registros),
-> `backend/src/seed.ts` (`buildGoldPlan`), tablas en `documentacion_base_datos.md` §15–17.
+> `backend/src/seed/gold-plan.ts` (`buildGoldPlan`), tablas en `documentacion_base_datos.md` §15–17.
 > Vista económica conceptual: `diseno_mercado_agricola.md` §18. Uso por los bots: `funcionamiento_bots.md` §6.
 
 ---
