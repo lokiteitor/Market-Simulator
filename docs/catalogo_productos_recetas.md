@@ -330,72 +330,72 @@ recetas sin insumos (—) son las del agua, la raíz del catálogo.
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `cultivo_trigo` | Cultivo de trigo | `trigo` | 50000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_maiz` | Cultivo de maíz | `maiz` | 60000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_tomate` | Cultivo de tomate | `tomate` | 30000 | 5400 | 1 | `agua`×110000, `semillas`×1500, `fertilizantes`×1100 |
-| `cultivo_soya` | Cultivo de soya | `soya` | 50000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_algodon` | Cultivo de algodón | `algodon` | 40000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_cana` | Cultivo de caña de azúcar | `cana_azucar` | 60000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_cafe` | Cultivo de café | `cafe` | 20000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cultivo_cacao` | Cultivo de cacao | `cacao` | 20000 | 7200 | 1 | `agua`×150000, `semillas`×2000, `fertilizantes`×1500 |
-| `cosecha_frutas` | Cosecha de frutas | `frutas` | 40000 | 5400 | 1 | `agua`×110000, `semillas`×1500, `fertilizantes`×1100 |
-| `cosecha_verduras` | Cosecha de verduras | `verduras` | 40000 | 5400 | 1 | `agua`×110000, `semillas`×1500, `fertilizantes`×1100 |
-| `vivero_semillas` | Vivero de semillas | `semillas` | 5000 | 900 | 1 | `agua`×40000 |
+| `cultivo_trigo` | Cultivo de trigo | `trigo` | 50000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_maiz` | Cultivo de maíz | `maiz` | 60000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_tomate` | Cultivo de tomate | `tomate` | 30000 | 5400 | 1 | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_soya` | Cultivo de soya | `soya` | 50000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_algodon` | Cultivo de algodón | `algodon` | 40000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_cana` | Cultivo de caña de azúcar | `cana_azucar` | 60000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_cafe` | Cultivo de café | `cafe` | 20000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cultivo_cacao` | Cultivo de cacao | `cacao` | 20000 | 7200 | 1 | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
+| `cosecha_frutas` | Cosecha de frutas | `frutas` | 40000 | 5400 | 1 | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cosecha_verduras` | Cosecha de verduras | `verduras` | 40000 | 5400 | 1 | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `vivero_semillas` | Vivero de semillas | `semillas` | 5000 | 900 | 1 | `agua`×4000 |
 
 ### 5.2 `granja` — Granja ganadera
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `ordena` | Ordeña de vacas | `leche` | 20000 | 3600 | 2 | `agua`×120000, `piensos`×4000 |
-| `esquila` | Esquila de lana | `lana` | 10000 | 3600 | 1 | `agua`×60000, `piensos`×2000 |
-| `cria_bovino` | Cría de ganado bovino | `ganado_bovino` | 1000 | 7200 | 2 | `agua`×240000, `piensos`×8000 |
-| `cria_cerdos` | Cría de cerdos | `cerdos` | 2000 | 7200 | 2 | `agua`×240000, `piensos`×8000 |
-| `cria_pollos` | Cría de pollos | `pollos` | 5000 | 3600 | 1 | `agua`×60000, `piensos`×2000 |
+| `ordena` | Ordeña de vacas | `leche` | 20000 | 3600 | 2 | `agua`×12000, `piensos`×4000 |
+| `esquila` | Esquila de lana | `lana` | 10000 | 3600 | 1 | `agua`×6000, `piensos`×2000 |
+| `cria_bovino` | Cría de ganado bovino | `ganado_bovino` | 1000 | 7200 | 2 | `agua`×24000, `piensos`×8000 |
+| `cria_cerdos` | Cría de cerdos | `cerdos` | 2000 | 7200 | 2 | `agua`×24000, `piensos`×8000 |
+| `cria_pollos` | Cría de pollos | `pollos` | 5000 | 3600 | 1 | `agua`×6000, `piensos`×2000 |
 
 ### 5.3 `mina` — Mina
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `mineria_hierro` | Minería de hierro | `hierro` | 50000 | 7200 | 1 | `agua`×300000 |
-| `mineria_carbon` | Minería de carbón | `carbon` | 50000 | 7200 | 1 | `agua`×300000 |
-| `mineria_cobre` | Minería de cobre | `mineral_cobre` | 50000 | 7200 | 1 | `agua`×300000 |
-| `mineria_bauxita` | Minería de bauxita | `bauxita` | 50000 | 7200 | 1 | `agua`×300000 |
-| `mineria_litio` | Minería de litio | `litio` | 10000 | 7200 | 2 | `agua`×600000 |
-| `mineria_niquel` | Minería de níquel | `niquel` | 30000 | 7200 | 1 | `agua`×300000 |
-| `mineria_oro` | Minería de oro | `oro` | 2000 | 7200 | 2 | `agua`×200000 |
-| `mineria_plata` | Minería de plata | `plata` | 3000 | 7200 | 2 | `agua`×600000 |
-| `mineria_uranio` | Minería de uranio | `uranio` | 2000 | 7200 | 2 | `agua`×600000 |
-| `mineria_fosfato` | Minería de fosfato | `fosfato` | 40000 | 7200 | 1 | `agua`×300000 |
+| `mineria_hierro` | Minería de hierro | `hierro` | 50000 | 7200 | 1 | `agua`×30000 |
+| `mineria_carbon` | Minería de carbón | `carbon` | 50000 | 7200 | 1 | `agua`×30000 |
+| `mineria_cobre` | Minería de cobre | `mineral_cobre` | 50000 | 7200 | 1 | `agua`×30000 |
+| `mineria_bauxita` | Minería de bauxita | `bauxita` | 50000 | 7200 | 1 | `agua`×30000 |
+| `mineria_litio` | Minería de litio | `litio` | 10000 | 7200 | 2 | `agua`×60000 |
+| `mineria_niquel` | Minería de níquel | `niquel` | 30000 | 7200 | 1 | `agua`×30000 |
+| `mineria_oro` | Minería de oro | `oro` | 2000 | 7200 | 2 | `agua`×20000 |
+| `mineria_plata` | Minería de plata | `plata` | 3000 | 7200 | 2 | `agua`×60000 |
+| `mineria_uranio` | Minería de uranio | `uranio` | 2000 | 7200 | 2 | `agua`×60000 |
+| `mineria_fosfato` | Minería de fosfato | `fosfato` | 40000 | 7200 | 1 | `agua`×30000 |
 
 ### 5.4 `cantera` — Cantera
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `cantera_caliza` | Cantera de caliza | `caliza` | 50000 | 3600 | 1 | `agua`×150000 |
-| `cantera_piedra` | Cantera de piedra | `piedra` | 50000 | 3600 | 1 | `agua`×150000 |
-| `extraccion_arcilla` | Extracción de arcilla | `arcilla` | 50000 | 3600 | 1 | `agua`×150000 |
-| `extraccion_arena` | Extracción de arena | `arena` | 50000 | 3600 | 1 | `agua`×150000 |
-| `extraccion_sal` | Extracción de sal | `sal` | 40000 | 3600 | 1 | `agua`×150000 |
+| `cantera_caliza` | Cantera de caliza | `caliza` | 50000 | 3600 | 1 | `agua`×15000 |
+| `cantera_piedra` | Cantera de piedra | `piedra` | 50000 | 3600 | 1 | `agua`×15000 |
+| `extraccion_arcilla` | Extracción de arcilla | `arcilla` | 50000 | 3600 | 1 | `agua`×15000 |
+| `extraccion_arena` | Extracción de arena | `arena` | 50000 | 3600 | 1 | `agua`×15000 |
+| `extraccion_sal` | Extracción de sal | `sal` | 40000 | 3600 | 1 | `agua`×15000 |
 
 ### 5.5 `pozo` — Pozo de extracción
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `pozo_petroleo` | Pozo petrolero | `petroleo` | 50000 | 7200 | 2 | `agua`×600000 |
-| `pozo_gas` | Pozo de gas | `gas_natural` | 40000 | 7200 | 2 | `agua`×600000 |
+| `pozo_petroleo` | Pozo petrolero | `petroleo` | 50000 | 7200 | 2 | `agua`×60000 |
+| `pozo_gas` | Pozo de gas | `gas_natural` | 40000 | 7200 | 2 | `agua`×60000 |
 
 ### 5.6 `bosque` — Bosque maderero
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `tala` | Tala de árboles | `troncos` | 40000 | 7200 | 1 | `agua`×250000, `semillas`×1500 |
+| `tala` | Tala de árboles | `troncos` | 40000 | 7200 | 1 | `agua`×25000, `semillas`×1500 |
 
 ### 5.7 `pozo_agua` — Pozo de agua
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | ------- |
-| `pozo_agua_profundo` | Pozo de agua profundo | `agua` | 360000 | 1800 | 2 | — |
-| `pozo_somero` | Pozo somero | `agua` | 12000 | 60 | 2 | — |
+| `pozo_agua_profundo` | Pozo de agua profundo | `agua` | 36000 | 1800 | 2 | — |
+| `pozo_somero` | Pozo somero | `agua` | 1200 | 60 | 2 | — |
 
 ### 5.8 `agroindustria` — Agroindustria alimentaria
 
@@ -415,7 +415,7 @@ recetas sin insumos (—) son las del agua, la raíz del catálogo.
 | `prensado_aceite` | Prensado de aceite vegetal | `aceite_vegetal` | 15000 | 3600 | 2 | `soya`×40000 |
 | `procesado_carne` | Procesado de carne | `carne_procesada` | 25000 | 3600 | 3 | `ganado_bovino`×500 |
 | `produccion_piensos` | Producción de piensos | `piensos` | 35000 | 3600 | 2 | `maiz`×20000, `soya`×20000 |
-| `embotellado_bebidas` | Embotellado de bebidas | `bebidas` | 35000 | 3600 | 2 | `agua`×30000, `azucar`×10000 |
+| `embotellado_bebidas` | Embotellado de bebidas | `bebidas` | 35000 | 3600 | 2 | `agua`×3000, `azucar`×10000 |
 | `enlatado_conservas` | Enlatado de conservas | `conservas` | 35000 | 3600 | 2 | `frutas`×20000, `verduras`×20000 |
 | `hilado_fibra` | Hilado de fibra sintética | `fibra_sintetica` | 16000 | 3600 | 2 | `plastico`×20000 |
 | `elab_textiles` | Elaboración de textiles | `textiles` | 15000 | 5400 | 2 | `algodon`×20000 |
@@ -446,7 +446,7 @@ recetas sin insumos (—) son las del agua, la raíz del catálogo.
 | `produccion_cristal_tecnico` | Producción de cristal técnico | `cristal_tecnico` | 15000 | 3600 | 3 | `vidrio`×20000 |
 | `coccion_ladrillos` | Cocción de ladrillos | `ladrillos` | 50000 | 3600 | 2 | `arcilla`×30000 |
 | `produccion_cemento` | Producción de cemento | `cemento` | 35000 | 3600 | 2 | `caliza`×40000 |
-| `mezcla_hormigon` | Mezcla de hormigón | `hormigon` | 40000 | 1800 | 2 | `cemento`×15000, `arena`×20000, `agua`×10000 |
+| `mezcla_hormigon` | Mezcla de hormigón | `hormigon` | 40000 | 1800 | 2 | `cemento`×15000, `arena`×20000, `agua`×1000 |
 | `produccion_asfalto` | Producción de asfalto | `asfalto` | 40000 | 3600 | 2 | `petroleo`×20000, `piedra`×30000 |
 
 ### 5.11 `refineria` — Refinería petroquímica
@@ -583,11 +583,14 @@ Rangos observados en el catálogo actual; mantenerlos al añadir recetas.
   ejecución (insumos + salario). Son proporciones de juego, no realistas: con
   ratios reales (1.500 L de agua por kg de trigo) el agua sería el 90% de la
   economía. La banda la verifica `catalog-graph.test.ts`.
-- **Excepción del oro**: `mineria_oro` va deliberadamente al ~12% para que su
-  coste unitario (820 ¢/kg) quede por debajo del `window_bid` del banco central
-  (~975 ¢/kg en el peor sorteo del yacimiento). Si lo supera, minar deja de ser
+- **Excepción del oro**: `mineria_oro` va deliberadamente al ~12% (820 ¢/kg en
+  vez de los ~1.030 que saldrían con la cuota normal). Su coste unitario tiene
+  que quedar por debajo del `window_bid` del banco central o minar deja de ser
   rentable, **se para la acuñación** y los registros dinámicos empiezan a fallar
-  con `insufficient_gold_backing`. Ver `infra/.env.docker`.
+  con `insufficient_gold_backing`. Con el `.env` actual hay margen de sobra
+  (window_bid ~190.000-353.000 ¢/kg, dominado por
+  `GOLD_BANK_INITIAL_CAPITAL_CENTS`), pero es la restricción a revisar si se
+  toca cualquiera de los dos lados. Ver `infra/.env.docker`.
 - **Coherencia económica**: el coste acumulado (insumos + salario) debe crecer a
   lo largo de la cadena; un producto final depende (directa o indirectamente) de
   ≥3 cadenas distintas.

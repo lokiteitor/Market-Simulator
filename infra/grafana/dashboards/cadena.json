@@ -416,7 +416,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Mejor bid y mejor ask. El precio base derivado del coste es agua=1, semillas=26, fertilizantes=65, piensos=42 céntimos; una desviación sostenida hacia arriba es escasez y hacia abajo, sobreproducción.",
+      "description": "Mejor bid y mejor ask. El precio base derivado del coste es agua=10, semillas=26, fertilizantes=65, piensos=42 céntimos; una desviación sostenida hacia arriba es escasez y hacia abajo, sobreproducción.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -522,7 +522,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Procesos concurrentes que el mercado entero puede correr de cada tipo (ADR-021). `pozo_agua` debería rondar el 10-15% del total: un pozo profundo rinde 600 L/min y una mina consume ~125 L/min, un cultivo ~62 L/min.",
+      "description": "Procesos concurrentes que el mercado entero puede correr de cada tipo (ADR-021). `pozo_agua` debería rondar el 10-15% del total: un pozo profundo rinde 60 L/min y una mina consume ~12 L/min, un cultivo ~6 L/min.",
       "fieldConfig": {
         "defaults": {
           "color": {
