@@ -55,6 +55,7 @@ type producerParams struct {
 	minMargin     float64 // margen minimo sobre coste: gate de produccion y suelo de venta
 	targetMargin  float64 // margen objetivo cuando no hay ask que mejorar
 	crossProb     float64 // probabilidad de cruzar el ask por insumos (si el margen aguanta)
+	bootstrapCap  float64 // tope sobre el fair que se paga por un insumo con stock CERO
 	bufferExecs   int     // ejecuciones de buffer de insumos por instalacion
 	restingDisc   float64 // descuento del bid de descanso vs fair del insumo
 	undercut      float64 // rebaja relativa sobre el mejor ask
@@ -108,6 +109,7 @@ func (s *ProducerStrategy) Initialize(ctx *strategy.Context) error {
 		minMargin:     sampleRange(s.rnd, 0.05, 0.2),
 		targetMargin:  sampleRange(s.rnd, 0.2, 0.5),
 		crossProb:     sampleRange(s.rnd, 0.3, 0.7),
+		bootstrapCap:  sampleRange(s.rnd, 1.15, 1.4),
 		bufferExecs:   sampleIntRange(s.rnd, 3, 6),
 		restingDisc:   sampleRange(s.rnd, 0.02, 0.06),
 		undercut:      sampleRange(s.rnd, 0.01, 0.03),
@@ -344,8 +346,13 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				buffLevel = 1
 			}
 			targetQty := input.QtyRequiredCent * int64(buffLevel) * int64(s.p.bufferExecs)
+			// Parado: no hay ni para UNA ejecución. Aunque el buffer parezca
+			// cubierto por bids vivos, esos bids pueden llevar horas sin cruzarse;
+			// seguir cotizando (y cruzar el ask, más abajo) es lo único que
+			// desatasca la instalación.
+			parado := inv.QtyAvailableCent < input.QtyRequiredCent
 			currentQty := inv.QtyAvailableCent + activeBuyQty[input.ProductID]
-			if currentQty >= targetQty {
+			if currentQty >= targetQty && !parado {
 				continue
 			}
 			fairIn, has := s.view.Fair(input.ProductID)
@@ -361,6 +368,20 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				askExtra := notionalCents(input.QtyRequiredCent, top.BestAsk.PriceCents) -
 					notionalCents(input.QtyRequiredCent, fairIn)
 				if float64(revenue) >= float64(inputsCost+askExtra+wage)*(1+s.p.minMargin) {
+					price = top.BestAsk.PriceCents
+				}
+			}
+			// Arranque en frío: quien tiene la instalación parada por falta de
+			// insumo no regatea. Los precios base del catálogo son el COSTE
+			// propagado, así que a precios base el gate de arriba nunca deja
+			// cruzar (revenue == coste por construcción) y el libro se queda con
+			// las dos puntas sin tocarse: el vendedor no baja de
+			// coste×(1+minMargin) y el comprador no sube de fair×(1−restingDisc).
+			// Sin esta pata la cadena no arranca nunca desde inventario cero
+			// (ADR-022). El sobreprecio está acotado a bootstrapCap sobre el fair.
+			if parado {
+				if top := s.view.Top(ctx, input.ProductID); top != nil && top.BestAsk != nil &&
+					float64(top.BestAsk.PriceCents) <= float64(fairIn)*s.p.bootstrapCap {
 					price = top.BestAsk.PriceCents
 				}
 			}
