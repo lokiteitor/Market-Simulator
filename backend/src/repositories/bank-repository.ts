@@ -61,6 +61,30 @@ export const bankRepository = {
     cachedBankAgentId = undefined;
   },
 
+  /**
+   * Alta del singleton (solo seed): política monetaria de la corrida, fija
+   * salvo los contadores de emisión/destrucción (que arrancan en 0).
+   */
+  async insertGoldStandard(
+    tx: Tx,
+    p: {
+      bankAgentId: string;
+      productId: string;
+      parityCentsPerUnit: number;
+      windowBidCents: number;
+      windowAskCents: number;
+      coverageRatioBps: number;
+      initialMoneyCents: number;
+    },
+  ): Promise<void> {
+    await tx.insert(goldStandard).values({
+      singleton: true,
+      ...p,
+      moneyIssuedCents: 0,
+      moneyBurnedCents: 0,
+    });
+  },
+
   /** Suma a money_issued_cents (acuñación: sell_gold, emisión de registro). */
   async addMoneyIssued(tx: Tx, cents: number): Promise<void> {
     if (cents <= 0) return;

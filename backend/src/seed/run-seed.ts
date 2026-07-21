@@ -11,36 +11,29 @@
  *     rol (`{role}_{i}`, 1-based) con credenciales (argon2id, la MISMA función
  *     de M1 `src/auth/password.ts`), capital semilla DETERMINISTA
  *     (`rngFor(masterSeed, username)` + `randIntInclusive` en el rango del
- *     rol) y capacidades del rol. TODO en UNA transacción.
+ *     rol) y capacidades del rol. TODO en UNA transacción, vía los
+ *     repositorios (la misma capa que usa el registro dinámico).
  *   - Por agente: `appendEvent(agent_registered)` con payload §9 extendido
  *     con `{seed_config_hash, master_seed}` (§13: la config usada se registra
  *     en el event log, NO en un market_snapshot).
  *   - NO publica notificaciones Redis: durante el seed no hay nadie conectado.
  *   - Resumen final por stdout vía logger (agentes, productos, recetas,
  *     capital total).
- *
- * `duration_sim_seconds` del JSON se convierte a INTERVAL de Postgres como
- * string `'<n> seconds'` al insertar (la columna `recipe.duration` es INTERVAL
- * en tiempo SIMULADO, contrato §4).
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { hashPassword } from "../auth/password";
 import { config, type AgentRoleKey } from "../config";
 import { withTransaction } from "../db";
-import {
-  agent,
-  agentCredentials,
-  goldStandard,
-  installationType,
-  inventoryLot,
-  product,
-  recipe,
-  recipeInput,
-  resourceDeposit,
-} from "../db/schema";
 import { appendEvent, type AgentRegisteredPayload } from "../lib/event-log";
 import { logger } from "../observability/logger";
+import { agentRepository } from "../repositories/agent-repository";
+import { authRepository } from "../repositories/auth-repository";
+import { bankRepository } from "../repositories/bank-repository";
+import { catalogRepository } from "../repositories/catalog-repository";
+import { depositRepository } from "../repositories/deposit-repository";
+import { installationRepository } from "../repositories/installation-repository";
+import { inventoryRepository } from "../repositories/inventory-repository";
 import { buildAgentPlan } from "./agent-plan";
 import { parseCitiesConfig } from "./cities";
 import { buildCityPlan } from "./city-plan";
@@ -124,88 +117,61 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
 
   const result = await withTransaction(async (tx) => {
     // Idempotencia (§13): si ya hay productos, la DB está sembrada.
-    const existing = await tx
-      .select({ productId: product.productId })
-      .from(product)
-      .limit(1);
-    if (existing.length > 0) {
+    if (await catalogRepository.hasAnyProduct(tx)) {
       return null;
     }
 
     // --- Productos -----------------------------------------------------------
     const productIdByKey = new Map<string, string>();
     for (const p of cfg.products) {
-      const rows = await tx
-        .insert(product)
-        .values({ key: p.key, name: p.name, unit: p.unit, category: p.category })
-        .returning({ productId: product.productId });
-      const row = rows[0];
-      if (row === undefined) {
-        throw new Error(`seed: insert de product "${p.key}" no devolvió fila`);
-      }
-      productIdByKey.set(p.key, row.productId);
+      const { productId } = await catalogRepository.insertProduct(tx, {
+        key: p.key,
+        name: p.name,
+        unit: p.unit,
+        category: p.category,
+      });
+      productIdByKey.set(p.key, productId);
     }
 
     // --- Tipos de instalación (ADR-021) --------------------------------------
     const installationTypeIdByKey = new Map<string, string>();
     for (const it of cfg.installation_types) {
-      const rows = await tx
-        .insert(installationType)
-        .values({
-          key: it.key,
-          name: it.name,
-          role: it.role,
-          unitLabel: it.unit_label,
-          basePriceCents: it.base_price_cents,
-          growthBps: it.growth_bps,
-          maxLevel: it.max_level,
-        })
-        .returning({ installationTypeId: installationType.installationTypeId });
-      const row = rows[0];
-      if (row === undefined) {
-        throw new Error(
-          `seed: insert de installation_type "${it.key}" no devolvió fila`,
-        );
-      }
-      installationTypeIdByKey.set(it.key, row.installationTypeId);
+      const { installationTypeId } = await installationRepository.insertType(tx, {
+        key: it.key,
+        name: it.name,
+        role: it.role,
+        unitLabel: it.unit_label,
+        basePriceCents: it.base_price_cents,
+        growthBps: it.growth_bps,
+        maxLevel: it.max_level,
+      });
+      installationTypeIdByKey.set(it.key, installationTypeId);
     }
 
     // --- Recetas + insumos ---------------------------------------------------
-    const recipeIdByKey = new Map<string, string>();
     let recipeInputCount = 0;
     for (const r of cfg.recipes) {
-      const rows = await tx
-        .insert(recipe)
-        .values({
-          outputProductId: mustGet(productIdByKey, r.output, "producto"),
-          outputQty: r.output_qty_cent,
-          // duration_sim_seconds → INTERVAL de Postgres (string '<n> seconds').
-          duration: `${r.duration_sim_seconds} seconds`,
-          wageRateCentsPerSec: r.wage_rate_cents_per_sec,
-          installationTypeId: mustGet(
-            installationTypeIdByKey,
-            r.installation_type,
-            "tipo de instalación",
-          ),
-          name: r.name,
-        })
-        .returning({ recipeId: recipe.recipeId });
-      const row = rows[0];
-      if (row === undefined) {
-        throw new Error(`seed: insert de recipe "${r.key}" no devolvió fila`);
-      }
-      recipeIdByKey.set(r.key, row.recipeId);
-
-      if (r.inputs.length > 0) {
-        await tx.insert(recipeInput).values(
-          r.inputs.map((input) => ({
-            recipeId: row.recipeId,
-            productId: mustGet(productIdByKey, input.product, "producto"),
-            qtyRequired: input.qty_cent,
-          })),
-        );
-        recipeInputCount += r.inputs.length;
-      }
+      const { recipeId } = await catalogRepository.insertRecipe(tx, {
+        name: r.name,
+        outputProductId: mustGet(productIdByKey, r.output, "producto"),
+        outputQtyCent: r.output_qty_cent,
+        durationSimSeconds: r.duration_sim_seconds,
+        wageRateCentsPerSec: r.wage_rate_cents_per_sec,
+        installationTypeId: mustGet(
+          installationTypeIdByKey,
+          r.installation_type,
+          "tipo de instalación",
+        ),
+      });
+      await catalogRepository.insertRecipeInputs(
+        tx,
+        recipeId,
+        r.inputs.map((input) => ({
+          productId: mustGet(productIdByKey, input.product, "producto"),
+          qtyCent: input.qty_cent,
+        })),
+      );
+      recipeInputCount += r.inputs.length;
     }
 
     // Los agentes NO reciben instalaciones al sembrarse (ADR-021): nacen sin
@@ -222,26 +188,12 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     let totalCapitalCents = 0;
 
     for (const entry of planWithHashes) {
-      const agentRows = await tx
-        .insert(agent)
-        .values({
-          username: entry.username,
-          role: entry.role,
-          status: "active",
-          capitalAvailable: entry.capitalCents,
-          capitalReserved: 0,
-          seedCapital: entry.capitalCents,
-        })
-        .returning({ agentId: agent.agentId });
-      const agentRow = agentRows[0];
-      if (agentRow === undefined) {
-        throw new Error(
-          `seed: insert de agent "${entry.username}" no devolvió fila`,
-        );
-      }
-      const agentId = agentRow.agentId;
-
-      await tx.insert(agentCredentials).values({
+      const { agentId } = await agentRepository.insertAgent(tx, {
+        username: entry.username,
+        role: entry.role,
+        seedCapitalCents: entry.capitalCents,
+      });
+      await authRepository.insertCredentials(tx, {
         agentId,
         passwordHash: entry.passwordHash,
       });
@@ -268,28 +220,18 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     let totalCityCapitalCents = 0;
     let citiesSeeded = 0;
     for (const entry of cityPlanWithHashes) {
-      const cityRows = await tx
-        .insert(agent)
-        .values({
-          username: entry.username,
-          role: "city",
-          status: "active",
-          capitalAvailable: entry.capitalCents,
-          capitalReserved: 0,
-          seedCapital: entry.capitalCents,
-          populationWeight: entry.populationWeight,
-        })
-        .returning({ agentId: agent.agentId });
-      const cityRow = cityRows[0];
-      if (cityRow === undefined) {
-        throw new Error(`seed: insert de ciudad "${entry.username}" no devolvió fila`);
-      }
-      await tx.insert(agentCredentials).values({
-        agentId: cityRow.agentId,
+      const { agentId } = await agentRepository.insertAgent(tx, {
+        username: entry.username,
+        role: "city",
+        seedCapitalCents: entry.capitalCents,
+        populationWeight: entry.populationWeight,
+      });
+      await authRepository.insertCredentials(tx, {
+        agentId,
         passwordHash: entry.passwordHash,
       });
       const cityPayload: SeedAgentRegisteredPayload = {
-        agent_id: cityRow.agentId,
+        agent_id: agentId,
         username: entry.username,
         role: "city",
         seed_capital_cents: entry.capitalCents,
@@ -298,7 +240,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       };
       await appendEvent(tx, {
         type: "agent_registered",
-        agentId: cityRow.agentId,
+        agentId,
         payload: cityPayload,
       });
       totalCityCapitalCents += entry.capitalCents;
@@ -318,47 +260,35 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     // Banco central: agente único SIN credenciales (no logueable) y sin
     // capacidades. Su capital inicial da liquidez contable a la emisión de
     // registros antes de acumular fees.
-    const bankRows = await tx
-      .insert(agent)
-      .values({
-        username: config.gold.bankUsername,
-        role: "bank",
-        status: "active",
-        capitalAvailable: config.gold.bankInitialCapitalCents,
-        capitalReserved: 0,
-        seedCapital: config.gold.bankInitialCapitalCents,
-      })
-      .returning({ agentId: agent.agentId });
-    const bankRow = bankRows[0];
-    if (bankRow === undefined) {
-      throw new Error(`seed: insert del banco "${config.gold.bankUsername}" no devolvió fila`);
-    }
-    const bankAgentId = bankRow.agentId;
+    const { agentId: bankAgentId } = await agentRepository.insertAgent(tx, {
+      username: config.gold.bankUsername,
+      role: "bank",
+      seedCapitalCents: config.gold.bankInitialCapitalCents,
+    });
 
     // Reserva inicial de oro del banco como lote normal (origin 'initial',
     // costo 0: no salió de ningún circuito).
     if (gold.bankGoldQtyCent > 0) {
-      await tx.insert(inventoryLot).values({
+      await inventoryRepository.insertLot(tx, {
         agentId: bankAgentId,
         productId: goldProductId,
         origin: "initial",
-        qtyOriginal: gold.bankGoldQtyCent,
-        qtyAvailable: gold.bankGoldQtyCent,
-        qtyReserved: 0,
+        qtyCent: gold.bankGoldQtyCent,
         unitCostCents: 0,
+        sourceTradeId: null,
+        sourceProcessId: null,
+        sourceConversionId: null,
       });
     }
 
     // Yacimiento minable (lo que no se llevó el banco).
-    await tx.insert(resourceDeposit).values({
+    await depositRepository.insertDeposit(tx, {
       productId: goldProductId,
       qtyInitialCent: gold.minableQtyCent,
-      qtyRemainingCent: gold.minableQtyCent,
     });
 
     // Política monetaria de la corrida (singleton; fija salvo contadores).
-    await tx.insert(goldStandard).values({
-      singleton: true,
+    await bankRepository.insertGoldStandard(tx, {
       bankAgentId,
       productId: goldProductId,
       parityCentsPerUnit: gold.parityCentsPerUnit,
@@ -366,8 +296,6 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
       windowAskCents: gold.windowAskCents,
       coverageRatioBps: config.gold.coverageRatioBps,
       initialMoneyCents: gold.initialMoneyCents,
-      moneyIssuedCents: 0,
-      moneyBurnedCents: 0,
     });
 
     const bankPayload: SeedAgentRegisteredPayload = {

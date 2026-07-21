@@ -35,6 +35,30 @@ export const installationRepository = {
     return tx.select().from(installationType).orderBy(asc(installationType.key));
   },
 
+  /** Alta de un tipo (solo seed: el catálogo es inmutable durante la corrida). */
+  async insertType(
+    tx: Tx,
+    p: {
+      key: string;
+      name: string;
+      role: InstallationTypeRow["role"];
+      unitLabel: string;
+      basePriceCents: number;
+      growthBps: number;
+      maxLevel: number;
+    },
+  ): Promise<{ installationTypeId: string }> {
+    const rows = await tx
+      .insert(installationType)
+      .values(p)
+      .returning({ installationTypeId: installationType.installationTypeId });
+    const row = rows[0];
+    if (row === undefined) {
+      throw new Error("installation_type insert returned no rows");
+    }
+    return row;
+  },
+
   /** Un tipo por su `key` estable, o undefined si no existe. */
   async findTypeByKey(
     tx: Tx,

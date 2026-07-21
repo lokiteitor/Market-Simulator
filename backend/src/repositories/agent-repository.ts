@@ -98,7 +98,13 @@ export const agentRepository = {
 
   async insertAgent(
     tx: Tx,
-    p: { username: string; role: AgentRow["role"]; seedCapitalCents: number },
+    p: {
+      username: string;
+      role: AgentRow["role"];
+      seedCapitalCents: number;
+      /** Solo ciudades (rol `city`): peso del reparto del city-income-sweeper. */
+      populationWeight?: number;
+    },
   ): Promise<AgentRow> {
     const rows = await tx
       .insert(agent)
@@ -108,6 +114,7 @@ export const agentRepository = {
         capitalAvailable: p.seedCapitalCents,
         capitalReserved: 0,
         seedCapital: p.seedCapitalCents,
+        populationWeight: p.populationWeight,
       })
       .returning();
     const row = rows[0];

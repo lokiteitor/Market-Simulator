@@ -12,20 +12,16 @@
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { z } from "zod";
 import { config } from "../config";
 import { closeDb, sql } from "../db";
 import { logger } from "../observability/logger";
+import { parseSeedConfig } from "../seed";
 
 const log = logger.child({ component: "backfill-product-keys" });
 
-const SeedProductsSchema = z.object({
-  products: z.array(z.object({ key: z.string().min(1), name: z.string().min(1) })),
-});
-
 const seedConfigPath = resolve(process.cwd(), config.seedConfigPath);
 const rawJson = await readFile(seedConfigPath, "utf8");
-const { products } = SeedProductsSchema.parse(JSON.parse(rawJson));
+const { products } = parseSeedConfig(rawJson);
 const keyByName = new Map(products.map((p) => [p.name, p.key]));
 
 try {

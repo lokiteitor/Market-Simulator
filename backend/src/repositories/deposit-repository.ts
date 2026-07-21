@@ -11,6 +11,18 @@ import type { Tx } from "../db";
 import { resourceDeposit, type ResourceDepositRow } from "../db/schema";
 
 export const depositRepository = {
+  /** Alta del yacimiento (solo seed): arranca con remanente = inicial. */
+  async insertDeposit(
+    tx: Tx,
+    p: { productId: string; qtyInitialCent: number },
+  ): Promise<void> {
+    await tx.insert(resourceDeposit).values({
+      productId: p.productId,
+      qtyInitialCent: p.qtyInitialCent,
+      qtyRemainingCent: p.qtyInitialCent,
+    });
+  },
+
   /** Fila del depósito bloqueada FOR UPDATE, o undefined si el producto no tiene depósito. */
   async lockDeposit(tx: Tx, productId: string): Promise<ResourceDepositRow | undefined> {
     const rows = await tx
