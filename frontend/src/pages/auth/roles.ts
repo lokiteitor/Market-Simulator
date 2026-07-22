@@ -44,4 +44,6 @@ export const ROLE_LABEL: Record<AgentRole, string> = {
   admin: "Administrador",
   // Banco central del patrón oro; tampoco es registrable.
   bank: "Banco central",
+  // Ciudad-consumidor (ADR-020): sembrada y operada por bots; no registrable.
+  city: "Ciudad",
 };

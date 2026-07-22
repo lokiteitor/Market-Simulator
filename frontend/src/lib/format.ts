@@ -37,6 +37,14 @@ export function fmtQty(qtyCent: number, unit?: string): string {
   return unit ? `${s} ${unit}` : s;
 }
 
+/**
+ * Basis points -> porcentaje con 2 decimales: 10000 -> "100.00%",
+ * 6250 -> "62.50%". Aritmética entera (bps YA está en centésimas de %).
+ */
+export function fmtBps(bps: number): string {
+  return `${centsToDecimalString(bps)}%`;
+}
+
 /** UUIDv7 (u otro id) truncado a sus primeros 8 caracteres. */
 export function truncId(id: string): string {
   return id.slice(0, 8);

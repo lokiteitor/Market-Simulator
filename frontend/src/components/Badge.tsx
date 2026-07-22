@@ -22,6 +22,7 @@ export type BadgeKind =
   | "trader"
   | "admin"
   | "bank"
+  | "city"
   // estados
   | "active"
   | "partial"
@@ -51,6 +52,8 @@ const KIND_CLASS: Record<BadgeKind, string> = {
   trader: styles["roleTrader"] ?? "",
   admin: styles["neutral"] ?? styles["stateCancelled"] ?? "",
   bank: styles["roleTrader"] ?? "",
+  // Ciudad (ADR-020): reutiliza la paleta de productor primario, libre entre roles.
+  city: styles["rolePrimaryProducer"] ?? "",
   active: styles["stateActive"] ?? "",
   partial: styles["statePartial"] ?? "",
   completed: styles["stateCompleted"] ?? "",

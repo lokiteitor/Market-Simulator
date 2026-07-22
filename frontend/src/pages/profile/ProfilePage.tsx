@@ -205,6 +205,7 @@ export default function ProfilePage() {
                       trader: styles.avatarTrader,
                       admin: undefined,
                       bank: undefined,
+                      city: undefined,
                     }[snapshot.agent.role],
                   )}
                   aria-hidden="true"

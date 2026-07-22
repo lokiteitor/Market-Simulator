@@ -30,6 +30,7 @@ const ROLE_OPTIONS: ReadonlyArray<{ value: AgentRole | ""; label: string }> = [
   { value: "transformer", label: ROLE_LABEL.transformer },
   { value: "consumer", label: ROLE_LABEL.consumer },
   { value: "trader", label: ROLE_LABEL.trader },
+  { value: "city", label: ROLE_LABEL.city },
 ];
 
 const STATUS_OPTIONS = [

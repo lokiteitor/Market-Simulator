@@ -28,7 +28,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { API_BASE_URL } from "../api/client";
 import { ConnectionContext } from "../components/ConnectionContext";
-import type { Notification, NotificationType } from "../api/types";
+import type { Notification, NotificationType, Product } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { fmtMoney, fmtQty } from "../lib/format";
 
@@ -97,7 +97,10 @@ function parseNotification(raw: string): Notification | null {
 // Notification → toast
 // ---------------------------------------------------------------------------
 
-function toastForNotification(msg: Notification): ToastDetail | null {
+function toastForNotification(
+  msg: Notification,
+  productName: (productId: string) => string | null,
+): ToastDetail | null {
   const p = msg.payload;
   switch (msg.type) {
     case "order_executed": {
@@ -156,6 +159,33 @@ function toastForNotification(msg: Notification): ToastDetail | null {
           : "Conversión ejecutada en la ventanilla del banco.";
       return { kind: "success", title: "Conversión de oro", body };
     }
+    case "city_income": {
+      const amount = numField(p, "amount_cents");
+      return {
+        kind: "success",
+        title: "Ingreso urbano",
+        body:
+          amount !== null
+            ? `Recibiste ${fmtMoney(amount)} del flujo circular de ingreso.`
+            : "Tu ciudad recibió su reparto de ingreso urbano.",
+      };
+    }
+    case "installation_purchased":
+      // La pestaña que ejecuta la compra ya emite su propio toast de éxito;
+      // este evento solo sirve para sincronizar otras pestañas (invalida self).
+      return null;
+    case "deposit_depleted": {
+      const productId = strField(p, "product_id");
+      const name = productId !== null ? productName(productId) : null;
+      return {
+        kind: "warning",
+        title: "Yacimiento agotado",
+        body:
+          name !== null
+            ? `El yacimiento de ${name} llegó a 0: su receta ya no produce nada.`
+            : "Un recurso no renovable se agotó: su receta ya no produce nada.",
+      };
+    }
     default:
       // Tipo desconocido (p. ej. heartbeat de aplicación): sin toast.
       return null;
@@ -166,7 +196,14 @@ function toastForNotification(msg: Notification): ToastDetail | null {
 // Notification → invalidación de queries (mapa explícito por tipo)
 // ---------------------------------------------------------------------------
 
-type QueryDomain = "self" | "orders" | "market" | "processes" | "history";
+type QueryDomain =
+  | "self"
+  | "orders"
+  | "market"
+  | "processes"
+  | "history"
+  | "bank"
+  | "deposits";
 
 const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   order_executed: ["self", "orders", "market", "history"],
@@ -176,7 +213,21 @@ const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   bankruptcy_notice: ["self", "orders", "processes"],
   agent_bankrupt: ["market"],
   trade_printed: ["market"],
-  gold_converted: ["self", "history"],
+  gold_converted: ["self", "history", "bank"],
+  city_income: ["self", "history"],
+  installation_purchased: ["self"],
+  deposit_depleted: ["deposits", "history"],
+};
+
+/** Dominio → queryKey; `deposits` vive bajo el prefijo del catálogo. */
+const DOMAIN_KEY: Record<QueryDomain, readonly unknown[]> = {
+  self: ["self"],
+  orders: ["orders"],
+  market: ["market"],
+  processes: ["processes"],
+  history: ["history"],
+  bank: ["bank"],
+  deposits: ["catalog", "deposits"],
 };
 
 function invalidateForNotification(qc: QueryClient, msg: Notification): void {
@@ -190,7 +241,7 @@ function invalidateForNotification(qc: QueryClient, msg: Notification): void {
       // Acotada al producto afectado; prefix-match de react-query.
       void qc.invalidateQueries({ queryKey: ["market", productId] });
     } else {
-      void qc.invalidateQueries({ queryKey: [domain] });
+      void qc.invalidateQueries({ queryKey: DOMAIN_KEY[domain] });
     }
   }
 }
@@ -286,7 +337,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (disposed || typeof event.data !== "string") return;
         const msg = parseNotification(event.data);
         if (msg === null) return;
-        const toast = toastForNotification(msg);
+        // Resolver de nombres best-effort desde la caché del catálogo (si
+        // alguna página ya lo cargó); sin fetch propio en el hot path del WS.
+        const products = queryClient.getQueryData<Product[]>([
+          "catalog",
+          "products",
+        ]);
+        const productName = (productId: string): string | null =>
+          products?.find((p) => p.product_id === productId)?.name ?? null;
+        const toast = toastForNotification(msg, productName);
         if (toast !== null) emitToast(toast);
         invalidateForNotification(queryClient, msg);
       };

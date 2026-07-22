@@ -22,6 +22,11 @@ export const EVENT_TYPE_LABEL: Record<EventType, string> = {
   process_completed: "Proceso completado",
   process_cancelled: "Proceso cancelado",
   snapshot_taken: "Snapshot del sistema",
+  gold_converted: "Conversión de oro",
+  money_issued: "Emisión de dinero",
+  deposit_depleted: "Yacimiento agotado",
+  city_income_distributed: "Ingreso urbano repartido",
+  installation_purchased: "Instalación comprada",
 };
 
 export const EVENT_TYPE_BADGE: Record<EventType, BadgeKind> = {
@@ -35,6 +40,11 @@ export const EVENT_TYPE_BADGE: Record<EventType, BadgeKind> = {
   process_completed: "completed",
   process_cancelled: "cancelled",
   snapshot_taken: "neutral",
+  gold_converted: "completed",
+  money_issued: "active",
+  deposit_depleted: "expired",
+  city_income_distributed: "active",
+  installation_purchased: "completed",
 };
 
 /** Etiqueta con fallback al tipo crudo (por si el API añade tipos nuevos). */
@@ -90,6 +100,21 @@ const KEY_LABEL: Record<string, string> = {
   current_execution: "ejecución",
   ttl_seconds: "TTL (s sim)",
   reason: "motivo",
+  // Banco central / patrón oro
+  conversion_id: "conversión",
+  direction: "dirección",
+  price_cents_per_unit: "precio unitario",
+  total_cents: "total",
+  amount_cents: "importe",
+  // Yacimientos (ADR-023)
+  qty_initial_cent: "tamaño inicial",
+  qty_remaining_cent: "restante",
+  // Ciudades (ADR-020)
+  city_count: "ciudades",
+  // Instalaciones (ADR-021)
+  installation_type: "instalación",
+  level: "nivel",
+  amount_charged_cents: "importe cobrado",
 };
 
 const SIDE_VALUE_LABEL: Record<string, string> = {
@@ -97,6 +122,11 @@ const SIDE_VALUE_LABEL: Record<string, string> = {
   sell: "venta",
   buyer: "comprador",
   seller: "vendedor",
+};
+
+const DIRECTION_VALUE_LABEL: Record<string, string> = {
+  buy_gold: "compra de oro",
+  sell_gold: "venta de oro",
 };
 
 /** Máximo de pares clave:valor incluidos en el resumen. */
@@ -126,6 +156,7 @@ function formatPayloadValue(
     if (key.endsWith("_id")) return truncId(value);
     if (key.endsWith("_at")) return fmtDateTime(value);
     if (key === "side") return SIDE_VALUE_LABEL[value] ?? value;
+    if (key === "direction") return DIRECTION_VALUE_LABEL[value] ?? value;
     return value.length > 48 ? `${value.slice(0, 48)}…` : value;
   }
 

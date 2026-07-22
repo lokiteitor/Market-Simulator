@@ -106,6 +106,71 @@ export interface Recipe {
   created_at: string;
 }
 
+/** Yacimiento finito de un recurso no renovable (ADR-023; GET /catalog/deposits). */
+export interface Deposit {
+  product_id: string;
+  /** `key` del producto (ej. `carbon`), para no cruzar con /catalog/products. */
+  product_key: string;
+  /** Tamaño sorteado en el seed, en centésimas de unidad. */
+  qty_initial_cent: number;
+  /** Lo que queda por extraer, en centésimas de unidad. */
+  qty_remaining_cent: number;
+  /** Rendimiento actual sobre el output nominal (10000 = 100%, 0 = agotado). */
+  yield_bps: number;
+}
+
+// ---------------------------------------------------------------------------
+// Banco central (patrón oro)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dirección desde la perspectiva del agente: `sell_gold` acuña dinero nuevo
+ * (el agente cobra `window_bid_cents`); `buy_gold` destruye el dinero pagado
+ * (`window_ask_cents`).
+ */
+export type ConversionDirection = "buy_gold" | "sell_gold";
+
+/** Estado del banco central y la política monetaria (GET /bank). */
+export interface BankInfo {
+  bank_agent_id: string;
+  /** Producto-respaldo (oro). */
+  product_id: string;
+  parity_cents_per_unit: number;
+  /** Precio al que el banco COMPRA oro (acuña). */
+  window_bid_cents: number;
+  /** Precio al que el banco VENDE oro (destruye). */
+  window_ask_cents: number;
+  coverage_ratio_bps: number;
+  initial_money_cents: number;
+  money_issued_cents: number;
+  money_burned_cents: number;
+  /** Capacidad TOTAL de emisión respaldada por el oro actual del banco. */
+  issuance_capacity_cents: number;
+  bank_gold_available_cent: number;
+  bank_capital_available_cents: number;
+  /** Yacimiento minable restante; `null` si el oro no tiene depósito. */
+  deposit_remaining_cent: number | null;
+}
+
+/** Conversión en la ventanilla (POST /bank/convert). */
+export interface ConvertRequest {
+  direction: ConversionDirection;
+  /** Centésimas de unidad de oro a convertir. Mínimo 1. */
+  qty_cent: number;
+}
+
+export interface GoldConversion {
+  conversion_id: string;
+  agent_id: string;
+  direction: ConversionDirection;
+  product_id: string;
+  qty_cent: number;
+  price_cents_per_unit: number;
+  /** floor(qty_cent × price_cents_per_unit / 100). Sin fees. */
+  total_cents: number;
+  executed_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Agentes
 // ---------------------------------------------------------------------------
@@ -117,7 +182,10 @@ export type AgentRole =
   // Rol de solo-monitoreo (panel admin): no participa en el mercado.
   | "admin"
   // Banco central del patrón oro: opera la ventanilla de convertibilidad.
-  | "bank";
+  | "bank"
+  // Ciudad-consumidor (ADR-020): sembrada por el seed y operada por bots;
+  // no registrable, pero sí cuenta como demanda de mercado.
+  | "city";
 
 export type AgentStatus = "active" | "bankrupt";
 
@@ -341,7 +409,12 @@ export type EventType =
   | "process_started"
   | "process_completed"
   | "process_cancelled"
-  | "snapshot_taken";
+  | "snapshot_taken"
+  | "gold_converted"
+  | "money_issued"
+  | "deposit_depleted"
+  | "city_income_distributed"
+  | "installation_purchased";
 
 /** Schema `Event` del openapi (renombrado para no chocar con DOM `Event`). */
 export interface EventEntry {
@@ -384,7 +457,13 @@ export type NotificationType =
   /** Broadcast por cada trade ejecutado en el mercado (payload = Trade). */
   | "trade_printed"
   /** Personal: conversión en la ventanilla del banco (payload = GoldConversion). */
-  | "gold_converted";
+  | "gold_converted"
+  /** Personal (solo rol city): ingreso urbano acreditado (payload = { amount_cents }). */
+  | "city_income"
+  /** Personal: compra/mejora de instalación (payload = InstallationStatus + amount_charged_cents). */
+  | "installation_purchased"
+  /** Broadcast: un yacimiento llegó a 0 (payload = { product_id, qty_initial_cent, process_id }). */
+  | "deposit_depleted";
 
 export interface Notification {
   type: NotificationType;
