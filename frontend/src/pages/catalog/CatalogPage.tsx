@@ -5,9 +5,14 @@
  * - ["catalog", "products"] → GET /catalog/products
  * - ["catalog", "recipes"]  → GET /catalog/recipes
  * El catálogo es estático durante la corrida → staleTime Infinity.
+ * - ["catalog", "deposits"] → GET /catalog/deposits — la EXCEPCIÓN dinámica
+ *   (ADR-023): el remanente baja con cada extracción → refetch cada 5 s,
+ *   sin staleTime (además lo invalida el WS deposit_depleted).
  *
  * Muestra:
- * - Tabla de productos: nombre, categoría (Badge), unidad, enlace al mercado.
+ * - Tabla de productos: nombre, categoría (Badge) + chip Finito/Agotado si
+ *   el producto tiene yacimiento, unidad, enlace al mercado.
+ * - Tabla de yacimientos: remanente/inicial con barra y rendimiento actual.
  * - Tabla de recetas: output con cantidad, insumos inline, duración REAL
  *   formateada legible (hint con equivalencia simulada, factor 5×) y
  *   salario por segundo.
@@ -17,7 +22,7 @@ import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
-import type { Problem, Product, Recipe } from "../../api/types";
+import type { Deposit, Problem, Product, Recipe } from "../../api/types";
 import {
   Badge,
   CopyId,
@@ -25,9 +30,10 @@ import {
   EmptyState,
   ErrorBanner,
   Field,
+  ProgressBar,
   type DataTableColumn,
 } from "../../components";
-import { fmtMoney, fmtQty, truncId } from "../../lib/format";
+import { fmtBps, fmtMoney, fmtQty, truncId } from "../../lib/format";
 import { fmtDurationSeconds, realDurationSimHint } from "../market/simTime";
 import { PRODUCT_CATEGORY_LABEL } from "./labels";
 import styles from "./CatalogPage.module.css";
@@ -59,6 +65,14 @@ export default function CatalogPage() {
     staleTime: Infinity,
   });
 
+  // Yacimientos (ADR-023): único /catalog/* dinámico — sin staleTime.
+  const depositsQuery = useQuery({
+    queryKey: ["catalog", "deposits"],
+    queryFn: ({ signal }) =>
+      api.get<Deposit[]>("/catalog/deposits", { signal, auth: false }),
+    refetchInterval: 5_000,
+  });
+
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
 
@@ -72,6 +86,13 @@ export default function CatalogPage() {
     productById.get(productId)?.name ?? truncId(productId);
   const productUnit = (productId: string): string | undefined =>
     productById.get(productId)?.unit;
+
+  // Producto con entrada aquí = recurso finito; sin entrada = inagotable.
+  const depositByProductId = useMemo(() => {
+    const map = new Map<string, Deposit>();
+    for (const d of depositsQuery.data ?? []) map.set(d.product_id, d);
+    return map;
+  }, [depositsQuery.data]);
 
   const filteredProducts = useMemo(() => {
     const all = productsQuery.data ?? [];
@@ -115,9 +136,22 @@ export default function CatalogPage() {
       key: "category",
       header: "Categoría",
       sortValue: (row) => PRODUCT_CATEGORY_LABEL[row.category],
-      render: (row) => (
-        <Badge kind={row.category}>{PRODUCT_CATEGORY_LABEL[row.category]}</Badge>
-      ),
+      render: (row) => {
+        const deposit = depositByProductId.get(row.product_id);
+        return (
+          <span className={styles.badgeGroup}>
+            <Badge kind={row.category}>
+              {PRODUCT_CATEGORY_LABEL[row.category]}
+            </Badge>
+            {deposit !== undefined &&
+              (deposit.yield_bps === 0 ? (
+                <Badge kind="expired">Agotado</Badge>
+              ) : (
+                <Badge kind="neutral">Finito</Badge>
+              ))}
+          </span>
+        );
+      },
     },
     {
       key: "unit",
@@ -139,6 +173,68 @@ export default function CatalogPage() {
       ),
     },
   ];
+
+  // ---- Columnas: yacimientos (ADR-023) ---------------------------------------------
+  const depositColumns: Array<DataTableColumn<Deposit>> = [
+    {
+      key: "product",
+      header: "Producto",
+      sortValue: (row) => productName(row.product_id),
+      render: (row) => (
+        <span className={styles.cellName}>
+          <span className={styles.name}>{productName(row.product_id)}</span>
+          <CopyId id={row.product_id} />
+        </span>
+      ),
+    },
+    {
+      key: "remaining",
+      header: "Restante / inicial",
+      sortValue: (row) => row.qty_remaining_cent,
+      render: (row) => (
+        <span className={styles.depositCell}>
+          <span className={styles.mono}>
+            {fmtQty(row.qty_remaining_cent, productUnit(row.product_id))} /{" "}
+            {fmtQty(row.qty_initial_cent, productUnit(row.product_id))}
+          </span>
+          <ProgressBar
+            value={row.qty_remaining_cent}
+            max={row.qty_initial_cent}
+            label={`Remanente del yacimiento de ${productName(row.product_id)}`}
+          />
+        </span>
+      ),
+    },
+    {
+      key: "yield_bps",
+      header: "Rendimiento",
+      align: "right",
+      sortValue: (row) => row.yield_bps,
+      render: (row) => <span className={styles.mono}>{fmtBps(row.yield_bps)}</span>,
+    },
+    {
+      key: "state",
+      header: "Estado",
+      sortValue: (row) => (row.yield_bps === 0 ? 0 : 1),
+      render: (row) =>
+        row.yield_bps === 0 ? (
+          <Badge kind="expired">Agotado</Badge>
+        ) : (
+          <Badge kind="active">Activo</Badge>
+        ),
+    },
+  ];
+
+  const filteredDeposits = useMemo(() => {
+    const all = depositsQuery.data ?? [];
+    if (q === "") return all;
+    return all.filter(
+      (d) =>
+        d.product_key.toLowerCase().includes(q) ||
+        productName(d.product_id).toLowerCase().includes(q),
+    );
+    // productName es derivado puro de productById (dependencia incluida).
+  }, [depositsQuery.data, q, productById]);
 
   // ---- Columnas: recetas -------------------------------------------------------------
   const recipeColumns: Array<DataTableColumn<Recipe>> = [
@@ -279,6 +375,45 @@ export default function CatalogPage() {
                 <EmptyState
                   title="Sin coincidencias"
                   hint={`Ningún producto coincide con "${search.trim()}".`}
+                />
+              )
+            }
+          />
+        )}
+      </section>
+
+      {/* Yacimientos (ADR-023) */}
+      <section className={styles.panel} aria-labelledby="catalog-deposits">
+        <div className={styles.panelHead}>
+          <h2 id="catalog-deposits" className={styles.panelTitle}>
+            Yacimientos
+          </h2>
+          <p className={styles.panelHint}>
+            Recursos no renovables: el remanente y el rendimiento bajan con
+            cada extracción (se refresca cada 5 s). Un producto sin yacimiento
+            es inagotable.
+          </p>
+        </div>
+        {depositsQuery.isError ? (
+          <ErrorBanner problem={toProblem(depositsQuery.error)} />
+        ) : (
+          <DataTable
+            columns={depositColumns}
+            rows={filteredDeposits}
+            loading={depositsQuery.isPending}
+            sortable
+            rowKey={(row) => row.product_id}
+            caption="Yacimientos finitos con remanente frente al tamaño inicial y rendimiento actual"
+            empty={
+              q === "" ? (
+                <EmptyState
+                  title="Sin yacimientos"
+                  hint="Esta corrida no tiene recursos finitos configurados."
+                />
+              ) : (
+                <EmptyState
+                  title="Sin coincidencias"
+                  hint={`Ningún yacimiento coincide con "${search.trim()}".`}
                 />
               )
             }

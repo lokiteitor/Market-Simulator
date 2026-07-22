@@ -11,6 +11,8 @@
  *                                             (refetchInterval 5 s + WS).
  * - ["market", productId, "trades", win]    → GET /market/{id}/trades
  *                                             (refetchInterval 15 s + WS).
+ * - ["catalog", "deposits"]                 → GET /catalog/deposits (chip de
+ *                                             recurso finito, ADR-023).
  *
  * El NotificationsProvider [FE2] invalida ["market", productId] al recibir
  * notificaciones (prefix-match), así que top y trades se resincronizan solos.
@@ -21,6 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
 import type {
+  Deposit,
   Problem,
   Product,
   SelfState,
@@ -39,7 +42,13 @@ import {
   Skeleton,
   type DataTableColumn,
 } from "../../components";
-import { fmtDateTime, fmtMoney, fmtQty, fmtRelative } from "../../lib/format";
+import {
+  fmtBps,
+  fmtDateTime,
+  fmtMoney,
+  fmtQty,
+  fmtRelative,
+} from "../../lib/format";
 import {
   PRODUCT_CATEGORY_LABEL,
   PRODUCT_CATEGORY_ORDER,
@@ -241,6 +250,23 @@ export default function MarketPage() {
         ? (products.find((p) => p.product_id === productId) ?? null)
         : null,
     [products, hasProduct, productId],
+  );
+
+  // Yacimiento del producto (ADR-023): contexto para el trader — un recurso
+  // finito con rendimiento bajo anticipa escasez (y precio) crecientes.
+  const depositsQuery = useQuery({
+    queryKey: ["catalog", "deposits"],
+    queryFn: ({ signal }) =>
+      api.get<Deposit[]>("/catalog/deposits", { signal, auth: false }),
+    enabled: hasProduct,
+    refetchInterval: 5_000,
+  });
+  const deposit = useMemo(
+    () =>
+      hasProduct
+        ? (depositsQuery.data?.find((d) => d.product_id === productId) ?? null)
+        : null,
+    [depositsQuery.data, hasProduct, productId],
   );
 
   const self = selfQuery.data ?? null;
@@ -445,6 +471,14 @@ export default function MarketPage() {
                 <p className={styles.panelHint}>
                   Mejor compra y mejor venta vigentes · se actualiza cada 5 s
                 </p>
+                {deposit !== null &&
+                  (deposit.yield_bps === 0 ? (
+                    <Badge kind="expired">Yacimiento agotado</Badge>
+                  ) : (
+                    <Badge kind="neutral">
+                      Recurso finito · rendimiento {fmtBps(deposit.yield_bps)}
+                    </Badge>
+                  ))}
               </div>
               {topQuery.isPending ? (
                 <Skeleton rows={3} />

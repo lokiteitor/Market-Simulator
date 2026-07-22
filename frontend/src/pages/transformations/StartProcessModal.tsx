@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
 import type {
+  Deposit,
   InstallationStatus,
   InstallationType,
   Problem,
@@ -29,7 +30,7 @@ import type {
   TransformationProcess,
 } from "../../api/types";
 import { Badge, ErrorBanner, Field, Modal, showToast } from "../../components";
-import { fmtMoney, fmtQty, truncId } from "../../lib/format";
+import { fmtBps, fmtMoney, fmtQty, truncId } from "../../lib/format";
 import { splitProblemByField } from "../auth/validation";
 import {
   PRODUCT_CATEGORY_LABEL,
@@ -41,6 +42,8 @@ import {
 } from "../market/simTime";
 import {
   availableSlots,
+  depositForRecipe,
+  effectiveOutputCent,
   estimateWageCents,
   inputRequirements,
 } from "./transformMath";
@@ -88,6 +91,17 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
     queryFn: ({ signal }) =>
       api.get<Product[]>("/catalog/products", { signal, auth: false }),
     staleTime: Infinity,
+  });
+
+  // Yacimientos finitos (ADR-023): dinámicos (el remanente baja con cada
+  // extracción), así que SIN staleTime infinito y con refetch mientras el
+  // modal está abierto. Un producto sin entrada aquí es inagotable.
+  const depositsQuery = useQuery({
+    queryKey: ["catalog", "deposits"],
+    queryFn: ({ signal }) =>
+      api.get<Deposit[]>("/catalog/deposits", { signal, auth: false }),
+    enabled: open,
+    refetchInterval: 5_000,
   });
 
   // Catálogo de tipos de instalación: para mapear recipe.installation_type_id
@@ -203,6 +217,11 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
   // ---- Derivados / preview --------------------------------------------------------
   const recipe = recipeById.get(recipeId) ?? null;
   const installation = installationForRecipe(recipe ?? undefined) ?? null;
+  // Yacimiento del producto de salida (null si es inagotable, ADR-023).
+  const deposit =
+    recipe !== null
+      ? depositForRecipe(recipe, depositsQuery.data ?? [])
+      : null;
   const executions = useMemo(() => {
     const text = executionsText.trim();
     if (!/^\d+$/.test(text)) return null;
@@ -223,8 +242,17 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
       inputs,
       totalDurationSeconds: recipe.duration_seconds * executions,
       outputQtyCent: recipe.output_qty_cent * executions,
+      // Salida aplicando el rendimiento del yacimiento (null si inagotable).
+      effectiveOutputQtyCent:
+        deposit !== null
+          ? effectiveOutputCent(
+              recipe.output_qty_cent,
+              executions,
+              deposit.yield_bps,
+            )
+          : null,
     };
-  }, [recipe, executions, self]);
+  }, [recipe, executions, self, deposit]);
 
   // ---- Validación client-side --------------------------------------------------------
   const validate = (): StartTransformationRequest | null => {
@@ -238,6 +266,10 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
         "No tienes una instalación comprada para esta receta.";
     } else if (availableSlots(installation) < 1) {
       errors.recipe_id = `Instalación saturada: ${installation.running}/${installation.level} procesos del tipo en curso.`;
+    } else if (deposit !== null && deposit.yield_bps === 0) {
+      // Preempción del 422 resource_depleted del servidor.
+      errors.recipe_id =
+        "Yacimiento agotado: esta receta ya no produce nada.";
     }
 
     if (executions === null || executions < 1) {
@@ -416,13 +448,59 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
               </dd>
               <dt>Salida esperada</dt>
               <dd className={styles["mono"]}>
-                {fmtQty(
-                  preview.outputQtyCent,
-                  productUnit(recipe.output_product_id),
-                )}{" "}
-                de {productName(recipe.output_product_id)}
+                {deposit !== null && preview.effectiveOutputQtyCent !== null ? (
+                  <>
+                    ≈{" "}
+                    {fmtQty(
+                      preview.effectiveOutputQtyCent,
+                      productUnit(recipe.output_product_id),
+                    )}{" "}
+                    de {productName(recipe.output_product_id)}{" "}
+                    <span className={styles["subtle"]}>
+                      (nominal:{" "}
+                      {fmtQty(
+                        preview.outputQtyCent,
+                        productUnit(recipe.output_product_id),
+                      )}
+                      )
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {fmtQty(
+                      preview.outputQtyCent,
+                      productUnit(recipe.output_product_id),
+                    )}{" "}
+                    de {productName(recipe.output_product_id)}
+                  </>
+                )}
               </dd>
+              {deposit !== null && (
+                <>
+                  <dt>Rendimiento del yacimiento</dt>
+                  <dd className={styles["mono"]}>
+                    {fmtBps(deposit.yield_bps)}{" "}
+                    <span className={styles["subtle"]}>
+                      (quedan{" "}
+                      {fmtQty(
+                        deposit.qty_remaining_cent,
+                        productUnit(recipe.output_product_id),
+                      )}
+                      )
+                    </span>
+                  </dd>
+                </>
+              )}
             </dl>
+
+            {deposit !== null && deposit.yield_bps < 10_000 && (
+              <div className={styles["warnBox"]}>
+                <strong>Recurso no renovable.</strong> El rendimiento decae con
+                cada extracción: valorar esta receta con la salida nominal
+                sobreestima la producción (la salida efectiva ya aplica el
+                rendimiento actual, y es una cota superior).
+              </div>
+            )}
 
             <h3 className={styles["inputsTitle"]}>Insumos requeridos</h3>
             {preview.inputs.length === 0 ? (

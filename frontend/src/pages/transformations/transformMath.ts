@@ -11,6 +11,7 @@
  * (posible ±1 s por redondeo del catálogo).
  */
 import type {
+  Deposit,
   InstallationStatus,
   InventoryPosition,
   Recipe,
@@ -28,6 +29,37 @@ export function estimateWageCents(recipe: Recipe, executions: number): number {
     BigInt(recipe.wage_rate_cents_per_sec) *
       BigInt(simSeconds) *
       BigInt(executions),
+  );
+}
+
+/**
+ * Yacimiento del producto de salida de la receta, o `null` si el producto es
+ * inagotable (no aparece en GET /catalog/deposits). Solo los recursos
+ * geológicos finitos (ADR-023) tienen yacimiento.
+ */
+export function depositForRecipe(
+  recipe: Recipe,
+  deposits: readonly Deposit[],
+): Deposit | null {
+  return (
+    deposits.find((d) => d.product_id === recipe.output_product_id) ?? null
+  );
+}
+
+/**
+ * Salida efectiva estimada aplicando el rendimiento del yacimiento:
+ * floor(output_qty_cent × ejecuciones × yield_bps / 10000). Es una COTA
+ * SUPERIOR: el rendimiento decae con cada extracción, así que las últimas
+ * ejecuciones rinden algo menos que el `yield_bps` observado ahora.
+ * Valorar la receta con la salida nominal sobreestima la producción.
+ */
+export function effectiveOutputCent(
+  outputQtyCent: number,
+  executions: number,
+  yieldBps: number,
+): number {
+  return Number(
+    (BigInt(outputQtyCent) * BigInt(executions) * BigInt(yieldBps)) / 10_000n,
   );
 }
 

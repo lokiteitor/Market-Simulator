@@ -57,6 +57,16 @@
   color: var(--text-secondary);
 }
 
+/* Celda de yacimiento: cantidad + barra de remanente. */
+.depositCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 14rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Fila de gráficas: 1–2 columnas según ancho. */
 .chartsRow {
   display: grid;
