@@ -31,6 +31,7 @@ Backend (desde `backend/`, requiere Bun >= 1.3; para dev local levantar solo pos
 ```bash
 bun run dev            # API con reload
 bun run worker         # worker BullMQ (otra terminal)
+bun run seed           # seed local (idempotente; equivalente dev de `make seed`)
 bun run typecheck      # tsc --noEmit estricto
 bun run test           # tests unitarios puros, sin DB (bun test tests/unit)
 bun test tests/unit/orders            # un directorio
@@ -91,6 +92,8 @@ Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; c
 
 La estrategia consumidor y los helpers puros (humanización, dinero, market view, precios base) viven en **`go-sdk/sdk/botkit`**, compartidos por `bots-v1` y `bots-ciudad`; `bots-v1/botkit_aliases.go` es solo un shim que los re-exporta con los nombres locales. **Al tocar un helper, editarlo en `botkit`.**
 
+`market-client/` es un cliente Python **auxiliar** (pruebas/manual y base del bot trader RL); no forma parte del runtime de bots.
+
 `bots-ciudad/` es el binario de las ciudades: **instancia única** (flock sobre `.bots-ciudad.lock`) y **login-only** (`auto_register: false`) contra las cuentas sembradas. Es instancia única porque sus usernames son literales fijos (las capitales), no derivados de `--runner-id` como en `bots-v1`: dos procesos loguearían las mismas cuentas y se rotarían mutuamente el refresh token de un solo uso. Su `city_password` **debe coincidir** con `CITY_SEED_PASSWORD` del backend.
 
 ## Configuración y seed
@@ -102,4 +105,4 @@ La estrategia consumidor y los helpers puros (humanización, dinero, market view
 
 ## Documentación
 
-`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso, ADR-021 economía de instalaciones, ADR-022 cadena conexa con raíz única, ADR-023 yacimientos finitos con rendimiento decreciente, ADR-024 fase de energía v1), `documentacion_base_datos.md` (las 24 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`. Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.
+`docs/` es extensa y se mantiene al día: `diseno_mercado_agricola.md` (reglas de dominio), `arquitectura_mercado_agricola.md` (C4 + ADRs; ADR-017 patrón oro, ADR-018 sin migraciones, ADR-019 matching multiproceso, ADR-020 flujo circular de ingreso, ADR-021 economía de instalaciones, ADR-022 cadena conexa con raíz única, ADR-023 yacimientos finitos con rendimiento decreciente, ADR-024 fase de energía v1), `documentacion_base_datos.md` (las 24 tablas), `funcionamiento_bots.md`, `patron_oro_sistema_bancario.md`, `catalogo_productos_recetas.md`, `system_design.md` (UI del frontend, las 8 pantallas). Al cambiar dominio, esquema o API, actualizar el doc correspondiente en el mismo PR.
