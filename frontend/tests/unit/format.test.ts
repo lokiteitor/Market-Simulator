@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  fmtBps,
   fmtDateTime,
   fmtMoney,
   fmtQty,
@@ -49,6 +50,19 @@ describe("fmtQty", () => {
   test("valores pequeños y negativos", () => {
     expect(fmtQty(1, "kg")).toBe("0.01 kg");
     expect(fmtQty(-1250, "kg")).toBe("-12.50 kg");
+  });
+});
+
+describe("fmtBps", () => {
+  test("basis points a porcentaje con 2 decimales", () => {
+    expect(fmtBps(10000)).toBe("100.00%");
+    expect(fmtBps(6250)).toBe("62.50%");
+    expect(fmtBps(2500)).toBe("25.00%");
+    expect(fmtBps(0)).toBe("0.00%");
+  });
+
+  test("valores por encima del 100% (cobertura del banco)", () => {
+    expect(fmtBps(12000)).toBe("120.00%");
   });
 });
 

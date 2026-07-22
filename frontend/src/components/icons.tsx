@@ -99,6 +99,20 @@ export function IconTransformations(props: IconProps) {
   );
 }
 
+/** Edificio con columnas — Banco central. */
+export function IconBank(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 9.5 12 4l9 5.5Z" />
+      <path d="M5 9.5v8" />
+      <path d="M9.7 9.5v8" />
+      <path d="M14.3 9.5v8" />
+      <path d="M19 9.5v8" />
+      <path d="M3 20.5h18" />
+    </Base>
+  );
+}
+
 /** Reloj — Historial. */
 export function IconHistory(props: IconProps) {
   return (

@@ -18,6 +18,7 @@ const TransformationsPage = lazy(
 const InstallationsPage = lazy(
   () => import("./pages/installations/InstallationsPage"),
 );
+const BankPage = lazy(() => import("./pages/bank/BankPage"));
 const HistoryPage = lazy(() => import("./pages/history/HistoryPage"));
 const ProfilePage = lazy(() => import("./pages/profile/ProfilePage"));
 // Panel admin (solo rol `admin`).
@@ -77,6 +78,7 @@ export function AppRoutes() {
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/transformations" element={<TransformationsPage />} />
         <Route path="/installations" element={<InstallationsPage />} />
+        <Route path="/bank" element={<BankPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
