@@ -146,7 +146,11 @@ function formatPayloadValue(
   if (typeof value === "boolean") return value ? "sí" : "no";
 
   if (typeof value === "number") {
-    if (key.endsWith("_cents")) return fmtMoney(value);
+    // `_cents_per_` cubre tasas monetarias (price_cents_per_unit,
+    // wage_rate_cents_per_sec…), que no terminan en `_cents`.
+    if (key.endsWith("_cents") || key.includes("_cents_per_")) {
+      return fmtMoney(value);
+    }
     if (key.endsWith("_cent")) return fmtQty(value);
     return String(value);
   }

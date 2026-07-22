@@ -41,6 +41,10 @@ import {
   realDurationSimHint,
 } from "../market/simTime";
 import {
+  CAPACITY_ERROR_CODES,
+  transformationErrorMessage,
+} from "./transformErrors";
+import {
   availableSlots,
   depositForRecipe,
   effectiveOutputCent,
@@ -334,7 +338,22 @@ export function StartProcessModal({ open, onClose }: StartProcessModalProps) {
           TRANSFORMATION_FIELDS,
         );
         setFieldErrors(fields as FieldErrors);
-        setBanner(general);
+        // Códigos de dominio con traducción accionable → texto inline en vez
+        // del banner crudo del servidor.
+        const code = general?.errors?.[0]?.code ?? null;
+        const message =
+          code !== null ? transformationErrorMessage(code) : null;
+        if (message !== null) {
+          setDomainError(message);
+          setBanner(null);
+          // La capacidad cambió por debajo (otro cliente/bot del agente):
+          // resincronizar instalaciones y huecos.
+          if (code !== null && CAPACITY_ERROR_CODES.has(code)) {
+            void queryClient.invalidateQueries({ queryKey: ["self"] });
+          }
+        } else {
+          setBanner(general);
+        }
       } else {
         setBanner(toProblem(err));
       }
