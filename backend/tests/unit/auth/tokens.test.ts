@@ -57,7 +57,7 @@ describe("signAccessToken", () => {
   test("un secret distinto produce firma distinta (sanidad HS256)", () => {
     const now = new Date("2026-07-03T12:00:00.000Z");
     const { token } = signAccessToken(
-      { agentId: AGENT_ID, username: "alice", role: "consumer" },
+      { agentId: AGENT_ID, username: "alice", role: "trader" },
       now,
     );
     const [headerB64, payloadB64, signature] = token.split(".") as [

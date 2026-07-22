@@ -68,10 +68,12 @@ El seed (`docker compose --profile seed run --rm seed`) crea agentes con usernam
 
 | Rol                | Usernames                                                    |
 |--------------------|--------------------------------------------------------------|
-| `primary_producer` | `primary_producer_1`, `primary_producer_2`, `primary_producer_3` |
-| `transformer`      | `transformer_1`, `transformer_2`, `transformer_3`            |
-| `consumer`         | `consumer_1`, `consumer_2`                                   |
+| `transformer`      | `transformer_1` … `transformer_6`                            |
 | `trader`           | `trader_1`, `trader_2`                                       |
+
+Además se siembran las ~50 **ciudades** (rol `city`, la demanda final): usernames tomados de
+[`infra/cities.json`](../infra/cities.json) y contraseña `CITY_SEED_PASSWORD`. No hay rol
+`consumer` (ADR-025).
 
 También puede registrarse un agente nuevo desde la pestaña **Registro** de `/auth`.
 

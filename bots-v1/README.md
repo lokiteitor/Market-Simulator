@@ -10,7 +10,7 @@ Este es el sistema de agentes y bots autónomos (versión 1) escrito en Go. Util
 * **[`humanize.go`](file:///home/ddelgado/git/lab/world/bots-v1/humanize.go)** / **[`selling.go`](file:///home/ddelgado/git/lab/world/bots-v1/selling.go)**: Helpers de humanización (precios "bonitos", cantidades perturbadas, TTLs variados, cancel/replace) y venta a mercado con suelo de coste.
 * **[`producer.go`](file:///home/ddelgado/git/lab/world/bots-v1/producer.go)**: Estrategia productora ÚNICA (ADR-022). Arranca recetas solo con margen positivo a precios de mercado, compra insumos cruzando el spread cuando el margen lo permite, y vende sus outputs en tranches con undercut del mejor ask y suelo de coste. Nunca vende lo que consume: solo el excedente sobre su propio buffer de insumos.
 * **[`specialties.go`](file:///home/ddelgado/git/lab/world/bots-v1/specialties.go)**: Reparto del catálogo entre bots por TIPO de instalación, no por rol: `aguador` (pozo_agua), `farmer` (campo, granja, bosque), `miner` (mina, cantera, pozo) y `transformer` (los 9 tipos industriales). Los cuatro conjuntos particionan los 16 tipos.
-* **[`consumer.go`](file:///home/ddelgado/git/lab/world/bots-v1/consumer.go)**: Consumidor final. Precio de reserva por bot (base × tolerancia), levanta el mejor ask cuando cabe en la reserva (imprime trades) o deja bids de descanso; gasta a una tasa por tick.
+* **Demanda final**: aquí no hay. La estrategia consumidora vive en `go-sdk/sdk/botkit/consumer.go` y solo la ejecuta el binario `bots-ciudad` con el rol `city` (ADR-025): son las únicas cuentas con ingreso recurrente.
 * **[`trader.go`](file:///home/ddelgado/git/lab/world/bots-v1/trader.go)**: Market maker. Cotiza bid/ask alrededor del valor justo sobre un universo acotado de productos, con sesgo por inventario, cancel/replace de cotizaciones viejas y re-cotización debounced cuando el tape imprime.
 
 Todos los parámetros de comportamiento (spread, márgenes, tolerancia, agresividad, probabilidad de actuar) se muestrean **por bot** en `Initialize`: la población tiene distribución de comportamientos en vez de clones, que es lo que la hace parecer humana.
@@ -32,7 +32,7 @@ Para iniciar la simulación de los bots listados en `config.yaml`:
 ```
 
 ### 3. Ejecución a gran escala (Ej. 5,000 bots)
-Para generar y ejecutar automáticamente una cantidad masiva de bots distribuidos de forma equitativa entre las 6 estrategias (`aguador`, `miner`, `farmer`, `transformer`, `consumer`, `trader`; las cuatro primeras se registran con el rol `transformer`) con **autorregistro dinámico**:
+Para generar y ejecutar automáticamente una cantidad masiva de bots distribuidos de forma equitativa entre las 6 estrategias (`aguador`, `energetico`, `miner`, `farmer`, `transformer`, `trader`; las cinco primeras se registran con el rol `transformer`) con **autorregistro dinámico**:
 ```bash
 ./bots-v1-runner -config config.yaml -scale 5000 -jitter 120
 ```

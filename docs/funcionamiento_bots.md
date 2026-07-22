@@ -17,8 +17,9 @@ WebSocket que un humano (gateway Caddy, `http://localhost:9080/v1` y
 `ws://localhost:9080/v1/ws`). El servidor no los distingue.
 
 Un único binario (`bots-v1/bots-v1-runner`) lanza N agentes concurrentes, cada uno como una
-goroutine con su propio `engine.Engine` del SDK. Hay **tres roles** en BD (ADR-022: el rol
-productivo es uno solo) y siete estrategias:
+goroutine con su propio `engine.Engine` del SDK. Hay **dos roles** en BD (ADR-022: el rol
+productivo es uno solo; ADR-025: `consumer` se retiró y la demanda final es de las ciudades)
+y seis estrategias:
 
 | Rol en BD | Estrategia (bot) | Archivo | Qué hace |
 |-----------|------------------|---------|----------|
@@ -27,12 +28,16 @@ productivo es uno solo) y siete estrategias:
 | `transformer` | `farmer` | `producer.go` + `specialties.go` | Campo, granja y bosque: consume agua, semillas, fertilizante y piensos. |
 | `transformer` | `miner` | `producer.go` + `specialties.go` | Mina, cantera y pozo: consume agua; monetiza oro en la ventanilla del banco. |
 | `transformer` | `transformer` | `producer.go` + `specialties.go` | Los 9 tipos industriales: compra insumos, ejecuta recetas rentables, vende el output. |
-| `consumer` | `consumer` | `consumer.go` | Demanda final: compra productos de consumo con presupuesto y precio de reserva. |
 | `trader` | `trader` | `trader.go` | Market maker: cotiza bid/ask alrededor del valor justo; arbitra oro contra el banco. |
 
 Las cinco primeras son **la misma estrategia** (`ProducerStrategy`) con distinto conjunto de
 tipos de instalación: extraer y transformar son el mismo acto económico desde que toda receta
 consume insumos salvo la del agua.
+
+**Aquí no hay demanda final.** La estrategia consumidora existe (`botkit/consumer.go`) pero la
+ejecuta el otro binario, `bots-ciudad`, con el rol `city`. Un consumidor en `bots-v1` no tenía
+ninguna fuente de ingreso recurrente —solo gastaba su capital semilla hasta quebrar—, así que
+ADR-025 retiró el rol.
 
 ```mermaid
 graph LR
@@ -59,7 +64,6 @@ graph LR
 | `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 149 productos** (ancla de todas las heurísticas). |
 | `producer.go` | Estrategia productora ÚNICA: gate de margen, reposición de insumos, compra de instalaciones y venta con suelo de coste. |
 | `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `energetico`, `farmer`, `miner`, `transformer` (los cinco conjuntos particionan los 17 tipos). |
-| `consumer.go` | Estrategia consumidor. |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
 | `selling.go` | `sellAtMarket`: venta en tranches con undercut y suelo de coste. |
@@ -93,7 +97,7 @@ Dos diferencias esenciales con `bots-v1`:
 
 | Archivo | Responsabilidad |
 |---------|-----------------|
-| `consumer.go` | Estrategia consumidor (`ConsumerStrategy`), usada por los consumidores de `bots-v1` y por TODAS las ciudades. |
+| `consumer.go` | Estrategia consumidor (`ConsumerStrategy`). Desde ADR-025 la usan **solo las ciudades**: `bots-v1` ya no tiene rol consumidor. |
 | `market_view.go` | Vista de mercado: EMA de "valor justo", cache de top-of-book con TTL, presupuesto REST por tick. |
 | `money.go` | Conversión centi-unidades/centavos (`NotionalCents`, `MaxQtyForBudget`, `IsReservable`). |
 | `humanize.go` | "Humanización": precios bonitos, cantidades perturbadas, TTL con jitter, cancel/replace (`NicePrice`, `HumanQty`, `TTLJitter`, `CancelStale`, `Chance`, `SampleRange`). |
@@ -111,7 +115,7 @@ Dos diferencias esenciales con `bots-v1`:
 | `scheduler/` | Programación de ticks periódicos. |
 | `strategy/` | Interfaz `Strategy` (`Initialize`, `Tick`, `HandleEvent`). |
 | `actions/` | Acciones declarativas que devuelve la estrategia y ejecuta el engine. |
-| `botkit/` | Estrategia consumidor + helpers puros compartidos por `bots-v1` y `bots-ciudad` (ver arriba). |
+| `botkit/` | Estrategia consumidor (solo la usa `bots-ciudad`) + helpers puros compartidos por ambos binarios (ver arriba). |
 
 La estrategia nunca llama a la API directamente para mutar estado: **devuelve acciones** y el
 engine las ejecuta (`PlaceOrder` → `POST /orders`, `CancelOrder` → `DELETE /orders/{id}`,
@@ -229,7 +233,7 @@ snapshot con jitter de 0–5 s.
 de los productos que la conexión declaró con el mensaje `subscribe_products` (contrato
 §12). Las estrategias implementan `strategy.ProductSubscriber` y devuelven su universo
 tras `Initialize` (productor: outputs de sus recetas; transformer: insumos+outputs;
-consumer: productos de consumo final; trader: su pool fijo muestreado + oro); el engine
+ciudad: productos de consumo final; trader: su pool fijo muestreado + oro); el engine
 lo suscribe automáticamente en cada (re)conexión. Una estrategia que no implemente la
 interfaz se suscribe al comodín `"*"` (firehose completo, comportamiento previo). Con
 10k bots esto reduce el fan-out del tape ~10–30× (cada bot opera un puñado de los 149
@@ -334,12 +338,15 @@ la cadena entera sin que ningún bot intente abarcar los 152 procesos.
 | `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
 | `transformer` | los 9 industriales | De la agroindustria a la constructora. |
 
-En modo enjambre el round-robin reparte las siete estrategias a partes iguales, así que ~1/7 de
+En modo enjambre el round-robin reparte las seis estrategias a partes iguales, así que ~1/6 de
 la flota se dedica al agua y otro tanto a la generación eléctrica.
 
-### 5.2 Consumer (`consumer.go`)
+### 5.2 Consumer (`botkit/consumer.go`) — solo ciudades
 
-Demanda final con elasticidad; solo opera productos de categoría `final_consumption`.
+Demanda final con elasticidad; solo opera productos de categoría `final_consumption`. Desde
+ADR-025 la ejecutan **exclusivamente las ~50 ciudades** de `bots-ciudad`: son las únicas con
+ingreso recurrente (salarios reciclados + tasa de consumo, ADR-020) y por tanto la única
+demanda que no se agota.
 
 - **Precio de reserva** por bot = `precio_base × tolerance` (1.05–1.4), con ruido ±5% por
   producto. Se ancla al precio **base**, no al fair, para que la demanda no persiga burbujas.
@@ -347,7 +354,9 @@ Demanda final con elasticidad; solo opera productos de categoría `final_consump
 - Por producto (3–8 por tick): si el mejor ask cabe en la reserva → **levanta el ask** con
   probabilidad `crossProb` (trade real inmediato); si no, deja un **bid de descanso** bajo el
   fair, sin exceder la reserva ni el techo de cantidad pendiente.
-- Los consumers imprimen la mayor parte del tape que alimenta las EMAs del resto de roles.
+- Las ciudades imprimen la mayor parte del tape que alimenta las EMAs del resto de roles. Son
+  pocas (~50) pero con mucho capital; tras ADR-025 no hay otra demanda final que las respalde,
+  así que el volumen de `final_consumption` depende enteramente de su tick.
 
 ### 5.3 Trader (`trader.go`)
 
@@ -385,7 +394,7 @@ corrida no tiene patrón oro (409 `no_gold_standard`) operan con la lógica de m
 
 El efecto agregado es que el precio de mercado del oro queda anclado a la banda
 `[window_bid, window_ask]` (±5% de la paridad), como en un patrón oro clásico.
-Consumers y transformers **no** usan la ventanilla.
+Las ciudades **no** usan la ventanilla.
 
 ---
 

@@ -4,7 +4,7 @@
  * texto = color pleno del rol/estado; fondo = variante *-soft (contraste AA).
  *
  * Kinds admitidos:
- * - Roles: transformer (único rol productivo), consumer, trader
+ * - Roles: transformer (único rol productivo), trader, city (demanda final)
  * - Estados: active, partial, completed, cancelled, expired, bankrupt
  *   (running es alias visual de active)
  * - Categorías de producto: raw_primary, intermediate, final_consumption
@@ -18,7 +18,6 @@ import styles from "./Badge.module.css";
 export type BadgeKind =
   // roles
   | "transformer"
-  | "consumer"
   | "trader"
   | "admin"
   | "bank"
@@ -48,12 +47,12 @@ export interface BadgeProps {
 
 const KIND_CLASS: Record<BadgeKind, string> = {
   transformer: styles["roleTransformer"] ?? "",
-  consumer: styles["roleConsumer"] ?? "",
   trader: styles["roleTrader"] ?? "",
   admin: styles["neutral"] ?? styles["stateCancelled"] ?? "",
   bank: styles["roleTrader"] ?? "",
-  // Ciudad (ADR-020): reutiliza la paleta de productor primario, libre entre roles.
-  city: styles["rolePrimaryProducer"] ?? "",
+  // Ciudad (ADR-020): hereda el azul que era del rol `consumer`, retirado por
+  // ADR-025. Es literalmente el mismo papel — la demanda final del mercado.
+  city: styles["roleCity"] ?? "",
   active: styles["stateActive"] ?? "",
   partial: styles["statePartial"] ?? "",
   completed: styles["stateCompleted"] ?? "",

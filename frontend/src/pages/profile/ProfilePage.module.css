@@ -93,16 +93,8 @@
   background-color: var(--color-state-cancelled);
 }
 
-.avatarPrimaryProducer {
-  background-color: var(--color-role-primary-producer);
-}
-
 .avatarTransformer {
   background-color: var(--color-role-transformer);
-}
-
-.avatarConsumer {
-  background-color: var(--color-role-consumer);
 }
 
 .avatarTrader {

@@ -65,7 +65,6 @@ import styles from "./DashboardPage.module.css";
 
 const ROLE_LABEL: Record<AgentRole, string> = {
   transformer: "Transformador",
-  consumer: "Consumidor",
   trader: "Trader",
   admin: "Administrador",
   bank: "Banco central",

@@ -4636,9 +4636,6 @@
     "transformer": {
       "initial_agents": 6
     },
-    "consumer": {
-      "initial_agents": 2
-    },
     "trader": {
       "initial_agents": 2
     }

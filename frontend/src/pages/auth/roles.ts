@@ -22,12 +22,6 @@ export const ROLE_INFOS: readonly RoleInfo[] = [
       "Único rol productivo: extrae (pozos, minas, campos) y transforma insumos en productos elaborados mediante recetas.",
   },
   {
-    role: "consumer",
-    label: "Consumidor",
-    description:
-      "Compra productos finales para consumirlos; representa la demanda del mercado.",
-  },
-  {
     role: "trader",
     label: "Trader",
     description:
@@ -38,7 +32,6 @@ export const ROLE_INFOS: readonly RoleInfo[] = [
 /** Etiqueta humana por rol (para Badges y textos). */
 export const ROLE_LABEL: Record<AgentRole, string> = {
   transformer: "Transformador",
-  consumer: "Consumidor",
   trader: "Trader",
   // Rol de solo-monitoreo; no aparece en el selector de registro (ROLE_INFOS).
   admin: "Administrador",

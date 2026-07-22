@@ -58,8 +58,6 @@ const EnvSchema = z
     DEFAULT_SEED_CAPITAL_CENTS: posIntFromEnv(100000),
     SEED_CAPITAL_TRANSFORMER_MIN_CENTS: posIntFromEnv(120000),
     SEED_CAPITAL_TRANSFORMER_MAX_CENTS: posIntFromEnv(250000),
-    SEED_CAPITAL_CONSUMER_MIN_CENTS: posIntFromEnv(80000),
-    SEED_CAPITAL_CONSUMER_MAX_CENTS: posIntFromEnv(150000),
     SEED_CAPITAL_TRADER_MIN_CENTS: posIntFromEnv(200000),
     SEED_CAPITAL_TRADER_MAX_CENTS: posIntFromEnv(400000),
     SEED_AGENT_PASSWORD: z.string().min(1).default("dev-password-123"),
@@ -117,10 +115,6 @@ const EnvSchema = z
     message: "SEED_CAPITAL_TRANSFORMER_MIN_CENTS debe ser <= MAX",
     path: ["SEED_CAPITAL_TRANSFORMER_MIN_CENTS"],
   })
-  .refine((e) => e.SEED_CAPITAL_CONSUMER_MIN_CENTS <= e.SEED_CAPITAL_CONSUMER_MAX_CENTS, {
-    message: "SEED_CAPITAL_CONSUMER_MIN_CENTS debe ser <= MAX",
-    path: ["SEED_CAPITAL_CONSUMER_MIN_CENTS"],
-  })
   .refine((e) => e.SEED_CAPITAL_TRADER_MIN_CENTS <= e.SEED_CAPITAL_TRADER_MAX_CENTS, {
     message: "SEED_CAPITAL_TRADER_MIN_CENTS debe ser <= MAX",
     path: ["SEED_CAPITAL_TRADER_MIN_CENTS"],
@@ -151,7 +145,7 @@ const EnvSchema = z
   });
 
 /** Roles de agente (claves de `seedCapitalRanges`, snake_case como en la DB). */
-export type AgentRoleKey = "transformer" | "consumer" | "trader";
+export type AgentRoleKey = "transformer" | "trader";
 
 export interface SeedCapitalRange {
   minCents: number;
@@ -284,10 +278,6 @@ function loadConfig(): Config {
       transformer: {
         minCents: e.SEED_CAPITAL_TRANSFORMER_MIN_CENTS,
         maxCents: e.SEED_CAPITAL_TRANSFORMER_MAX_CENTS,
-      },
-      consumer: {
-        minCents: e.SEED_CAPITAL_CONSUMER_MIN_CENTS,
-        maxCents: e.SEED_CAPITAL_CONSUMER_MAX_CENTS,
       },
       trader: {
         minCents: e.SEED_CAPITAL_TRADER_MIN_CENTS,

@@ -177,7 +177,6 @@ export interface GoldConversion {
 
 export type AgentRole =
   | "transformer"
-  | "consumer"
   | "trader"
   // Rol de solo-monitoreo (panel admin): no participa en el mercado.
   | "admin"

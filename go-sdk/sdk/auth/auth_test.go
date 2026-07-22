@@ -56,7 +56,7 @@ func (f *fakeClient) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*mo
 func TestGetAccessTokenFallsBackToLoginWhenRefreshIsRevoked(t *testing.T) {
 	client := &fakeClient{validRefresh: "refresh-owned-by-another-process"}
 
-	a := NewAuthManager("bot_1", "pw", models.AgentRole("consumer"), "")
+	a := NewAuthManager("bot_1", "pw", models.RoleTrader, "")
 	a.SetRefresher(client.refresh)
 	a.SetLoginHelper(client)
 	a.accessToken = "expired-access"
@@ -92,7 +92,7 @@ func TestGetAccessTokenFallsBackToLoginWhenRefreshIsRevoked(t *testing.T) {
 func TestInvalidateAccessTokenForcesRefresh(t *testing.T) {
 	client := &fakeClient{validRefresh: "refresh-valid"}
 
-	a := NewAuthManager("bot_1", "pw", models.AgentRole("consumer"), "")
+	a := NewAuthManager("bot_1", "pw", models.RoleTrader, "")
 	a.SetRefresher(client.refresh)
 	a.SetLoginHelper(client)
 	a.accessToken = "stale-but-locally-valid"
@@ -117,7 +117,7 @@ func TestInvalidateAccessTokenForcesRefresh(t *testing.T) {
 func TestRefreshBufferClampedForShortLivedTokens(t *testing.T) {
 	client := &fakeClient{validRefresh: "refresh-valid"}
 
-	a := NewAuthManager("bot_1", "pw", models.AgentRole("consumer"), "")
+	a := NewAuthManager("bot_1", "pw", models.RoleTrader, "")
 	a.SetRefresher(client.refresh)
 	a.SetLoginHelper(client)
 	a.storeTokensLocked("short-lived-access", "refresh-valid",
@@ -172,7 +172,7 @@ func TestSQLiteSessionPersistenceAndMigration(t *testing.T) {
 	jsonData := SessionData{
 		Username:         "migrated_user",
 		Password:         "migrated_pass",
-		Role:             models.AgentRole("consumer"),
+		Role:             models.RoleTrader,
 		AgentID:          "agent_migrated",
 		AccessToken:      "access_migrated",
 		RefreshToken:     "refresh_migrated",
@@ -190,7 +190,7 @@ func TestSQLiteSessionPersistenceAndMigration(t *testing.T) {
 	}
 	f.Close()
 
-	aMigrate := NewAuthManager("migrated_user", "migrated_pass", models.AgentRole("consumer"), jsonPath)
+	aMigrate := NewAuthManager("migrated_user", "migrated_pass", models.RoleTrader, jsonPath)
 	if !aMigrate.loadSessionLocked() {
 		t.Fatalf("failed to load and migrate session from JSON to SQLite")
 	}
@@ -204,7 +204,7 @@ func TestSQLiteSessionPersistenceAndMigration(t *testing.T) {
 	}
 
 	expectedDBPath := filepath.Join(tempDir, "sessions.sqlite")
-	aCheck := NewAuthManager("migrated_user", "migrated_pass", models.AgentRole("consumer"), expectedDBPath)
+	aCheck := NewAuthManager("migrated_user", "migrated_pass", models.RoleTrader, expectedDBPath)
 	if !aCheck.loadSessionLocked() {
 		t.Fatalf("failed to load migrated session directly from SQLite")
 	}
@@ -221,7 +221,7 @@ type fakeClientWithSnapshot struct {
 
 func (f *fakeClientWithSnapshot) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models.AgentSnapshot, error) {
 	return &models.AgentSnapshot{
-		Agent: models.AgentPublic{AgentID: "agent-snap-1", Role: models.AgentRole("consumer")},
+		Agent: models.AgentPublic{AgentID: "agent-snap-1", Role: models.RoleTrader},
 	}, nil
 }
 
@@ -232,7 +232,7 @@ func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
 	client := &fakeClientWithSnapshot{}
 	username := "bot_mem_" + t.Name() // único: memorySessions es global al proceso
 
-	a1 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
+	a1 := NewAuthManager(username, "pw", models.RoleTrader, "")
 	a1.SetRefresher(client.refresh)
 	if err := a1.PerformAuth(context.Background(), client, false); err != nil {
 		t.Fatalf("PerformAuth (primera activación): %v", err)
@@ -242,7 +242,7 @@ func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
 	}
 
 	// Segunda activación: AuthManager nuevo, como lo crea la rotación del swarm.
-	a2 := NewAuthManager(username, "pw", models.AgentRole("consumer"), "")
+	a2 := NewAuthManager(username, "pw", models.RoleTrader, "")
 	a2.SetRefresher(client.refresh)
 	if err := a2.PerformAuth(context.Background(), client, false); err != nil {
 		t.Fatalf("PerformAuth (segunda activación): %v", err)

@@ -114,7 +114,10 @@ func main() {
 		// instalación entre bots. El aguador está primero porque el agua es la
 		// raíz de la cadena: sin él no arranca nada; el energético (ADR-024)
 		// va justo después porque la industria entera consume electricidad.
-		strats := []string{"aguador", "energetico", "miner", "farmer", "transformer", "consumer", "trader"}
+		// No hay `consumer` (ADR-025): la demanda final la ponen las ciudades
+		// desde bots-ciudad, que sí tienen ingreso recurrente; un consumidor
+		// aquí solo gastaría su capital semilla hasta quebrar.
+		strats := []string{"aguador", "energetico", "miner", "farmer", "transformer", "trader"}
 
 		// Fixed namespace UUID for deterministic UUID v5 generation
 		namespace := uuid.MustParse("8c478718-9e01-4841-8870-fdf6d9c4f592")
@@ -309,8 +312,6 @@ func createEngine(botCfg BotRunnerConfig, globalCfg GlobalConfig) *engine.Engine
 		strat = NewFarmerStrategy()
 	case "transformer":
 		strat = NewTransformerStrategy()
-	case "consumer":
-		strat = NewConsumerStrategy()
 	case "trader":
 		strat = NewTraderStrategy()
 	default:

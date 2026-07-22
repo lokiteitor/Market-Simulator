@@ -61,7 +61,6 @@ function baseConfig(): SeedConfig {
     ],
     roles: {
       transformer: { initial_agents: 1 },
-      consumer: { initial_agents: 1 },
       trader: { initial_agents: 0 },
     },
   };

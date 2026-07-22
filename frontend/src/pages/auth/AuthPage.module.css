@@ -183,19 +183,9 @@
   }
 }
 
-.rolePrimaryProducer {
-  --role-color: var(--color-role-primary-producer);
-  --role-soft: var(--color-role-primary-producer-soft);
-}
-
 .roleTransformer {
   --role-color: var(--color-role-transformer);
   --role-soft: var(--color-role-transformer-soft);
-}
-
-.roleConsumer {
-  --role-color: var(--color-role-consumer);
-  --role-soft: var(--color-role-consumer-soft);
 }
 
 .roleTrader {

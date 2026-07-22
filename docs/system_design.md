@@ -6,7 +6,7 @@
 
 ## 1. Visión y Alcance del Producto
 - **Qué es:** Interfaz web cliente para operar dentro de una simulación autoritativa de mercado agrícola.
-- **Usuario final:** Humanos que actúan como agentes económicos (Productores Primarios, Transformadores, Consumidores, Traders).
+- **Usuario final:** Humanos que actúan como agentes económicos (Transformadores y Traders, los dos roles registrables tras ADR-022 y ADR-025).
 - **Principio rector:** El servidor es la única fuente de verdad. La UI es un reflejo reactivo del estado del servidor, envía comandos vía REST y recibe actualizaciones push vía WebSocket.
 - **Alcance v1:** Operaciones de agente y visibilidad de mercado. **Actualización 2026-07:** el frontend incluye además un **panel de administración** para el operador (`frontend/src/pages/admin`, usuario creado por `seed-admin`), fuera del alcance original de este documento, la pantalla de **instalaciones** (`/installations`, ADR-021) y la del **banco central** (`/bank`, §4.6): la ventanilla de convertibilidad (`GET /bank`, `POST /bank/convert`) ya tiene UI de agente. Las **ciudades** (rol `city`, ADR-020) y el propio agente banco no tienen UI propia — los operan bots/sweepers — pero la UI las etiqueta correctamente (badge "Ciudad", toast de ingreso urbano) por si un humano entra con sus credenciales. La **energía** (ADR-024) no requiere pantalla: la electricidad, el tipo de instalación `generacion` y sus recetas emergen del catálogo en las pantallas existentes.
 
@@ -109,7 +109,7 @@ Sección dinámica entre productos y recetas (`GET /catalog/deposits`, refetch 5
 | Aspecto | Recomendación |
 |---------|---------------|
 | **Tipografía** | Sans-serif para UI (Inter, Roboto, o similar). Monoespaciada para datos numéricos, IDs y timestamps (JetBrains Mono, SF Mono). |
-| **Paleta** | Fondo claro/oscuro según preferencia. Colores semánticos: `active` (verde), `partial` (amarillo), `completed` (azul), `cancelled`/`expired` (gris), `bankrupt` (rojo). Roles: Productor (verde tierra), Transformador (naranja), Consumidor (azul), Trader (púrpura). |
+| **Paleta** | Fondo claro/oscuro según preferencia. Colores semánticos: `active` (verde), `partial` (amarillo), `completed` (azul), `cancelled`/`expired` (gris), `bankrupt` (rojo). Roles: Transformador (naranja), Trader (púrpura), Ciudad (azul, heredado del retirado rol Consumidor). |
 | **Formato Numérico** | **NUNCA mostrar enteros crudos.** La API usa `BIGINT` en centésimas y centavos. UI debe formatear: `valor / 100` con 2 decimales. Ej: `1500` → `15.00 kg`, `25000` → `$250.00`. |
 | **Tiempo** | Mostrar timestamps en hora local del usuario. Indicar claramente cuando un valor proviene de tiempo simulado (ej. tooltip: `TTL: 2h simuladas (5× tiempo real)`). |
 | **Componentes** | `DataTable` con sticky header, sorting, y row actions. `Toast` para WS notifications. `Modal` para formularios críticos. `Skeleton` para carga inicial. `Tooltip` para UUIDs y payloads JSON. |

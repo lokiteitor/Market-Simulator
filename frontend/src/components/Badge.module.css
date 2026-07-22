@@ -20,9 +20,9 @@
   color: var(--color-role-transformer);
 }
 
-.roleConsumer {
-  background-color: var(--color-role-consumer-soft);
-  color: var(--color-role-consumer);
+.roleCity {
+  background-color: var(--color-role-city-soft);
+  color: var(--color-role-city);
 }
 
 .roleTrader {

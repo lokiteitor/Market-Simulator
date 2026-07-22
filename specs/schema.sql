@@ -41,7 +41,10 @@ CREATE TYPE agent_role AS ENUM (
     -- el antiguo 'primary_producer' desapareció y sus tipos de instalación
     -- (campo, mina, pozo_agua, …) pertenecen a 'transformer'.
     'transformer',
-    'consumer',
+    -- Ya no existe 'consumer' (ADR-025): la demanda final es 'city'. Un
+    -- consumidor registrable no tenía ninguna fuente de ingreso recurrente
+    -- (nunca vendía nada), así que su capital solo podía decrecer hasta la
+    -- quiebra: la patología que ADR-020 diagnosticó y curó solo para ciudades.
     'trader',
     -- Rol de solo-monitoreo: NO participa en el mercado (sin capital ni
     -- capacidades) y NO es registrable vía POST /auth/register. Se crea con el

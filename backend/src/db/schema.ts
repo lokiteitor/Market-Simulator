@@ -46,7 +46,8 @@ export const productCategory = pgEnum("product_category", [
 export const agentRole = pgEnum("agent_role", [
   // Único rol productivo (ADR-022): ya no existe `primary_producer`.
   "transformer",
-  "consumer",
+  // Ya no existe `consumer` (ADR-025): la demanda final es `city`, el único rol
+  // consumidor con ingreso recurrente. Ver MARKET_ROLES en types/contracts.ts.
   "trader",
   // Rol de solo-monitoreo (panel admin): no participa en el mercado y no es
   // registrable por /auth/register. Ver MARKET_ROLES en types/contracts.ts.

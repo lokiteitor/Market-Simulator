@@ -5,11 +5,11 @@ import "time"
 type AgentRole string
 
 const (
-	RoleTransformer     AgentRole = "transformer"
-	RoleConsumer        AgentRole = "consumer"
-	RoleTrader          AgentRole = "trader"
+	RoleTransformer AgentRole = "transformer"
+	RoleTrader      AgentRole = "trader"
 	// RoleCity: consumidor sembrado (capital del mundo). No registrable por
-	// humanos; el backend lo siembra y bots-ciudad lo maneja por login.
+	// humanos; el backend lo siembra y bots-ciudad lo maneja por login. Desde
+	// ADR-025 es el ÚNICO rol consumidor: `consumer` ya no existe en el enum.
 	RoleCity AgentRole = "city"
 )
 

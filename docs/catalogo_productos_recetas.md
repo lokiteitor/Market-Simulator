@@ -118,7 +118,7 @@ acreditado al banco central vía `fee_ledger`.
 | Campo JSON        | Reglas                                                    |
 | ----------------- | --------------------------------------------------------- |
 | `key`, `name`     | Únicos.                                                   |
-| `role`            | Rol que puede comprarlo. Hoy siempre `transformer` (ADR-022); la columna sigue existiendo para que un `consumer` o un `trader` no puedan comprar instalaciones. |
+| `role`            | Rol que puede comprarlo. Hoy siempre `transformer` (ADR-022); la columna sigue existiendo para que un `trader` (o una `city`) no pueda comprar instalaciones. |
 | `unit_label`      | Etiqueta del nivel ("hectáreas", "líneas", …).            |
 | `base_price_cents`| Precio del nivel 1 (centavos).                            |
 | `growth_bps`      | Factor de crecimiento por nivel (17000 = ×1.7).           |

@@ -19,7 +19,7 @@ export type InventoryLotRow = typeof inventoryLot.$inferSelect;
 export type AgentRole = (typeof agentRole.enumValues)[number];
 
 /**
- * Roles que participan en el mercado (los 3 registrables; excluye `admin`, que
+ * Roles que participan en el mercado (los 2 registrables; excluye `admin`, que
  * es solo-monitoreo). Fuente única para: cuerpo de /auth/register, plan del
  * seed, y agregaciones de mercado que deben ignorar a los administradores. NO
  * usar `agentRole.enumValues` para "los roles de mercado": ese incluye `admin`.
@@ -27,17 +27,21 @@ export type AgentRole = (typeof agentRole.enumValues)[number];
  * `transformer` es el ÚNICO rol productivo (ADR-022): absorbió al antiguo
  * `primary_producer` cuando la extracción dejó de ser un caso especial (toda
  * receta consume insumos salvo la extracción de agua, raíz del catálogo).
+ *
+ * Ya no existe `consumer` (ADR-025): la demanda final es `city`, que sí recibe
+ * ingreso recurrente. Un consumidor registrable solo gastaba su capital semilla
+ * hasta agotarlo — exactamente la patología que ADR-020 diagnosticó y curó solo
+ * para las ciudades.
  */
 export const MARKET_ROLES = [
   "transformer",
-  "consumer",
   "trader",
 ] as const satisfies readonly AgentRole[];
 
 export type MarketRole = (typeof MARKET_ROLES)[number];
 
 /**
- * Roles de mercado SEMBRABLES: los 4 registrables + `city`. Fuente única para
+ * Roles de mercado SEMBRABLES: los registrables + `city`. Fuente única para
  * el plan del seed y para las agregaciones que deben incluir a las ciudades
  * como demanda/capital de mercado. `city` participa del mercado (es la demanda
  * final urbana) pero NO es registrable por humanos: se siembra y se maneja por

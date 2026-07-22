@@ -66,7 +66,6 @@ const SeedConfigSchema = z.object({
   installation_types: z.array(SeedInstallationTypeSchema).min(1),
   roles: z.object({
     transformer: SeedRoleSchema,
-    consumer: SeedRoleSchema,
     trader: SeedRoleSchema,
   }),
 });

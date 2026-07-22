@@ -115,7 +115,7 @@ class AgentPublic(BaseModel):
 
     agent_id: str
     username: str
-    role: Literal["transformer", "consumer", "trader"]
+    role: Literal["transformer", "trader", "admin", "bank", "city"]
     status: Literal["active", "bankrupt"]
     registered_at: datetime
     bankrupt_at: datetime | None

@@ -169,11 +169,12 @@ Solo existen cuatro operaciones que cambian la masa monetaria o el capital del b
 
 > **Cambio de modelo — flujo circular.** Antes, los **salarios eran el ÚNICO sumidero de
 > dinero** del sistema: se descontaban al iniciar un proceso y no se acreditaban a nadie.
-> Combinado con que los consumidores solo compran (y los bienes finales se retiran del
+> Combinado con que la demanda final solo compra (y los bienes finales se retiran del
 > sistema), la demanda se drenaba hasta apagar la economía. Ahora los salarios y una
 > fracción de los fees se reciclan hacia las **ciudades** (rol `city`), que los gastan
 > comprando bienes finales, cerrando el ciclo *firmas → hogares → firmas*. El único
-> sumidero que queda es `buy_gold`.
+> sumidero que queda es `buy_gold`. Desde ADR-025 las ciudades son la **única** demanda
+> final: el rol `consumer`, que nunca recibió ingreso recurrente, se retiró.
 
 Todo lo demás (trades, transformaciones) solo **mueve** dinero entre agentes y no altera los
 contadores del patrón oro.
@@ -252,7 +253,7 @@ El arbitraje mantiene el precio de mercado del oro dentro de la banda de la vent
   siempre renta mientras el yacimiento dure.
 
 Los bots productores (`ProducerStrategy`) y `trader` implementan exactamente estas tres patas
-(`bots-v1/bank.go`, `goldArbActions`); consumers y transformers no usan la ventanilla.
+(`bots-v1/bank.go`, `goldArbActions`); las ciudades no usan la ventanilla.
 Ver `funcionamiento_bots.md` §6.
 
 ---

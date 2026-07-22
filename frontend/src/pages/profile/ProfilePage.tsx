@@ -201,7 +201,6 @@ export default function ProfilePage() {
                     styles.avatar,
                     {
                       transformer: styles.avatarTransformer,
-                      consumer: styles.avatarConsumer,
                       trader: styles.avatarTrader,
                       admin: undefined,
                       bank: undefined,

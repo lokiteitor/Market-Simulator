@@ -338,7 +338,6 @@ export default function AuthPage() {
                 {ROLE_INFOS.map((info) => {
                   const roleClass = {
                     transformer: styles.roleTransformer,
-                    consumer: styles.roleConsumer,
                     trader: styles.roleTrader,
                     // admin/bank/city no aparecen en ROLE_INFOS; claves por exhaustividad de tipos.
                     admin: undefined,

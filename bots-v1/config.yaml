@@ -33,9 +33,9 @@ deposit_refresh_seconds: 300
 # - max_active: cantidad máxima de bots activos concurrentemente (0 para sin límite, ejecuta todos)
 # - active_duration: cuánto tiempo juega cada bot antes de dormir y rotar (ej. "10m", "600s", "1h")
 # - scale: cantidad de bots programáticos a generar (0 para usar la lista manual de bots)
-max_active: 800
-active_duration: "10m"
-scale: 5000
+max_active: 500
+active_duration: "5m"
+scale: 50000
 
 # Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.
 market:
@@ -260,13 +260,6 @@ bots:
     strategy: "transformer"
     tick_interval_seconds: 5
     persist_path: "./.session_trans_1.json"
-    auto_register: true
-
-  - username: "consumer_1"
-    password: "dev-password-123"
-    role: "consumer"
-    tick_interval_seconds: 5
-    persist_path: "./.session_cons_1.json"
     auto_register: true
 
   - username: "trader_1"

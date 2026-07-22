@@ -10,11 +10,10 @@ Este documento sintetiza las decisiones de diseño tomadas en la fase conceptual
 
 Se construye un servidor autoritativo de estado que simula un mercado de productos agrícolas con desde ~100 hasta ~10.000 agentes participando simultáneamente (sin límite máximo). Los agentes son clientes externos que se conectan al sistema; el servidor es la única fuente de verdad sobre capital, inventarios, órdenes, procesos de transformación e historial.
 
-**Roles de agentes:**
-- **Productores primarios:** generan materias primas desde cero (siembra, cosecha, ganadería).
-- **Transformadores:** compran materias primas, las procesan en productos de mayor valor, y los venden.
-- **Consumidores finales:** compran productos para consumir, retirándolos del sistema.
+**Roles de agentes** (registrables: `transformer` y `trader`):
+- **Transformadores:** el **único rol productivo** (ADR-022). Extraen del entorno (pozos, minas, campos) y procesan insumos en productos de mayor valor; absorbieron al antiguo rol de productor primario cuando toda receta pasó a consumir insumos salvo la extracción de agua.
 - **Traders / intermediarios:** compran y revenden buscando ganancia por arbitraje, sin transformar.
+- **Ciudades (`city`):** la demanda final, que compra productos para consumir retirándolos del sistema. **No es registrable**: se siembra (~50 capitales) y la operan los bots de `bots-ciudad`. Es el único rol consumidor porque es el único con ingreso recurrente (ADR-020); el antiguo rol `consumer`, que solo gastaba su capital semilla hasta quebrar, se retiró en ADR-025.
 
 Algunos agentes operan por reglas simples, otros por modelos de ML. El sistema no distingue entre ellos: todos consumen la misma API.
 
@@ -361,10 +360,9 @@ El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total 
 
 **Caso especial — registro inicial:**
 - Los agentes registrados en el setup inicial reciben capital semilla aleatorio dentro de un rango configurable **por rol**:
-  - Productores primarios: rango bajo-medio.
-  - Transformadores: rango medio-alto.
-  - Consumidores: rango medio.
+  - Transformadores: rango medio-alto (cubren extracción e industria).
   - Traders: rango alto.
+  - Las ciudades no usan estos rangos: su capital semilla es `CITY_SEED_CAPITAL_CENTS_PER_WEIGHT × population_weight`.
 - Los rangos específicos son parámetros de configuración.
 - La aleatoriedad es determinística a partir de la semilla maestra (ver sección de reproducibilidad).
 

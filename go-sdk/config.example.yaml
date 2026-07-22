@@ -5,7 +5,7 @@ server:
 bot:
   username: "example_bot"
   password: "securepassword123"
-  role: "trader" # transformer, consumer, trader
+  role: "trader" # transformer, trader (los unicos registrables)
   persist_path: "./.agent_session.json"
   auto_register: true
   tick_interval_seconds: 5

@@ -41,5 +41,6 @@ var (
 	newMarketView     = botkit.NewMarketView
 )
 
-// Estrategia del consumidor (usada por el selector de estrategias de main.go).
-var NewConsumerStrategy = botkit.NewConsumerStrategy
+// La estrategia del consumidor (botkit.NewConsumerStrategy) NO se re-exporta
+// aquí: desde ADR-025 la demanda final es exclusiva de las ciudades y solo la
+// usa bots-ciudad.

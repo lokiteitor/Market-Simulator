@@ -72,15 +72,18 @@
   --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--focus-ring-color);
 
   /* ---- Colores por ROL de agente ------------------------------------------ */
+  /* El rol `primary_producer` ya no existe (ADR-022), pero su verde sigue vivo:
+     hoy pinta la categoría de producto `raw_primary` y el link activo del
+     sidebar. Se conserva el nombre del token para no tocar tres call sites. */
   --color-role-primary-producer: #4c7a34; /* verde tierra */
   --color-role-transformer: #c96f1f; /* naranja */
-  --color-role-consumer: #2f6faf; /* azul */
+  --color-role-city: #2f6faf; /* azul (era del rol `consumer`, retirado en ADR-025) */
   --color-role-trader: #7a4fa3; /* púrpura */
 
   /* fondos suaves para badges de rol (texto = color de rol, AA) */
   --color-role-primary-producer-soft: #e5eedd;
   --color-role-transformer-soft: #f8e8d8;
-  --color-role-consumer-soft: #e0ebf6;
+  --color-role-city-soft: #e0ebf6;
   --color-role-trader-soft: #ece2f4;
 
   /* ---- Colores por ESTADO (órdenes, procesos, agentes) ---------------------- */
@@ -137,12 +140,12 @@
     /* Roles aclarados para contraste AA sobre superficies oscuras */
     --color-role-primary-producer: #8cba67;
     --color-role-transformer: #e59a55;
-    --color-role-consumer: #74a8dd;
+    --color-role-city: #74a8dd;
     --color-role-trader: #b28ad6;
 
     --color-role-primary-producer-soft: rgba(140, 186, 103, 0.16);
     --color-role-transformer-soft: rgba(229, 154, 85, 0.16);
-    --color-role-consumer-soft: rgba(116, 168, 221, 0.16);
+    --color-role-city-soft: rgba(116, 168, 221, 0.16);
     --color-role-trader-soft: rgba(178, 138, 214, 0.16);
 
     --color-state-active: #74c278;

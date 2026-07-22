@@ -23,7 +23,7 @@ describe("seedFrom", () => {
   });
 
   test("claves distintas → semillas distintas", () => {
-    const keys = ["transformer_1", "transformer_2", "consumer_1", "trader_1"];
+    const keys = ["transformer_1", "transformer_2", "trader_1", "trader_2"];
     const seeds = new Set(keys.map((k) => seedFrom(42, k)));
     expect(seeds.size).toBe(keys.length);
   });

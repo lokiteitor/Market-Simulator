@@ -1,6 +1,6 @@
 # 📚 Documentación Base de Datos — Simulación de Mercado Agrícola
 
-## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (transformadores —el único rol productivo, ADR-022—, consumidores, traders y ciudades) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario, **yacimientos finitos** en los recursos no renovables (ADR-023) y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada).
+## Servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes (transformadores —el único rol productivo, ADR-022—, traders y ciudades —la única demanda final, ADR-025—) operando concurrentemente sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario, **yacimientos finitos** en los recursos no renovables (ADR-023) y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada).
 
 ---
 
@@ -292,8 +292,7 @@ ALTER TABLE recipe_input ADD CONSTRAINT recipe_input_product_fk FOREIGN KEY (pro
 -- Enums
 CREATE TYPE agent_role AS ENUM (
     'transformer',
-    'consumer',
-    'trader',
+    'trader',   -- ya no existe 'consumer' (ADR-025): la demanda final es 'city'
     'admin',    -- solo-monitoreo (panel admin); no registrable, no opera el mercado
     'bank',     -- banco central del patrón oro; agente único del seed, sin credenciales
     'city'      -- ciudad-consumidor: demanda final urbana. Sembrada CON credenciales
@@ -342,7 +341,6 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 | Valor              | Descripción                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------------- |
 | `transformer`      | **Único rol productivo** (ADR-022): extrae del entorno (pozos, minas, campos) y transforma insumos en productos de mayor valor. Absorbió al antiguo `primary_producer`. |
-| `consumer`         | Consumidor final: compra productos para consumir, retirándolos del sistema.                  |
 | `trader`           | Trader/intermediario: compra y revende buscando arbitraje, sin transformar.                  |
 | `admin`            | Rol de solo-monitoreo para el panel de administración. No registrable vía `/auth/register`; no participa en el mercado. Creado por `seed-admin`. |
 | `bank`             | Banco central del patrón oro. Agente único del seed, **sin credenciales** (no logueable), sin capacidades. Opera la ventanilla y recibe los fees. Excluido de los agregados de mercado (`NON_MARKET_ROLES`). |
@@ -373,7 +371,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 
 - **Invariantes de capital**: `capital_available >= 0` y `capital_reserved >= 0`. La suma de `capital_reserved` debe coincidir con la suma de `qty_pending × limit_price_cents` de las órdenes de compra activas del agente.
 - **Capital semilla en registro dinámico (emisión respaldada)**: el grant objetivo es el promedio actual del capital total de agentes activos (o `DEFAULT_SEED_CAPITAL_CENTS` si no hay ninguno). Con patrón oro activo, ese grant se financia **primero con capital del banco central** (fees reciclados) y el resto se **acuña** (`money_issued`) solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro falla con `insufficient_gold_backing`. Todo bajo el mutex `gold_standard FOR UPDATE`.
-- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (transformadores: medio-alto —cubren extracción e industria—; consumidores: medio; traders: alto). Determinístico a partir de la semilla maestra.
+- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (transformadores: medio-alto —cubren extracción e industria—; traders: alto). Determinístico a partir de la semilla maestra. Las ciudades van por su propio carril (`CITY_SEED_CAPITAL_CENTS_PER_WEIGHT` × `population_weight`).
 - **Detección de quiebra**: reactiva. Se evalúa cuando se cancela la última orden, vence la última orden o se completa el último proceso sin recuperar capital. Se requiere: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas.
 - **Acciones al quebrar**: cancelar órdenes activas, marcar `status='bankrupt'`, registrar `bankrupt_at`, congelar inventario residual, emitir `bankruptcy_notice` y broadcast `agent_bankrupt`.
 

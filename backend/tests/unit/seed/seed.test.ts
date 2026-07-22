@@ -22,7 +22,6 @@ import {
 
 const RANGES: Record<AgentRoleKey, SeedCapitalRange> = {
   transformer: { minCents: 120000, maxCents: 250000 },
-  consumer: { minCents: 80000, maxCents: 150000 },
   trader: { minCents: 200000, maxCents: 400000 },
 };
 
@@ -79,8 +78,7 @@ function baseConfig(): SeedConfig {
     ],
     roles: {
       transformer: { initial_agents: 3 },
-      consumer: { initial_agents: 3 },
-      trader: { initial_agents: 0 },
+      trader: { initial_agents: 2 },
     },
   };
 }
@@ -219,11 +217,19 @@ describe("buildAgentPlan", () => {
       "transformer_1",
       "transformer_2",
       "transformer_3",
-      "consumer_1",
-      "consumer_2",
-      "consumer_3",
+      "trader_1",
+      "trader_2",
     ]);
+  });
+
+  test("un rol con initial_agents 0 no aporta agentes", () => {
+    const sinTraders: SeedConfig = {
+      ...cfg,
+      roles: { ...cfg.roles, trader: { initial_agents: 0 } },
+    };
+    const plan = buildAgentPlan(sinTraders, { masterSeed: 42, capitalRanges: RANGES });
     expect(plan.filter((e) => e.role === "trader")).toHaveLength(0);
+    expect(plan).toHaveLength(3);
   });
 
   test("capital dentro del rango del rol", () => {
