@@ -14,6 +14,9 @@
  *   4. Ningún `final_consumption` se usa como insumo (si se usa, es intermedio).
  *   5. Los recursos con yacimiento finito (ADR-023) son exactamente los
  *      geológicos no renovables: ni el agua (raíz), ni la arena, ni el oro.
+ *   6. Frontera de la fase de energía (ADR-024): la electricidad solo fluye
+ *      hacia la industria; ni entra en las extractivas ni la generación
+ *      consume derivados industriales.
  */
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
@@ -124,5 +127,28 @@ describe("grafo del catálogo", () => {
       .filter((x) => x.cuota < 0.25 || x.cuota > 0.35)
       .map((x) => `${x.key}=${Math.round(x.cuota * 100)}%`);
     expect(fuera).toEqual([]);
+  });
+
+  test("fase de energía (ADR-024): la electricidad no entra en las extractivas ni la generación quema derivados", async () => {
+    // La aciclicidad ya lo implica, pero este test documenta el PORQUÉ y
+    // protege la frontera de la v1: (a) si una extractiva consumiera
+    // electricidad y una térmica quemara su producto, se cerraría un ciclo
+    // (carbón → electricidad → carbón); (b) si la generación quemara un
+    // derivado industrial (diésel), ciclaría con la industria que ahora
+    // consume electricidad. Relajar esto exige el chequeo de factibilidad
+    // AND-OR de la v2, no borrar el test.
+    const cfg = await loadCatalog();
+    const EXTRACTIVOS = new Set(["campo", "granja", "mina", "cantera", "pozo", "pozo_agua", "bosque"]);
+    const extractivasConElec = cfg.recipes
+      .filter((r) => EXTRACTIVOS.has(r.installation_type))
+      .filter((r) => r.inputs.some((i) => i.product === "electricidad"))
+      .map((r) => r.key);
+    expect(extractivasConElec).toEqual([]);
+
+    const COMBUSTIBLES_PRIMARIOS = new Set(["agua", "carbon", "gas_natural"]);
+    const generacionFuera = cfg.recipes
+      .filter((r) => r.installation_type === "generacion")
+      .flatMap((r) => r.inputs.filter((i) => !COMBUSTIBLES_PRIMARIOS.has(i.product)).map((i) => `${r.key}←${i.product}`));
+    expect(generacionFuera).toEqual([]);
   });
 });

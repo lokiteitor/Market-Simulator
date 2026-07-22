@@ -407,6 +407,12 @@
       "category": "intermediate"
     },
     {
+      "key": "electricidad",
+      "name": "Electricidad",
+      "unit": "kWh",
+      "category": "intermediate"
+    },
+    {
       "key": "queroseno",
       "name": "Queroseno",
       "unit": "litro",
@@ -581,12 +587,6 @@
       "category": "intermediate"
     },
     {
-      "key": "transformador",
-      "name": "Transformador",
-      "unit": "unidad",
-      "category": "intermediate"
-    },
-    {
       "key": "generador",
       "name": "Generador",
       "unit": "unidad",
@@ -667,12 +667,6 @@
     {
       "key": "neumatico",
       "name": "Neumáticos",
-      "unit": "unidad",
-      "category": "intermediate"
-    },
-    {
-      "key": "turbina",
-      "name": "Turbina",
       "unit": "unidad",
       "category": "intermediate"
     },
@@ -773,12 +767,6 @@
       "category": "final_consumption"
     },
     {
-      "key": "central_electrica",
-      "name": "Central eléctrica",
-      "unit": "unidad",
-      "category": "final_consumption"
-    },
-    {
       "key": "planta_ensamblaje",
       "name": "Planta de ensamblaje automotriz",
       "unit": "unidad",
@@ -871,30 +859,6 @@
     {
       "key": "grua",
       "name": "Grúa",
-      "unit": "unidad",
-      "category": "final_consumption"
-    },
-    {
-      "key": "generador_industrial",
-      "name": "Generador industrial",
-      "unit": "unidad",
-      "category": "final_consumption"
-    },
-    {
-      "key": "panel_solar",
-      "name": "Panel solar",
-      "unit": "unidad",
-      "category": "final_consumption"
-    },
-    {
-      "key": "turbina_eolica",
-      "name": "Turbina eólica",
-      "unit": "unidad",
-      "category": "final_consumption"
-    },
-    {
-      "key": "transformador_electrico",
-      "name": "Transformador eléctrico",
       "unit": "unidad",
       "category": "final_consumption"
     },
@@ -1063,6 +1027,10 @@
         {
           "product": "trigo",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 2300
         }
       ]
     },
@@ -1078,6 +1046,10 @@
         {
           "product": "harina",
           "qty_cent": 8000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7000
         }
       ]
     },
@@ -1093,6 +1065,10 @@
         {
           "product": "maiz",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 2900
         }
       ]
     },
@@ -1108,6 +1084,10 @@
         {
           "product": "masa",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 3300
         }
       ]
     },
@@ -1123,6 +1103,10 @@
         {
           "product": "leche",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8700
         }
       ]
     },
@@ -1138,6 +1122,10 @@
         {
           "product": "tomate",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 3300
         }
       ]
     },
@@ -1688,6 +1676,10 @@
         {
           "product": "carbon",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15800
         }
       ]
     },
@@ -1707,6 +1699,10 @@
         {
           "product": "niquel",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 32500
         }
       ]
     },
@@ -1722,6 +1718,10 @@
         {
           "product": "bauxita",
           "qty_cent": 50000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15800
         }
       ]
     },
@@ -1737,6 +1737,10 @@
         {
           "product": "mineral_cobre",
           "qty_cent": 50000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15800
         }
       ]
     },
@@ -1752,6 +1756,10 @@
         {
           "product": "caliza",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8500
         }
       ]
     },
@@ -1775,6 +1783,10 @@
         {
           "product": "agua",
           "qty_cent": 1000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8700
         }
       ]
     },
@@ -1790,6 +1802,10 @@
         {
           "product": "arena",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8500
         }
       ]
     },
@@ -1805,6 +1821,10 @@
         {
           "product": "arcilla",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7700
         }
       ]
     },
@@ -1824,6 +1844,10 @@
         {
           "product": "piedra",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 13800
         }
       ]
     },
@@ -1839,6 +1863,10 @@
         {
           "product": "petroleo",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14600
         }
       ]
     },
@@ -1854,6 +1882,10 @@
         {
           "product": "petroleo",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14600
         }
       ]
     },
@@ -1873,6 +1905,10 @@
         {
           "product": "fosfato",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16900
         }
       ]
     },
@@ -1892,6 +1928,10 @@
         {
           "product": "sal",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14000
         }
       ]
     },
@@ -1907,6 +1947,10 @@
         {
           "product": "arena",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15200
         }
       ]
     },
@@ -1922,6 +1966,10 @@
         {
           "product": "troncos",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7000
         }
       ]
     },
@@ -1937,6 +1985,10 @@
         {
           "product": "troncos",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7000
         }
       ]
     },
@@ -1952,6 +2004,10 @@
         {
           "product": "celulosa",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 10800
         }
       ]
     },
@@ -1967,6 +2023,10 @@
         {
           "product": "papel",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15700
         }
       ]
     },
@@ -1982,6 +2042,10 @@
         {
           "product": "cana_azucar",
           "qty_cent": 50000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6500
         }
       ]
     },
@@ -1997,6 +2061,10 @@
         {
           "product": "soya",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6300
         }
       ]
     },
@@ -2012,6 +2080,10 @@
         {
           "product": "ganado_bovino",
           "qty_cent": 500
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8600
         }
       ]
     },
@@ -2027,6 +2099,10 @@
         {
           "product": "leche",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 11300
         }
       ]
     },
@@ -2042,6 +2118,10 @@
         {
           "product": "petroleo",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 17700
         }
       ]
     },
@@ -2057,6 +2137,10 @@
         {
           "product": "petroleo",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 17700
         }
       ]
     },
@@ -2072,6 +2156,10 @@
         {
           "product": "petroleo",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 17700
         }
       ]
     },
@@ -2087,6 +2175,63 @@
         {
           "product": "petroleo",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 17700
+        }
+      ]
+    },
+    {
+      "key": "generacion_hidro",
+      "name": "Generación hidroeléctrica",
+      "output": "electricidad",
+      "installation_type": "generacion",
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 60000
+        }
+      ]
+    },
+    {
+      "key": "central_termica_carbon",
+      "name": "Central térmica de carbón",
+      "output": "electricidad",
+      "installation_type": "generacion",
+      "output_qty_cent": 60000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "carbon",
+          "qty_cent": 40000
+        },
+        {
+          "product": "agua",
+          "qty_cent": 10000
+        }
+      ]
+    },
+    {
+      "key": "central_termica_gas",
+      "name": "Central térmica de gas",
+      "output": "electricidad",
+      "installation_type": "generacion",
+      "output_qty_cent": 60000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "gas_natural",
+          "qty_cent": 20000
+        },
+        {
+          "product": "agua",
+          "qty_cent": 10000
         }
       ]
     },
@@ -2102,6 +2247,10 @@
         {
           "product": "acero",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14900
         }
       ]
     },
@@ -2117,6 +2266,10 @@
         {
           "product": "acero",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14900
         }
       ]
     },
@@ -2132,6 +2285,10 @@
         {
           "product": "acero",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14900
         }
       ]
     },
@@ -2147,6 +2304,10 @@
         {
           "product": "acero",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14900
         }
       ]
     },
@@ -2162,6 +2323,10 @@
         {
           "product": "aluminio",
           "qty_cent": 15000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16800
         }
       ]
     },
@@ -2177,6 +2342,10 @@
         {
           "product": "aluminio",
           "qty_cent": 15000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16800
         }
       ]
     },
@@ -2192,6 +2361,10 @@
         {
           "product": "cobre_refinado",
           "qty_cent": 15000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 19700
         }
       ]
     },
@@ -2207,6 +2380,10 @@
         {
           "product": "cobre_refinado",
           "qty_cent": 15000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 19700
         }
       ]
     },
@@ -2222,6 +2399,10 @@
         {
           "product": "vidrio",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 12200
         }
       ]
     },
@@ -2237,6 +2418,10 @@
         {
           "product": "vidrio",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14900
         }
       ]
     },
@@ -2252,6 +2437,10 @@
         {
           "product": "plastico",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 19500
         }
       ]
     },
@@ -2267,6 +2456,10 @@
         {
           "product": "productos_quimicos",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16700
         }
       ]
     },
@@ -2282,6 +2475,10 @@
         {
           "product": "plastico",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 10600
         }
       ]
     },
@@ -2297,6 +2494,10 @@
         {
           "product": "lubricantes",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 33800
         }
       ]
     },
@@ -2312,6 +2513,10 @@
         {
           "product": "tablas",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8100
         }
       ]
     },
@@ -2327,6 +2532,10 @@
         {
           "product": "tablas",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8100
         }
       ]
     },
@@ -2346,6 +2555,10 @@
         {
           "product": "verduras",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6100
         }
       ]
     },
@@ -2365,6 +2578,10 @@
         {
           "product": "soya",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6000
         }
       ]
     },
@@ -2384,6 +2601,10 @@
         {
           "product": "azucar",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6600
         }
       ]
     },
@@ -2403,6 +2624,10 @@
         {
           "product": "lamina_acero",
           "qty_cent": 6000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 14200
         }
       ]
     },
@@ -2426,6 +2651,10 @@
         {
           "product": "cable_cobre",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16600
         }
       ]
     },
@@ -2441,6 +2670,10 @@
         {
           "product": "acero",
           "qty_cent": 8000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8700
         }
       ]
     },
@@ -2460,6 +2693,10 @@
         {
           "product": "caucho_sintetico",
           "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9300
         }
       ]
     },
@@ -2475,6 +2712,10 @@
         {
           "product": "acero",
           "qty_cent": 4000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7600
         }
       ]
     },
@@ -2490,6 +2731,10 @@
         {
           "product": "acero",
           "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7400
         }
       ]
     },
@@ -2509,6 +2754,10 @@
         {
           "product": "tubo_acero",
           "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9600
         }
       ]
     },
@@ -2528,25 +2777,10 @@
         {
           "product": "acero",
           "qty_cent": 5000
-        }
-      ]
-    },
-    {
-      "key": "ensamble_transformador",
-      "name": "Ensamblaje de transformador",
-      "output": "transformador",
-      "installation_type": "electronica",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 5400,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "bobina_cobre",
-          "qty_cent": 6000
         },
         {
-          "product": "acero",
-          "qty_cent": 8000
+          "product": "electricidad",
+          "qty_cent": 11800
         }
       ]
     },
@@ -2566,6 +2800,10 @@
         {
           "product": "acero",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 27600
         }
       ]
     },
@@ -2585,6 +2823,10 @@
         {
           "product": "plastico",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9900
         }
       ]
     },
@@ -2604,6 +2846,10 @@
         {
           "product": "plastico",
           "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8700
         }
       ]
     },
@@ -2627,6 +2873,10 @@
         {
           "product": "plastico",
           "qty_cent": 500
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7600
         }
       ]
     },
@@ -2650,6 +2900,10 @@
         {
           "product": "silicio",
           "qty_cent": 1000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 18100
         }
       ]
     },
@@ -2665,6 +2919,10 @@
         {
           "product": "circuito_impreso",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15100
         }
       ]
     },
@@ -2684,6 +2942,10 @@
         {
           "product": "circuito_impreso",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 17000
         }
       ]
     },
@@ -2703,6 +2965,10 @@
         {
           "product": "perfil_aluminio",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6400
         }
       ]
     },
@@ -2722,6 +2988,10 @@
         {
           "product": "plastico",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 5200
         }
       ]
     },
@@ -2741,6 +3011,10 @@
         {
           "product": "viga_acero",
           "qty_cent": 4000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7200
         }
       ]
     },
@@ -2760,6 +3034,10 @@
         {
           "product": "plastico",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7100
         }
       ]
     },
@@ -2779,6 +3057,10 @@
         {
           "product": "acero",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9300
         }
       ]
     },
@@ -2794,6 +3076,10 @@
         {
           "product": "polimeros",
           "qty_cent": 4000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7200
         }
       ]
     },
@@ -2809,25 +3095,10 @@
         {
           "product": "caucho_sintetico",
           "qty_cent": 5000
-        }
-      ]
-    },
-    {
-      "key": "ensamble_turbina",
-      "name": "Ensamblaje de turbina",
-      "output": "turbina",
-      "installation_type": "componentes",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 7200,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "acero",
-          "qty_cent": 20000
         },
         {
-          "product": "perfil_metalico",
-          "qty_cent": 8000
+          "product": "electricidad",
+          "qty_cent": 8500
         }
       ]
     },
@@ -2851,6 +3122,10 @@
         {
           "product": "bomba_industrial",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 21600
         }
       ]
     },
@@ -2874,6 +3149,10 @@
         {
           "product": "microchip",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 37700
         }
       ]
     },
@@ -2897,6 +3176,10 @@
         {
           "product": "cableado",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 82800
         }
       ]
     },
@@ -2916,6 +3199,10 @@
         {
           "product": "tubo_acero",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 16000
         }
       ]
     },
@@ -2939,6 +3226,10 @@
         {
           "product": "productos_quimicos",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 23300
         }
       ]
     },
@@ -2958,6 +3249,10 @@
         {
           "product": "fibra_sintetica",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 10100
         }
       ]
     },
@@ -3005,6 +3300,10 @@
         {
           "product": "cristal_plano",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 246300
         }
       ]
     },
@@ -3040,6 +3339,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 233300
         }
       ]
     },
@@ -3075,6 +3378,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 234200
         }
       ]
     },
@@ -3102,6 +3409,10 @@
         {
           "product": "generador",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 201600
         }
       ]
     },
@@ -3125,6 +3436,10 @@
         {
           "product": "perfil_metalico",
           "qty_cent": 8000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 58400
         }
       ]
     },
@@ -3152,6 +3467,10 @@
         {
           "product": "cableado",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 286300
         }
       ]
     },
@@ -3183,6 +3502,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 200
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 348800
         }
       ]
     },
@@ -3210,6 +3533,10 @@
         {
           "product": "cristal_tecnico",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 322700
         }
       ]
     },
@@ -3237,6 +3564,10 @@
         {
           "product": "rodamientos",
           "qty_cent": 400
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 53700
         }
       ]
     },
@@ -3264,33 +3595,10 @@
         {
           "product": "bomba_industrial",
           "qty_cent": 400
-        }
-      ]
-    },
-    {
-      "key": "constr_central_electrica",
-      "name": "Construcción de central eléctrica",
-      "output": "central_electrica",
-      "installation_type": "construccion",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 18000,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "turbina",
-          "qty_cent": 200
         },
         {
-          "product": "generador",
-          "qty_cent": 200
-        },
-        {
-          "product": "acero",
-          "qty_cent": 30000
-        },
-        {
-          "product": "cableado",
-          "qty_cent": 10000
+          "product": "electricidad",
+          "qty_cent": 270400
         }
       ]
     },
@@ -3318,6 +3626,10 @@
         {
           "product": "hormigon",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 234300
         }
       ]
     },
@@ -3341,6 +3653,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 172400
         }
       ]
     },
@@ -3368,6 +3684,10 @@
         {
           "product": "rodamientos",
           "qty_cent": 400
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 193200
         }
       ]
     },
@@ -3395,6 +3715,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 200
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 254300
         }
       ]
     },
@@ -3418,6 +3742,10 @@
         {
           "product": "cableado",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 33000
         }
       ]
     },
@@ -3441,6 +3769,10 @@
         {
           "product": "cableado",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 214000
         }
       ]
     },
@@ -3468,6 +3800,10 @@
         {
           "product": "cableado",
           "qty_cent": 8000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 90100
         }
       ]
     },
@@ -3495,6 +3831,10 @@
         {
           "product": "cableado",
           "qty_cent": 8000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 318000
         }
       ]
     },
@@ -3534,6 +3874,10 @@
         {
           "product": "panel_interior",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 211000
         }
       ]
     },
@@ -3557,6 +3901,10 @@
         {
           "product": "panel_interior",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 44100
         }
       ]
     },
@@ -3580,6 +3928,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 115200
         }
       ]
     },
@@ -3603,6 +3955,10 @@
         {
           "product": "plastico",
           "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 37000
         }
       ]
     },
@@ -3630,6 +3986,10 @@
         {
           "product": "cobre_refinado",
           "qty_cent": 500
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 69000
         }
       ]
     },
@@ -3657,6 +4017,10 @@
         {
           "product": "circuito_impreso",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 65100
         }
       ]
     },
@@ -3684,6 +4048,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 186900
         }
       ]
     },
@@ -3707,98 +4075,10 @@
         {
           "product": "sistema_hidraulico",
           "qty_cent": 200
-        }
-      ]
-    },
-    {
-      "key": "fab_generador_ind",
-      "name": "Fabricación de generador industrial",
-      "output": "generador_industrial",
-      "installation_type": "ensamblaje",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 10800,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "acero",
-          "qty_cent": 10000
         },
         {
-          "product": "bobina_cobre",
-          "qty_cent": 5000
-        },
-        {
-          "product": "generador",
-          "qty_cent": 100
-        }
-      ]
-    },
-    {
-      "key": "fab_panel_solar",
-      "name": "Fabricación de panel solar",
-      "output": "panel_solar",
-      "installation_type": "ensamblaje",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 7200,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "cristal_tecnico",
-          "qty_cent": 3000
-        },
-        {
-          "product": "silicio",
-          "qty_cent": 2000
-        },
-        {
-          "product": "circuito_impreso",
-          "qty_cent": 100
-        }
-      ]
-    },
-    {
-      "key": "fab_turbina_eolica",
-      "name": "Fabricación de turbina eólica",
-      "output": "turbina_eolica",
-      "installation_type": "ensamblaje",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 18000,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "turbina",
-          "qty_cent": 100
-        },
-        {
-          "product": "acero",
-          "qty_cent": 20000
-        },
-        {
-          "product": "sistema_control",
-          "qty_cent": 100
-        }
-      ]
-    },
-    {
-      "key": "fab_transformador_elec",
-      "name": "Fabricación de transformador eléctrico",
-      "output": "transformador_electrico",
-      "installation_type": "ensamblaje",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 10800,
-      "wage_rate_cents_per_sec": 3,
-      "inputs": [
-        {
-          "product": "cobre_refinado",
-          "qty_cent": 8000
-        },
-        {
-          "product": "acero",
-          "qty_cent": 10000
-        },
-        {
-          "product": "transformador",
-          "qty_cent": 100
+          "product": "electricidad",
+          "qty_cent": 94900
         }
       ]
     },
@@ -3830,6 +4110,10 @@
         {
           "product": "madera_tratada",
           "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 75400
         }
       ]
     },
@@ -3857,6 +4141,10 @@
         {
           "product": "puerta_industrial",
           "qty_cent": 300
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 106900
         }
       ]
     },
@@ -3884,6 +4172,10 @@
         {
           "product": "contrachapado",
           "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 120600
         }
       ]
     },
@@ -3911,6 +4203,10 @@
         {
           "product": "puerta_industrial",
           "qty_cent": 200
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 47400
         }
       ]
     },
@@ -3926,6 +4222,10 @@
         {
           "product": "leche",
           "qty_cent": 40000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 11300
         }
       ]
     },
@@ -3941,6 +4241,10 @@
         {
           "product": "leche",
           "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9200
         }
       ]
     },
@@ -3960,6 +4264,10 @@
         {
           "product": "azucar",
           "qty_cent": 10000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 13400
         }
       ]
     },
@@ -3975,6 +4283,10 @@
         {
           "product": "algodon",
           "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6500
         }
       ]
     }
@@ -4187,6 +4499,20 @@
       ]
     },
     {
+      "key": "generacion",
+      "name": "Generación eléctrica",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 50000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "generacion_hidro",
+        "central_termica_carbon",
+        "central_termica_gas"
+      ]
+    },
+    {
       "key": "aserradero",
       "name": "Aserradero y papelera",
       "role": "transformer",
@@ -4218,7 +4544,6 @@
         "ensamble_pantalla",
         "ensamble_cableado",
         "ensamble_bateria",
-        "ensamble_transformador",
         "ensamble_motor_elec",
         "ensamble_control"
       ]
@@ -4242,7 +4567,6 @@
         "ensamble_bomba",
         "ensamble_hidraulico",
         "ensamble_neumatico",
-        "ensamble_turbina",
         "ensamble_generador",
         "ensamble_tanque",
         "ensamble_tuberia",
@@ -4273,16 +4597,12 @@
         "fab_camion_refrigerado",
         "fab_computadora",
         "fab_excavadora",
-        "fab_generador_ind",
         "fab_grua",
         "fab_lavadora",
         "fab_locomotora",
-        "fab_panel_solar",
         "fab_refrigerador",
         "fab_telefono",
         "fab_televisor",
-        "fab_transformador_elec",
-        "fab_turbina_eolica",
         "fab_vagon"
       ]
     },
@@ -4298,7 +4618,6 @@
         "constr_aeropuerto",
         "constr_almacen",
         "constr_astillero",
-        "constr_central_electrica",
         "constr_edificio_com",
         "constr_edificio_res",
         "constr_estacion",

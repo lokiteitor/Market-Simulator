@@ -4,15 +4,18 @@ package main
 //
 // Con un único rol productivo, lo que reparte el catálogo entre bots ya no es
 // el rol sino el TIPO DE INSTALACIÓN que cada uno está dispuesto a comprar.
-// Los cuatro conjuntos de abajo particionan los 16 tipos del seed-config:
+// Los cinco conjuntos de abajo particionan los 17 tipos del seed-config:
 // juntos lo cubren todo y no se solapan, así que el enjambre cubre la cadena
-// entera sin que ningún bot intente abarcar los 156 procesos.
+// entera sin que ningún bot intente abarcar los 152 procesos.
 //
 // El aguador existe como especialidad propia porque el agua es la RAÍZ del
 // catálogo: la consumen 36 recetas y solo dos la producen. Si nadie se dedica
-// a bombear, la economía entera se queda parada en el primer eslabón.
+// a bombear, la economía entera se queda parada en el primer eslabón. El
+// energético (ADR-024) es el mismo razonamiento un eslabón más arriba: la
+// electricidad es insumo de toda la industria y solo la produce `generacion`.
 var (
 	tiposAgua       = tipos("pozo_agua")
+	tiposEnergia    = tipos("generacion")
 	tiposAgro       = tipos("campo", "granja", "bosque")
 	tiposExtractivo = tipos("mina", "cantera", "pozo")
 	tiposIndustria  = tipos(
@@ -35,6 +38,16 @@ func NewAguadorStrategy() *ProducerStrategy {
 	s.typeFilter = tiposAgua
 	// El agua es insumo universal: conviene que escale más que el resto.
 	s.maxDesiredLevel = 5
+	return s
+}
+
+// NewEnergeticoStrategy: generación eléctrica. La electricidad es insumo de
+// las 113 recetas industriales: sin centrales, la industria entera se para.
+func NewEnergeticoStrategy() *ProducerStrategy {
+	s := NewProducerStrategy()
+	s.typeFilter = tiposEnergia
+	// Insumo casi universal: conviene que escale más que el resto.
+	s.maxDesiredLevel = 4
 	return s
 }
 

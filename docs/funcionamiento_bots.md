@@ -18,18 +18,19 @@ WebSocket que un humano (gateway Caddy, `http://localhost:9080/v1` y
 
 Un único binario (`bots-v1/bots-v1-runner`) lanza N agentes concurrentes, cada uno como una
 goroutine con su propio `engine.Engine` del SDK. Hay **tres roles** en BD (ADR-022: el rol
-productivo es uno solo) y seis estrategias:
+productivo es uno solo) y siete estrategias:
 
 | Rol en BD | Estrategia (bot) | Archivo | Qué hace |
 |-----------|------------------|---------|----------|
 | `transformer` | `aguador` | `producer.go` + `specialties.go` | Pozos de agua: la **raíz** de la cadena. Sin él no arranca nada. |
+| `transformer` | `energetico` | `producer.go` + `specialties.go` | Generación eléctrica (ADR-024): hidro y térmicas. Sin él no produce la industria. |
 | `transformer` | `farmer` | `producer.go` + `specialties.go` | Campo, granja y bosque: consume agua, semillas, fertilizante y piensos. |
 | `transformer` | `miner` | `producer.go` + `specialties.go` | Mina, cantera y pozo: consume agua; monetiza oro en la ventanilla del banco. |
 | `transformer` | `transformer` | `producer.go` + `specialties.go` | Los 9 tipos industriales: compra insumos, ejecuta recetas rentables, vende el output. |
 | `consumer` | `consumer` | `consumer.go` | Demanda final: compra productos de consumo con presupuesto y precio de reserva. |
 | `trader` | `trader` | `trader.go` | Market maker: cotiza bid/ask alrededor del valor justo; arbitra oro contra el banco. |
 
-Las cuatro primeras son **la misma estrategia** (`ProducerStrategy`) con distinto conjunto de
+Las cinco primeras son **la misma estrategia** (`ProducerStrategy`) con distinto conjunto de
 tipos de instalación: extraer y transformar son el mismo acto económico desde que toda receta
 consume insumos salvo la del agua.
 
@@ -55,9 +56,9 @@ graph LR
 | Archivo | Responsabilidad |
 |---------|-----------------|
 | `main.go` | CLI: parsea flags, lee `config.yaml`, genera bots (modo YAML o modo enjambre) y los lanza en goroutines. Cierre limpio en `SIGINT/SIGTERM`. |
-| `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 155 productos** (ancla de todas las heurísticas). |
+| `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 149 productos** (ancla de todas las heurísticas). |
 | `producer.go` | Estrategia productora ÚNICA: gate de margen, reposición de insumos, compra de instalaciones y venta con suelo de coste. |
-| `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `farmer`, `miner`, `transformer` (los cuatro conjuntos particionan los 16 tipos). |
+| `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `energetico`, `farmer`, `miner`, `transformer` (los cinco conjuntos particionan los 17 tipos). |
 | `consumer.go` | Estrategia consumidor. |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
@@ -127,7 +128,7 @@ Los bots **no corren en Docker**: se compilan y ejecutan en el host como un solo
 ```makefile
 # Makefile (raíz del repo)
 build-bots:        cd bots-v1 && go build -o bots-v1-runner
-run-bots:          ./bots-v1-runner -config config.yaml            # los 4 bots del YAML
+run-bots:          ./bots-v1-runner -config config.yaml            # los 7 bots del YAML
 run-swarm:         ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900
 
 build-bots-ciudad: cd bots-ciudad && go build -o bots-ciudad-runner
@@ -231,7 +232,7 @@ tras `Initialize` (productor: outputs de sus recetas; transformer: insumos+outpu
 consumer: productos de consumo final; trader: su pool fijo muestreado + oro); el engine
 lo suscribe automáticamente en cada (re)conexión. Una estrategia que no implemente la
 interfaz se suscribe al comodín `"*"` (firehose completo, comportamiento previo). Con
-10k bots esto reduce el fan-out del tape ~10–30× (cada bot opera un puñado de los 155
+10k bots esto reduce el fan-out del tape ~10–30× (cada bot opera un puñado de los 149
 productos); los trades de productos no suscritos se siguen viendo, si hace falta, vía
 `GET /market/{id}/trades`.
 
@@ -321,19 +322,20 @@ Estrategia productora única (ADR-022): cubre desde el pozo de agua hasta la con
 #### 5.1.1 Especialidades (`specialties.go`)
 
 Con un único rol productivo, lo que reparte el catálogo entre bots ya no es el rol sino el
-**tipo de instalación** que cada uno está dispuesto a comprar. Los cuatro conjuntos particionan
-los 16 tipos del seed-config: juntos lo cubren todo y no se solapan, así que el enjambre cubre
-la cadena entera sin que ningún bot intente abarcar los 156 procesos.
+**tipo de instalación** que cada uno está dispuesto a comprar. Los cinco conjuntos particionan
+los 17 tipos del seed-config: juntos lo cubren todo y no se solapan, así que el enjambre cubre
+la cadena entera sin que ningún bot intente abarcar los 152 procesos.
 
 | Estrategia | Tipos | Por qué |
 |------------|-------|---------|
 | `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 36 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
+| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 113 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. |
 | `farmer` | `campo`, `granja`, `bosque` | Cultivo, ganadería y tala; consumen agua, semillas, fertilizante y piensos. |
 | `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
 | `transformer` | los 9 industriales | De la agroindustria a la constructora. |
 
-En modo enjambre el round-robin reparte las seis estrategias a partes iguales, así que ~1/6 de
-la flota se dedica al agua.
+En modo enjambre el round-robin reparte las siete estrategias a partes iguales, así que ~1/7 de
+la flota se dedica al agua y otro tanto a la generación eléctrica.
 
 ### 5.2 Consumer (`consumer.go`)
 
@@ -421,12 +423,12 @@ market:                     # parámetros de MarketView
   rest_budget_per_tick: 4
   recent_window_seconds: 600
 
-prices:                     # precio base (centavos/unidad) de los 155 productos
+prices:                     # precio base (centavos/unidad) de los 149 productos
   trigo: 120
   oro: 720
   # ...
 
-bots:                       # solo en modo YAML (sin -scale): 6 bots de ejemplo
+bots:                       # solo en modo YAML (sin -scale): 7 bots de ejemplo
   - username: aguador_1
     role: transformer         # único rol productivo (ADR-022)
     strategy: aguador         # la especialidad la decide `strategy`
