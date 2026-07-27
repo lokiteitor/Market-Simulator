@@ -347,21 +347,32 @@ Estrategia productora única (ADR-022): cubre desde el pozo de agua hasta la con
 - **Coste salarial:** `wage = wage_rate × duration × sim_time_factor` por ejecución (el salario
   se cobra por segundos simulados y `duration_seconds` llega en reales; de ahí el factor).
 - **Oferta elástica:** solo produce si el fair cubre coste + margen. Si el producto se
-  abarata por debajo del coste, deja de producir. Recorre las recetas producibles en orden
-  aleatorio, acotado por `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena
-  capacidad.
-- **Reposición de insumos:** solo para recetas rentables, hasta un buffer de
-  `bufferExecs × nivel × qty`. Compra con bid de descanso bajo el fair, o **cruza el ask** con
-  probabilidad `crossProb` si el margen sobrevive pagándolo — esto imprime trades reales a lo
-  largo de la cadena (agua → trigo → harina → pan). Presupuesto por insumo =
-  `capital / capitalDen`.
+  abarata por debajo del coste, deja de producir. Cuando no hay margen a precios de mercado
+  todavía produce si **nadie más** lo está ofreciendo más barato que su coste: el productor
+  marginal es el que descubre el precio. El *nadie más* es literal — el mejor ask del libro
+  trae su `agent_id`, y si es el nuestro no cuenta como competencia. Sin ese filtro el bot se
+  apagaba solo: listaba su producción, leía su propio ask al tick siguiente y concluía que
+  alguien vendía por debajo de su coste.
+- **Orden de las recetas:** aleatorio dentro de cada nivel de prioridad (ver 5.1.1), acotado por
+  `max_recipes_per_tick` (default 8), y no siempre ejecuta a plena capacidad. El orden decide de
+  verdad quién produce, porque el nivel de la instalación es un presupuesto de concurrencia
+  **compartido** por todas las recetas de su tipo (ADR-021).
+- **Reposición de insumos:** solo para recetas rentables y solo para **tantas recetas por tipo
+  como líneas tenga la instalación**, repartidas por orden de prioridad — una sola línea no
+  puede alimentar tres recetas a la vez, y repartir el capital entre las tres deja bids vivos
+  en mercados que nadie surte. Hasta un buffer de `bufferExecs × nivel × qty`. Compra con bid
+  de descanso bajo el fair, o **cruza el ask** con probabilidad `crossProb` si el margen
+  sobrevive pagándolo — esto imprime trades reales a lo largo de la cadena
+  (agua → trigo → harina → pan). Presupuesto por insumo = `capital / capitalDen`.
 - **Instalaciones (ADR-021):** para producir una receta debe haber **comprado** la instalación
   de su tipo. Si una receta es rentable pero no tiene instalación (o está saturada) y hay capital
   de sobra (colchón `capitalReserveFactor×` sobre el precio), emite `AcquireInstallation` para
   comprar/mejorar el tipo (compra ≤ `maxBuysPerTick` por tick, hasta `maxDesiredLevel`). El nivel
   del tipo es el presupuesto de concurrencia compartido por sus recetas.
 - **Venta:** `sellAtMarket` por posición de inventario — undercut del mejor ask (1–3%),
-  con **suelo de coste** (`coste × (1 + minMargin)`), en tranches del 30–70% del inventario,
+  con **suelo de coste** (`coste × (1 + minMargin)`) calculado con la receta **más barata** de
+  las que el bot sabe hacer ese producto (su coste marginal de reposición; varias recetas
+  pueden producir el mismo output, como las tres de `generacion`), en tranches del 30–70% del inventario,
   cancelando asks viejos (cancel/replace). Vende **solo lo que produce con instalaciones
   propias y solo el excedente sobre su propio buffer de insumos**: sin esa regla el agricultor
   que compra agua para regar se la revendería, y el que produce sus semillas se quedaría sin
@@ -382,13 +393,26 @@ la cadena entera sin que ningún bot intente abarcar los 152 procesos.
 | Estrategia | Tipos | Por qué |
 |------------|-------|---------|
 | `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 36 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
-| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 113 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. |
+| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 113 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. **Prioriza la hidro** (ver abajo). |
 | `farmer` | `campo`, `granja`, `bosque` | Cultivo, ganadería y tala; consumen agua, semillas, fertilizante y piensos. |
 | `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
 | `transformer` | los 9 industriales | De la agroindustria a la constructora. |
 
 En modo enjambre el round-robin reparte las seis estrategias a partes iguales, así que ~1/6 de
 la flota se dedica al agua y otro tanto a la generación eléctrica.
+
+**Prioridad de recetas dentro de un tipo.** Una especialidad puede fijar `recipePriority`, que
+ordena las recetas de un mismo tipo cuando el nivel de la instalación no da para todas. Solo lo
+usa el `energetico` (`prioridadRenovablePrimero`): la **hidro antes que las térmicas**. Las tres
+recetas de `generacion` comparten el mismo presupuesto de concurrencia, así que con nivel 1 solo
+corre una; la hidro es la única que cuelga solo del agua (la raíz, ADR-022), mientras las
+térmicas queman carbón o gas natural, recursos de **yacimiento finito** (ADR-023) que alguien
+tiene que estar minando ya — y ese es justo el criterio con que se distingue, porque la API no
+expone la `key` de catálogo de la receta. Sin esta prioridad el energético repartía su capital
+entre los tres insumos, se quedaba con bids de carbón y de gas que nadie surte, sin agua para la
+hidro y sin producir un solo kWh. No es un parche de arranque: cuando los yacimientos se vacíen,
+su rendimiento decreciente encarecerá las térmicas hasta que la hidro sea la marginal, que es la
+transición energética que describe ADR-024.
 
 ### 5.2 Consumer (`botkit/consumer.go`) — solo ciudades
 

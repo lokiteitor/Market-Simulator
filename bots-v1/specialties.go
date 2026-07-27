@@ -1,5 +1,10 @@
 package main
 
+import (
+	"github.com/lokiteitor/market-simulator/sdk/models"
+	"github.com/lokiteitor/market-simulator/sdk/strategy"
+)
+
 // Especialidades del productor (ADR-022).
 //
 // Con un único rol productivo, lo que reparte el catálogo entre bots ya no es
@@ -48,7 +53,34 @@ func NewEnergeticoStrategy() *ProducerStrategy {
 	s.typeFilter = tiposEnergia
 	// Insumo casi universal: conviene que escale más que el resto.
 	s.maxDesiredLevel = 4
+	s.recipePriority = prioridadRenovablePrimero
 	return s
+}
+
+// prioridadRenovablePrimero: la hidroeléctrica antes que las térmicas.
+//
+// Las tres recetas de `generacion` comparten el mismo presupuesto de
+// concurrencia —el nivel de la instalación (ADR-021)—, así que con nivel 1 solo
+// corre una y el orden decide cuál. La hidro es la única que cuelga solo del
+// agua, la raíz del catálogo (ADR-022); las térmicas queman carbón o gas
+// natural, recursos de yacimiento finito (ADR-023) que alguien tiene que estar
+// minando ya. Al arrancar el mundo desde inventario cero no hay ni carbón ni gas
+// en el libro: el energético repartía su capital entre los tres insumos, se
+// quedaba con bids de carbón y de gas que nadie surte, sin agua para la hidro y
+// sin producir un solo kWh. Con la hidro primero, el único insumo que compra es
+// el que el aguador sí vende.
+//
+// No es un parche de arranque: cuando el carbón escasee de verdad, su
+// rendimiento decreciente lo encarecerá hasta que la hidro sea la marginal —
+// que es la transición energética que describe ADR-024. Priorizar lo renovable
+// es apostar por el lado del que la escasez no puede echarte.
+func prioridadRenovablePrimero(ctx *strategy.Context, r models.Recipe) int {
+	for _, input := range r.Inputs {
+		if _, finito := ctx.State.Deposit(input.ProductID); finito {
+			return 1 // térmica: depende de un yacimiento que se agota
+		}
+	}
+	return 0 // hidro: solo agua
 }
 
 // NewFarmerStrategy: cultivo, ganadería y bosque (campo, granja, bosque).

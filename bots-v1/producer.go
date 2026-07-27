@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand/v2"
+	"sort"
 	"sync"
 
 	"github.com/lokiteitor/market-simulator/sdk/actions"
@@ -42,8 +43,12 @@ type ProducerStrategy struct {
 	p                 producerParams
 	// typeFilter: keys de installation_type que este bot produce (nil = todas).
 	typeFilter map[string]bool
-	subscribed []string
-	role       models.AgentRole
+	// recipePriority desempata entre recetas del MISMO tipo cuando el nivel de
+	// la instalación no da para todas (menor = antes). nil = orden aleatorio.
+	recipePriority func(*strategy.Context, models.Recipe) int
+	subscribed     []string
+	agentID        string
+	role           models.AgentRole
 	// Instalaciones (ADR-021): tope de nivel deseado y colchón de capital para
 	// comprar/mejorar sin descapitalizarse; nº máximo de compras por tick.
 	maxDesiredLevel      int
@@ -96,10 +101,41 @@ func (s *ProducerStrategy) producibleRecipes(ctx *strategy.Context) []models.Rec
 	return out
 }
 
+// ordenDeRecetas devuelve los índices de `producible` en el orden en que se
+// atienden este tick: primero por `recipePriority` (menor antes) y, a igualdad,
+// aleatorio.
+//
+// El orden decide de verdad quién produce, porque el nivel de la instalación es
+// un presupuesto de concurrencia COMPARTIDO por todas las recetas de su tipo
+// (ADR-021): con nivel 1, de las tres recetas de `generacion` solo corre una, y
+// se la queda la primera que se atiende — junto con el capital que va a los
+// insumos. `rnd.Perm` sola lo echaba a suertes cada tick.
+func (s *ProducerStrategy) ordenDeRecetas(ctx *strategy.Context, producible []models.Recipe) []int {
+	orden := s.rnd.Perm(len(producible))
+	if s.recipePriority == nil {
+		return orden
+	}
+	prio := make([]int, len(producible))
+	for i, recipe := range producible {
+		prio[i] = s.recipePriority(ctx, recipe)
+	}
+	// Estable: dentro de una misma prioridad se conserva el orden aleatorio, que
+	// es lo que evita que las recetas del final de la lista pasen hambre.
+	sort.SliceStable(orden, func(a, b int) bool { return prio[orden[a]] < prio[orden[b]] })
+	return orden
+}
+
+// askDeOtro: ¿el mejor ask del libro es de OTRO agente? Nuestra propia oferta
+// no es competencia, y el top-of-book trae el `agent_id` de la punta, así que
+// la comprobación es exacta. false también cuando no hay libro que mirar.
+func (s *ProducerStrategy) askDeOtro(top *models.TopOfBook) bool {
+	return top != nil && top.BestAsk != nil && top.BestAsk.AgentID != s.agentID
+}
+
 func (s *ProducerStrategy) Initialize(ctx *strategy.Context) error {
 	ctx.Logger.Info("ProducerStrategy initializing...")
 	s.rnd = newStrategyRand(ctx)
-	_, _, s.role, _ = ctx.State.GetAgentInfo()
+	s.agentID, _, s.role, _ = ctx.State.GetAgentInfo()
 	s.basePrices = resolveBasePrices(ctx)
 	s.view = newMarketView(ctx, s.basePrices)
 	s.bank = loadBankWindow(ctx)
@@ -208,6 +244,40 @@ func (s *ProducerStrategy) execEconomics(
 	return inputsCost, wage, revenue, true
 }
 
+// costeUnitario reparte el coste de una ejecución (insumos + salario) entre las
+// unidades que esa ejecución produce DE VERDAD (ADR-023). Es el suelo de venta
+// del output. ok=false si falta el fair de alguna pata.
+func (s *ProducerStrategy) costeUnitario(ctx *strategy.Context, recipe models.Recipe) (int64, bool) {
+	inputsCost, wage, _, priced := s.execEconomics(ctx, recipe)
+	if !priced {
+		return 0, false
+	}
+	base := effectiveOutputQtyCent(ctx, recipe)
+	if base <= 0 {
+		// Yacimiento agotado: el output efectivo es 0 y dividir por el nominal es
+		// lo conservador — lo que queda en inventario costó MÁS, porque se extrajo
+		// con rendimiento parcial. Sin esta pata el coste quedaría desconocido y el
+		// bot remataría sin suelo justo el bien más escaso del mercado: el de un
+		// recurso que ya nadie puede volver a extraer.
+		base = recipe.OutputQtyCent
+	}
+	if base <= 0 {
+		return 0, false
+	}
+	return (inputsCost + wage) * 100 / base, true
+}
+
+// masBarata: ¿`a` produce su output más barato que `b`? Una receta sin valorar
+// (falta el fair de alguna pata) nunca desplaza a una valorada.
+func (s *ProducerStrategy) masBarata(ctx *strategy.Context, a, b models.Recipe) bool {
+	costeA, okA := s.costeUnitario(ctx, a)
+	if !okA {
+		return false
+	}
+	costeB, okB := s.costeUnitario(ctx, b)
+	return !okB || costeA < costeB
+}
+
 func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -250,15 +320,47 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 	// (chocarían en expected_current_level).
 	slotsCommitted := make(map[string]int)
 	typesBought := make(map[string]bool)
-	for _, recipe := range producible {
-		inst, _, owned, typeKnown := installationForRecipe(ctx, recipe)
-		if !typeKnown || !owned {
+	// Orden de atención de este tick: la prioridad de la especialidad primero y
+	// aleatorio dentro de cada prioridad, que con el cap por tick es lo que evita
+	// matar de hambre a las recetas del final de la lista.
+	orden := s.ordenDeRecetas(ctx, producible)
+	// Qué recetas tienen derecho a reponer insumos: tantas por tipo como líneas
+	// tenga la instalación, repartidas por orden de prioridad. Una sola línea no
+	// puede alimentar tres recetas a la vez, y repartir el capital entre las tres
+	// es lo que dejaba al energético con bids de carbón y de gas que nadie surte
+	// y sin agua para la hidro. Se decide aquí, fuera del bucle de acciones, para
+	// que la cuota no dependa de si al bot le tocó saltarse un tick.
+	abastecible := make(map[string]bool)
+	cuota := make(map[string]int)
+	for _, idx := range orden {
+		recipe := producible[idx]
+		inst, typ, owned, typeKnown := installationForRecipe(ctx, recipe)
+		if !typeKnown {
+			continue
+		}
+		// El tipo aún sin comprar cuenta como una línea: es el arranque, y sin
+		// insumos la instalación que compre nacería parada.
+		if effectiveOutputQtyCent(ctx, recipe) > 0 && cuota[typ.Key] < max(inst.Level, 1) {
+			cuota[typ.Key]++
+			abastecible[recipe.RecipeID] = true
+		}
+		if !owned {
 			continue // solo lo que este bot produce de verdad
 		}
 		// El output sigue siendo "nuestro" aunque el yacimiento se haya agotado:
 		// lo extraido antes del agotamiento hay que poder venderlo (si no, se
 		// queda muerto en el inventario por el filtro de mas abajo).
-		recipeByOutput[recipe.OutputProductID] = recipe
+		// Varias recetas pueden producir el MISMO output (las tres de
+		// `generacion` hacen electricidad): nos quedamos con la más barata por
+		// unidad, que es el coste marginal de reponerla y el suelo de venta
+		// honesto. Quedarse con la última de la lista, como se hacía antes,
+		// dejaba el suelo a merced del orden del catálogo: valorada con la hidro
+		// (~44 ¢/kWh) el bot pedía por su electricidad casi el doble que valorada
+		// con la térmica de carbón (~27) y se quedaba sin vender.
+		if previa, ya := recipeByOutput[recipe.OutputProductID]; !ya ||
+			s.masBarata(ctx, recipe, previa) {
+			recipeByOutput[recipe.OutputProductID] = recipe
+		}
 		if effectiveOutputQtyCent(ctx, recipe) <= 0 {
 			// Pero no reservar insumos para una receta que ya no produce nada:
 			// seria retirar del mercado agua que otros si pueden aprovechar.
@@ -272,9 +374,7 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			}
 		}
 	}
-	// Orden aleatorio: con el cap por tick, un orden fijo mataria de hambre a
-	// las recetas del final de la lista.
-	for _, idx := range s.rnd.Perm(len(producible)) {
+	for _, idx := range orden {
 		recipe := producible[idx]
 		if s.maxRecipesPerTick > 0 && recipesActed >= s.maxRecipesPerTick {
 			continue
@@ -309,8 +409,16 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			// competencia barata (un ask en el mercado por debajo de nuestro coste + margen).
 			// Si no hay asks o el mejor ask es caro, consideramos que la receta es viable para producir.
 			floor := float64(inputsCost+wage) * (1 + s.p.minMargin)
+			// Nuestro propio ask NO es competencia. Sin este filtro el bot se
+			// apagaba solo: listaba su producción, el mejor ask del libro pasaba a
+			// ser el suyo, y al tick siguiente lo leía como "alguien lo vende más
+			// barato que mi coste" y dejaba de producir para siempre. Le pasa a
+			// todo productor marginal —el que produce por encima del fair porque no
+			// hay otra oferta—, que es exactamente el caso de la hidro (~44 ¢/kWh
+			// contra un fair anclado en los ~27 de la térmica de carbón).
 			topOut := s.view.Top(ctx, recipe.OutputProductID)
-			if topOut == nil || topOut.BestAsk == nil || float64(notionalCents(outputEfectivo, topOut.BestAsk.PriceCents)) >= floor {
+			if !s.askDeOtro(topOut) ||
+				float64(notionalCents(outputEfectivo, topOut.BestAsk.PriceCents)) >= floor {
 				profitable = true
 			}
 		}
@@ -374,6 +482,13 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 				})
 				capitalAvail -= wage * int64(execs)
 				slotsCommitted[typ.Key] += execs
+			} else {
+				// Con margen y con hueco, pero sin arrancar: falta insumo o falta
+				// capital para el salario. Es el estado en que se quedaba el
+				// energético y desde fuera no se distingue de "receta pausada".
+				ctx.Logger.Debug("receta con margen pero sin ejecutar",
+					"recipe_id", recipe.RecipeID, "slots", inst.AvailableSlots,
+					"capital", capitalAvail, "wage", wage)
 			}
 		} else if priced && !profitable {
 			ctx.Logger.Debug("receta pausada: sin margen a precios de mercado",
@@ -381,8 +496,10 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		}
 
 		// B. Reponer insumos solo para recetas rentables (comprar inputs de
-		// una receta sin margen es quemar capital).
-		if !profitable {
+		// una receta sin margen es quemar capital) y solo para tantas recetas por
+		// tipo como líneas tenga la instalación: el resto no cabría en el
+		// presupuesto de concurrencia (ADR-021) y su bid solo inmoviliza capital.
+		if !profitable || !abastecible[recipe.RecipeID] {
 			continue
 		}
 		for _, input := range recipe.Inputs {
@@ -493,26 +610,11 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		if pos.QtyAvailableCent <= 0 {
 			continue
 		}
-		// Suelo de venta: coste por unidad REALMENTE producida (ADR-023). Con el
-		// yacimiento a medias el mismo coste sale de la mitad de kilos, asi que
-		// el suelo sube — que es justo la senal de escasez que debe llegar al
-		// precio de mercado.
-		var costPU int64
-		if inputsCost, wage, _, priced := s.execEconomics(ctx, recipe); priced {
-			base := effectiveOutputQtyCent(ctx, recipe)
-			if base <= 0 {
-				// Yacimiento agotado: el output efectivo es 0 y dividir por el
-				// nominal es lo conservador — lo que queda en inventario costo
-				// MAS, porque se extrajo con rendimiento parcial. Sin esta pata
-				// costPU quedaria en 0 (coste desconocido para sellAtMarket) y
-				// el bot remataria sin suelo justo el bien mas escaso del
-				// mercado: el de un recurso que ya nadie puede volver a extraer.
-				base = recipe.OutputQtyCent
-			}
-			if base > 0 {
-				costPU = (inputsCost + wage) * 100 / base
-			}
-		}
+		// Suelo de venta: coste por unidad REALMENTE producida (ADR-023) de la
+		// receta más barata con que sabemos hacer este producto. Con el yacimiento
+		// a medias el mismo coste sale de la mitad de kilos, así que el suelo sube
+		// — que es justo la señal de escasez que debe llegar al precio de mercado.
+		costPU, _ := s.costeUnitario(ctx, recipe)
 		acts = append(acts, sellAtMarket(ctx, s.rnd, s.view, pos, costPU, sellParams{
 			minMargin:     s.p.minMargin,
 			targetMargin:  s.p.targetMargin,
