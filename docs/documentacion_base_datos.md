@@ -293,7 +293,7 @@ ALTER TABLE recipe_input ADD CONSTRAINT recipe_input_product_fk FOREIGN KEY (pro
 CREATE TYPE agent_role AS ENUM (
     'transformer',
     'trader',   -- ya no existe 'consumer' (ADR-025): la demanda final es 'city'
-    'admin',    -- solo-monitoreo (panel admin); no registrable, no opera el mercado
+    'admin',    -- panel admin + cuenta personal del operador; no registrable
     'bank',     -- banco central del patrón oro; agente único del seed, sin credenciales
     'city'      -- ciudad-consumidor: demanda final urbana. Sembrada CON credenciales
                 -- (login de bots-ciudad), NO registrable por humanos, pero SÍ participa
@@ -342,7 +342,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 | ------------------ | -------------------------------------------------------------------------------------------- |
 | `transformer`      | **Único rol productivo** (ADR-022): extrae del entorno (pozos, minas, campos) y transforma insumos en productos de mayor valor. Absorbió al antiguo `primary_producer`. |
 | `trader`           | Trader/intermediario: compra y revende buscando arbitraje, sin transformar.                  |
-| `admin`            | Rol de solo-monitoreo para el panel de administración. No registrable vía `/auth/register`; no participa en el mercado. Creado por `seed-admin`. |
+| `admin`            | Panel de administración **y cuenta personal del operador humano**: puede comprar instalaciones de cualquier rol, producir, tradear y usar la ventanilla. No registrable vía `/auth/register` (creado solo por `seed-admin`, que además financia su capital semilla); exento de quiebra y fuera de los agregados de mercado. |
 | `bank`             | Banco central del patrón oro. Agente único del seed, **sin credenciales** (no logueable), sin capacidades. Opera la ventanilla y recibe los fees. Excluido de los agregados de mercado (`NON_MARKET_ROLES`). |
 
 ##### agent_status

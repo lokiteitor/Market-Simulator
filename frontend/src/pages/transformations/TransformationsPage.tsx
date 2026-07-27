@@ -16,7 +16,7 @@
  * El progreso de procesos running se re-renderiza con tick de 1 s contra
  * `expected_end_at`; los estados terminales muestran Badge y fecha de fin.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -25,6 +25,7 @@ import {
 } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   LotConsumption,
   Problem,
@@ -56,6 +57,7 @@ import {
   fmtRelative,
   truncId,
 } from "../../lib/format";
+import { processProgress, useNow } from "../../lib/processTime";
 import { fmtDurationSeconds, realDurationSimHint } from "../market/simTime";
 import { PROCESS_STATUS_BADGE, PROCESS_STATUS_LABEL } from "./processLabels";
 import { availableSlots } from "./transformMath";
@@ -78,17 +80,6 @@ const STATUS_PLURAL: Record<ProcessStatus, string> = {
   cancelled: "Cancelados",
 };
 
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
-
 /** Query string de GET /transformations (status repetible + cursor). */
 function buildProcessesQuery(
   statuses: readonly ProcessStatus[],
@@ -99,31 +90,6 @@ function buildProcessesQuery(
   params.set("limit", String(PAGE_LIMIT));
   if (cursor !== null) params.set("cursor", cursor);
   return params.toString();
-}
-
-/** Progreso temporal de un proceso running: transcurrido vs. duración total. */
-function processProgress(
-  p: TransformationProcess,
-  nowMs: number,
-): { value: number; max: number } {
-  const start = Date.parse(p.started_at);
-  const end = Date.parse(p.expected_end_at);
-  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
-    return { value: 0, max: 1 };
-  }
-  const max = end - start;
-  const value = Math.min(Math.max(nowMs - start, 0), max);
-  return { value, max };
-}
-
-/** Timestamp "ahora" que se refresca cada `intervalMs` (re-render periódico). */
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
 }
 
 function cx(...names: Array<string | undefined>): string {

@@ -16,6 +16,7 @@ import type { Tx } from "../db";
 import {
   agent,
   agentInstallation,
+  eventLog,
   installationType,
   inventoryLot,
   marketOrder,
@@ -86,6 +87,22 @@ export interface AgentListItemView {
   capitalAvailableCents: number;
   capitalReservedCents: number;
   registeredAt: Date;
+  /** Peso de reparto del ingreso urbano (ADR-020); NULL en roles no-city. */
+  populationWeight: number | null;
+}
+
+/**
+ * Vista del panel de ciudades (ADR-020/025): demanda final urbana con su peso
+ * de reparto. El ingreso recibido POR ciudad no se persiste (el sweeper solo
+ * deja el evento global `city_income_distributed`), por eso aquí no aparece.
+ */
+export interface CityListItemView {
+  agentId: string;
+  username: string;
+  status: string;
+  populationWeight: number;
+  capitalAvailableCents: number;
+  capitalReservedCents: number;
 }
 
 export interface AgentsPage {
@@ -289,6 +306,7 @@ export const monitoringRepository = {
         capitalAvailableCents: agent.capitalAvailable,
         capitalReservedCents: agent.capitalReserved,
         registeredAt: agent.registeredAt,
+        populationWeight: agent.populationWeight,
       })
       .from(agent)
       .where(where)
@@ -310,9 +328,57 @@ export const monitoringRepository = {
         capitalAvailableCents: num(r.capitalAvailableCents),
         capitalReservedCents: num(r.capitalReservedCents),
         registeredAt: r.registeredAt,
+        populationWeight: numOrNull(r.populationWeight),
       })),
       total: num(totalRows[0]?.total),
     };
+  },
+
+  /** Ciudades (rol `city`), incluidas las no-activas, ordenadas por peso. */
+  async listCities(tx: Tx): Promise<CityListItemView[]> {
+    const rows = await tx
+      .select({
+        agentId: agent.agentId,
+        username: agent.username,
+        status: agent.status,
+        populationWeight: sql<string | number>`coalesce(${agent.populationWeight}, 1)`,
+        capitalAvailableCents: agent.capitalAvailable,
+        capitalReservedCents: agent.capitalReserved,
+      })
+      .from(agent)
+      .where(eq(agent.role, "city"))
+      .orderBy(desc(sql`coalesce(${agent.populationWeight}, 1)`), asc(agent.username));
+    return rows.map((r) => ({
+      agentId: r.agentId,
+      username: r.username,
+      status: r.status,
+      populationWeight: num(r.populationWeight),
+      capitalAvailableCents: num(r.capitalAvailableCents),
+      capitalReservedCents: num(r.capitalReservedCents),
+    }));
+  },
+
+  /**
+   * Ingreso urbano repartido en las últimas 24h. El reparto por ciudad no se
+   * persiste: se agrega el evento global `city_income_distributed` del
+   * event_log (payload {total_cents, city_count}; usa idx_event_log_type_time).
+   */
+  async distributedIncome24h(tx: Tx): Promise<{ totalCents: number; sweeps: number }> {
+    const rows = await tx
+      .select({
+        totalCents: sql<
+          string | number
+        >`coalesce(sum((${eventLog.payload}->>'total_cents')::bigint), 0)`,
+        sweeps: sql<string | number>`count(*)`,
+      })
+      .from(eventLog)
+      .where(
+        and(
+          eq(eventLog.eventType, "city_income_distributed"),
+          gt(eventLog.occurredAt, WINDOW_24H),
+        ),
+      );
+    return { totalCents: num(rows[0]?.totalCents), sweeps: num(rows[0]?.sweeps) };
   },
 
   /**

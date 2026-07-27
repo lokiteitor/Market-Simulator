@@ -151,7 +151,10 @@ export const installationService = {
           { field: "installation_type" },
         );
       }
-      if (type.role !== agent.role) {
+      // El admin es la cuenta personal del operador humano: puede comprar
+      // instalaciones de cualquier rol para tradear/producir (sigue fuera de
+      // los agregados de mercado, ver NON_MARKET_ROLES).
+      if (type.role !== agent.role && agent.role !== "admin") {
         throw domainError(
           "installation_role_mismatch",
           `El rol "${agent.role}" no puede comprar instalaciones de tipo "${type.key}" (rol "${type.role}").`,

@@ -50,6 +50,10 @@ export const bankruptcyService: BankruptcyService = {
     // con el siguiente reparto del city-income-sweeper.
     if (agentRow.role === "city") return false;
 
+    // El admin tampoco quiebra: es la cuenta personal del operador humano y
+    // además la única vía de acceso al panel (login rechaza a los quebrados).
+    if (agentRow.role === "admin") return false;
+
     // --- Condición exacta (§8) ---------------------------------------------
     if (agentRow.capitalAvailable + agentRow.capitalReserved !== 0) return false;
 

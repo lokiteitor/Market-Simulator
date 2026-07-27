@@ -104,8 +104,8 @@ async function convert(agentId: string, input: ConvertRequestDto): Promise<GoldC
     if (caller === undefined) {
       throw domainError("unknown_agent", `El agente ${agentId} no existe.`);
     }
-    if (caller.role === "bank" || caller.role === "admin") {
-      throw domainError("forbidden", "El banco y los administradores no operan la ventanilla.");
+    if (caller.role === "bank") {
+      throw domainError("forbidden", "El banco no opera su propia ventanilla.");
     }
     if (caller.status === "bankrupt") {
       throw domainError("agent_bankrupt", "El agente está en quiebra y no puede operar.");

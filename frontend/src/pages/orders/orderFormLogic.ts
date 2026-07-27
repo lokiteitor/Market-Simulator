@@ -16,15 +16,14 @@ import {
   parseMoneyToCents,
   parseQtyToCent,
 } from "../../lib/format";
+import { TTL_MAX_SIM_SECONDS, TTL_MIN_SIM_SECONDS } from "../market/simTime";
 
 // ---------------------------------------------------------------------------
 // Reglas del openapi (PlaceOrderRequest)
 // ---------------------------------------------------------------------------
 
-/** TTL mínimo: 1 minuto SIMULADO (openapi: ttl_seconds ≥ 60). */
-export const TTL_MIN_SIM_SECONDS = 60;
-/** TTL máximo: 1 semana SIMULADA (openapi: ttl_seconds ≤ 604800). */
-export const TTL_MAX_SIM_SECONDS = 604_800;
+// Límites del TTL: única fuente en ../market/simTime.ts.
+export { TTL_MAX_SIM_SECONDS, TTL_MIN_SIM_SECONDS };
 
 /** Campos del request mapeables a errores inline (422 → errors[].field). */
 export const ORDER_FIELDS = [

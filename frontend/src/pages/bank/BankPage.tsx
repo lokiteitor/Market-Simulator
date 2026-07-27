@@ -19,12 +19,12 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   BankInfo,
   ConversionDirection,
   ConvertRequest,
   GoldConversion,
-  Problem,
   Product,
   SelfState,
 } from "../../api/types";
@@ -45,17 +45,6 @@ import {
   validateConversion,
 } from "./bankMath";
 import styles from "./BankPage.module.css";
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
 
 function cx(...names: Array<string | undefined>): string {
   return names.filter(Boolean).join(" ");
@@ -102,9 +91,9 @@ export default function BankPage() {
   const goldUnit = gold?.unit ?? "oz";
 
   const bankrupt = self !== null && self.agent.status === "bankrupt";
-  // El contrato devuelve 403 para admin y bank (no operan la ventanilla).
-  const nonOperator =
-    self !== null && (self.agent.role === "admin" || self.agent.role === "bank");
+  // El contrato devuelve 403 solo para `bank` (el admin es la cuenta personal
+  // del operador humano y SÍ usa la ventanilla).
+  const nonOperator = self !== null && self.agent.role === "bank";
   const capital = self?.capital_available_cents ?? 0;
   const goldAvailable = useMemo(() => {
     if (self === null || bank === null) return 0;
@@ -301,8 +290,7 @@ export default function BankPage() {
             )}
             {nonOperator && (
               <p className={styles["subtle"]}>
-                Los roles administrador y banco central no operan la
-                ventanilla (solo monitoreo).
+                El banco central no opera su propia ventanilla.
               </p>
             )}
 

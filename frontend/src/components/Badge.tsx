@@ -60,9 +60,10 @@ const KIND_CLASS: Record<BadgeKind, string> = {
   expired: styles["stateExpired"] ?? "",
   bankrupt: styles["stateBankrupt"] ?? "",
   running: styles["stateActive"] ?? "",
-  raw_primary: styles["rolePrimaryProducer"] ?? "",
+  raw_primary: styles["categoryRawPrimary"] ?? "",
   intermediate: styles["roleTransformer"] ?? "",
-  final_consumption: styles["roleConsumer"] ?? "",
+  // Consumo final comparte el azul de la demanda urbana (rol `city`, ADR-025).
+  final_consumption: styles["roleCity"] ?? "",
   buy: styles["stateActive"] ?? "",
   sell: styles["stateBankrupt"] ?? "",
   neutral: styles["stateCancelled"] ?? "",

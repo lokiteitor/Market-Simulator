@@ -213,7 +213,7 @@ export interface Config {
     maxExecutions: number;
     yieldFloorBps: number;
   };
-  /** Credenciales del agente admin (solo-monitoreo); ver src/seed-admin.ts. */
+  /** Credenciales del agente admin (panel + cuenta operadora); ver src/seed-admin.ts. */
   adminUsername: string;
   adminPassword: string;
   sweeps: {

@@ -6,8 +6,7 @@
  * - Capital: disponible / reservado / total (StatCards, fmtMoney).
  *   Nota: el openapi no expone el capital semilla original; se muestran los
  *   valores actuales con la explicación de cómo se asignó la semilla.
- * - Capacidades productivas: tabla receta (nombre + CopyId) e installations
- *   (en curso / libres), con nombres resueltos del catálogo.
+ * - Instalaciones compradas (ADR-021): nivel, en curso / libres.
  * - Sesión: estado del canal WS (useNotifications) y logout con Modal de
  *   confirmación.
  * - Si el agente está en quiebra: ErrorBanner permanente.
@@ -20,12 +19,7 @@ import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
-import type {
-  InstallationStatus,
-  Product,
-  Recipe,
-  SelfState,
-} from "../../api/types";
+import type { InstallationStatus, SelfState } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import {
   Badge,
@@ -71,33 +65,7 @@ export default function ProfilePage() {
     enabled: authenticated,
   });
 
-  const recipesQ = useQuery({
-    queryKey: ["catalog", "recipes"],
-    queryFn: ({ signal }) =>
-      api.get<Recipe[]>("/catalog/recipes", { signal, auth: false }),
-    staleTime: 5 * 60_000,
-  });
-
-  const productsQ = useQuery({
-    queryKey: ["catalog", "products"],
-    queryFn: ({ signal }) =>
-      api.get<Product[]>("/catalog/products", { signal, auth: false }),
-    staleTime: 5 * 60_000,
-  });
-
   const snapshot: SelfState | null = selfQ.data ?? sessionAgent;
-
-  const recipesById = useMemo(() => {
-    const map = new Map<string, Recipe>();
-    for (const r of recipesQ.data ?? []) map.set(r.recipe_id, r);
-    return map;
-  }, [recipesQ.data]);
-
-  const productsById = useMemo(() => {
-    const map = new Map<string, Product>();
-    for (const p of productsQ.data ?? []) map.set(p.product_id, p);
-    return map;
-  }, [productsQ.data]);
 
   const installationColumns = useMemo<Array<DataTableColumn<InstallationStatus>>>(
     () => [

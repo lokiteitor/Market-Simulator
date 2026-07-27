@@ -24,8 +24,10 @@ const ProfilePage = lazy(() => import("./pages/profile/ProfilePage"));
 // Panel admin (solo rol `admin`).
 const AdminOverviewPage = lazy(() => import("./pages/admin/AdminOverviewPage"));
 const AdminAgentsPage = lazy(() => import("./pages/admin/AdminAgentsPage"));
+const AdminCitiesPage = lazy(() => import("./pages/admin/AdminCitiesPage"));
 const AdminMarketPage = lazy(() => import("./pages/admin/AdminMarketPage"));
 const AdminProductionPage = lazy(() => import("./pages/admin/AdminProductionPage"));
+const AdminBankPage = lazy(() => import("./pages/admin/AdminBankPage"));
 
 /**
  * Envoltorio de rutas protegidas: redirige a /auth si no hay sesión y
@@ -87,8 +89,10 @@ export function AppRoutes() {
       <Route element={<ProtectedAdmin />}>
         <Route path="/admin" element={<AdminOverviewPage />} />
         <Route path="/admin/agents" element={<AdminAgentsPage />} />
+        <Route path="/admin/cities" element={<AdminCitiesPage />} />
         <Route path="/admin/market" element={<AdminMarketPage />} />
         <Route path="/admin/production" element={<AdminProductionPage />} />
+        <Route path="/admin/bank" element={<AdminBankPage />} />
       </Route>
 
       {/* Redirecciones */}

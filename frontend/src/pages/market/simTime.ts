@@ -10,8 +10,23 @@
  *   (design doc §5 "Tiempo").
  */
 
-/** Factor de simulación de la corrida (default del diseño: 5×). */
-export const SIM_FACTOR = 5;
+/**
+ * Factor de simulación de la corrida. Configurable con VITE_SIM_TIME_FACTOR
+ * y DEBE coincidir con el SIM_TIME_FACTOR del backend (mismo contrato que
+ * bots-v1/config.yaml) o todos los hints de equivalencia mienten.
+ */
+function readSimFactor(): number {
+  const raw = import.meta.env?.VITE_SIM_TIME_FACTOR as string | undefined;
+  const n = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+export const SIM_FACTOR = readSimFactor();
+
+/** TTL mínimo de una orden: 1 minuto SIMULADO (openapi: ttl_seconds ≥ 60). */
+export const TTL_MIN_SIM_SECONDS = 60;
+/** TTL máximo de una orden: 1 semana SIMULADA (openapi: ttl_seconds ≤ 604800). */
+export const TTL_MAX_SIM_SECONDS = 604_800;
 
 /** Segundos simulados → segundos reales (la simulación corre 5× más rápido). */
 export function simToRealSeconds(simSeconds: number): number {

@@ -78,6 +78,15 @@ const COLUMNS: ReadonlyArray<DataTableColumn<AdminAgentItem>> = [
     sortValue: (a) => a.capital_reserved_cents,
   },
   {
+    key: "population_weight",
+    header: "Peso pobl.",
+    align: "right",
+    mono: true,
+    // Solo las ciudades tienen peso de reparto del ingreso urbano (ADR-020).
+    render: (a) => (a.population_weight === null ? "—" : a.population_weight),
+    sortValue: (a) => a.population_weight ?? -1,
+  },
+  {
     key: "registered_at",
     header: "Registrado",
     render: (a) => fmtRelative(a.registered_at),

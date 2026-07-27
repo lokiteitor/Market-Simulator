@@ -17,6 +17,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import { generateUUID } from "../../lib/uuid";
 import type {
   OrderSide,
@@ -55,17 +56,6 @@ const SIDE_LABEL: Record<OrderSide, string> = {
 
 function cx(...names: Array<string | false | undefined>): string {
   return names.filter(Boolean).join(" ");
-}
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
 }
 
 export interface QuickOrderFormProps {

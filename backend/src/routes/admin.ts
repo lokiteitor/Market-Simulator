@@ -13,6 +13,7 @@ import { adminController } from "../controllers/admin-controller";
 import {
   AdminAgentsPageSchema,
   AdminAgentsQuerySchema,
+  AdminCitiesSchema,
   AdminMarketSchema,
   AdminOverviewSchema,
   AdminProductionSchema,
@@ -42,6 +43,12 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       },
     },
     async (req) => adminController.listAgents(req.query),
+  );
+
+  r.get(
+    "/admin/cities",
+    { ...adminOnly, schema: { response: { 200: AdminCitiesSchema, ...problems } } },
+    async () => adminController.getCities(),
   );
 
   r.get(

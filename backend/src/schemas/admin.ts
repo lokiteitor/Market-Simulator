@@ -5,7 +5,7 @@
  * del service. Endpoints de solo-lectura: no hay bodies, solo query + response.
  */
 import { z } from "zod";
-import { MARKET_ROLES } from "../types/contracts";
+import { SEEDABLE_MARKET_ROLES } from "../types/contracts";
 import { AgentStatusSchema } from "./auth";
 
 /** Clamp silencioso del limit (mismo criterio que schemas/market §17). */
@@ -61,7 +61,9 @@ export type AdminOverviewDto = z.infer<typeof AdminOverviewSchema>;
 export const AdminAgentsQuerySchema = z.object({
   limit: clampedLimit(50, 200),
   offset: clampedOffset(),
-  role: z.enum(MARKET_ROLES).optional(),
+  // SEEDABLE_MARKET_ROLES: el listado incluye a las ciudades sembradas, así
+  // que el filtro también debe aceptar `city` (no solo los registrables).
+  role: z.enum(SEEDABLE_MARKET_ROLES).optional(),
   status: AgentStatusSchema.optional(),
 });
 
@@ -75,6 +77,8 @@ export const AdminAgentItemSchema = z.object({
   capital_available_cents: z.number().int().min(0),
   capital_reserved_cents: z.number().int().min(0),
   registered_at: z.iso.datetime(),
+  /** Peso de reparto del ingreso urbano (ADR-020); null en roles no-city. */
+  population_weight: z.number().int().min(1).nullable(),
 });
 
 export const AdminAgentsPageSchema = z.object({
@@ -85,6 +89,39 @@ export const AdminAgentsPageSchema = z.object({
 });
 
 export type AdminAgentsPageDto = z.infer<typeof AdminAgentsPageSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /admin/cities
+// ---------------------------------------------------------------------------
+
+export const AdminCityItemSchema = z.object({
+  agent_id: z.uuid(),
+  username: z.string(),
+  status: z.string(),
+  population_weight: z.number().int().min(1),
+  capital_available_cents: z.number().int().min(0),
+  capital_reserved_cents: z.number().int().min(0),
+});
+
+/**
+ * Panel de ciudades e ingreso circular (ADR-020/025). El ingreso POR ciudad no
+ * se persiste (el sweeper solo deja el evento global), de ahí que solo haya
+ * agregados: pendiente en income_ledger (por fuente) y repartido en 24h.
+ */
+export const AdminCitiesSchema = z.object({
+  cities: z.array(AdminCityItemSchema),
+  city_count: z.number().int().min(0),
+  total_population_weight: z.number().int().min(0),
+  pending_income_cents: z.number().int().min(0),
+  pending_income_by_source: z.object({
+    wage_cents: z.number().int().min(0),
+    tax_cents: z.number().int().min(0),
+  }),
+  distributed_income_24h_cents: z.number().int().min(0),
+  distributions_24h: z.number().int().min(0),
+});
+
+export type AdminCitiesDto = z.infer<typeof AdminCitiesSchema>;
 
 // ---------------------------------------------------------------------------
 // GET /admin/market

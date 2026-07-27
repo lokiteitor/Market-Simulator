@@ -11,6 +11,8 @@ import { useAuth } from "../auth/AuthContext";
 import {
   IconBank,
   IconCatalog,
+  IconCity,
+  IconCoin,
   IconDashboard,
   IconFactory,
   IconHistory,
@@ -45,18 +47,44 @@ const MARKET_NAV: ReadonlyArray<NavItem> = [
   { to: "/profile", label: "Perfil", icon: IconUser },
 ];
 
-// Navegación del rol admin (solo-monitoreo): reemplaza a la de mercado.
+// Navegación del panel admin. El admin es además la cuenta personal del
+// operador humano: ve AMBAS secciones (monitoreo + mercado).
 const ADMIN_NAV: ReadonlyArray<NavItem> = [
   { to: "/admin", label: "Resumen", icon: IconShield, end: true },
   { to: "/admin/agents", label: "Agentes", icon: IconUsers },
+  { to: "/admin/cities", label: "Ciudades", icon: IconCity },
   { to: "/admin/market", label: "Mercado", icon: IconMarket },
   { to: "/admin/production", label: "Producción", icon: IconFactory },
+  { to: "/admin/bank", label: "Moneda", icon: IconCoin },
 ];
+
+function NavList({ items }: { items: ReadonlyArray<NavItem> }) {
+  return (
+    <ul className={styles.list}>
+      {items.map((item) => (
+        <li key={item.to}>
+          <NavLink
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+            }
+            title={item.label}
+          >
+            <span className={styles.linkIcon}>
+              <item.icon size={20} />
+            </span>
+            <span className={styles.linkText}>{item.label}</span>
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function Sidebar() {
   const { agent } = useAuth();
   const isAdmin = agent?.agent.role === "admin";
-  const items = isAdmin ? ADMIN_NAV : MARKET_NAV;
 
   return (
     <nav className={styles.sidebar} aria-label="Navegación principal">
@@ -67,25 +95,16 @@ export function Sidebar() {
         <span className={styles.brandText}>Mercado Agrícola</span>
       </div>
 
-      <ul className={styles.list}>
-        {items.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                isActive ? `${styles.link} ${styles.linkActive}` : styles.link
-              }
-              title={item.label}
-            >
-              <span className={styles.linkIcon}>
-                <item.icon size={20} />
-              </span>
-              <span className={styles.linkText}>{item.label}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+      {isAdmin ? (
+        <>
+          <p className={styles.sectionLabel}>Monitoreo</p>
+          <NavList items={ADMIN_NAV} />
+          <p className={styles.sectionLabel}>Mercado</p>
+          <NavList items={MARKET_NAV} />
+        </>
+      ) : (
+        <NavList items={MARKET_NAV} />
+      )}
     </nav>
   );
 }

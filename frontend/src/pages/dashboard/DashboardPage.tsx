@@ -19,10 +19,11 @@
  * El progreso de procesos running se re-renderiza periódicamente (tick 1s
  * mientras haya procesos) contra `expected_end_at`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   AgentRole,
   InventoryLot,
@@ -57,6 +58,7 @@ import {
   fmtRelative,
   truncId,
 } from "../../lib/format";
+import { processProgress, useNow } from "../../lib/processTime";
 import styles from "./DashboardPage.module.css";
 
 // ---------------------------------------------------------------------------
@@ -88,17 +90,6 @@ const SIDE_LABEL: Record<OrderSide, string> = {
 // Helpers puros
 // ---------------------------------------------------------------------------
 
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
-
 /**
  * Valor estimado del inventario en centavos:
  * Σ (qty_available + qty_reserved) × unit_cost_cents / 100 sobre los lotes.
@@ -113,31 +104,6 @@ function estimateInventoryValueCents(lots: readonly InventoryLot[]): number {
       100;
   }
   return Math.round(total);
-}
-
-/** Progreso temporal de un proceso: transcurrido vs. duración total. */
-function processProgress(
-  p: TransformationProcess,
-  nowMs: number,
-): { value: number; max: number } {
-  const start = Date.parse(p.started_at);
-  const end = Date.parse(p.expected_end_at);
-  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
-    return { value: 0, max: 1 };
-  }
-  const max = end - start;
-  const value = Math.min(Math.max(nowMs - start, 0), max);
-  return { value, max };
-}
-
-/** Timestamp "ahora" que se refresca cada `intervalMs` (re-render periódico). */
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
 }
 
 function cx(...names: Array<string | undefined>): string {

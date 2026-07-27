@@ -1027,7 +1027,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: Rol `bank`/`admin`, o agente en quiebra.
+          description: Rol `bank`, o agente en quiebra.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -1353,12 +1353,14 @@ components:
     AgentRole:
       type: string
       description: |
-        Rol de un agente. `admin` (solo-monitoreo), `bank` (banco central del
-        patrón oro) y `city` (ciudad-consumidor sembrada) NO son registrables vía
-        /auth/register; ver RegisterableRole. A diferencia de admin/bank, `city`
-        SÍ participa del mercado: es la demanda final urbana, la siembra el
-        servidor con credenciales y la manejan los bots de `bots-ciudad`.
-        El rol `consumer` ya no existe (ADR-025): la demanda final es `city`.
+        Rol de un agente. `admin` (panel de monitoreo + cuenta personal del
+        operador humano: puede tradear, producir y usar la ventanilla, pero
+        queda fuera de los agregados de mercado y exento de quiebra), `bank`
+        (banco central del patrón oro) y `city` (ciudad-consumidor sembrada)
+        NO son registrables vía /auth/register; ver RegisterableRole. `city`
+        SÍ cuenta como demanda de mercado: es la demanda final urbana, la
+        siembra el servidor con credenciales y la manejan los bots de
+        `bots-ciudad`. El rol `consumer` ya no existe (ADR-025).
       enum: [transformer, trader, admin, bank, city]
 
     RegisterableRole:

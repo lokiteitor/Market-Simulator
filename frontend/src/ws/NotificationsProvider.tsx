@@ -216,7 +216,9 @@ const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   gold_converted: ["self", "history", "bank"],
   city_income: ["self", "history"],
   installation_purchased: ["self"],
-  deposit_depleted: ["deposits", "history"],
+  // "market" acotado al product_id del payload: el agotamiento cambia la
+  // economía del producto (precios/plan de los que lo miran en /market).
+  deposit_depleted: ["deposits", "market", "history"],
 };
 
 /** Dominio → queryKey; `deposits` vive bajo el prefijo del catálogo. */

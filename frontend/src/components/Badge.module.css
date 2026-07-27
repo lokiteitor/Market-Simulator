@@ -9,8 +9,10 @@
   white-space: nowrap;
 }
 
-/* ---- Roles ---------------------------------------------------------------- */
-.rolePrimaryProducer {
+/* ---- Roles y categorías ---------------------------------------------------- */
+/* Categoría de producto `raw_primary`: hereda el verde tierra del extinto rol
+   primary_producer (ADR-022); el token conserva su nombre a propósito. */
+.categoryRawPrimary {
   background-color: var(--color-role-primary-producer-soft);
   color: var(--color-role-primary-producer);
 }

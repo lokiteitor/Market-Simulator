@@ -236,3 +236,29 @@ export function IconFactory(props: IconProps) {
     </Base>
   );
 }
+
+/** Edificios — ciudades (demanda urbana, ADR-020). */
+export function IconCity(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 20V6h6v14" />
+      <path d="M10 20V11h6v9" />
+      <path d="M16 20v-6h4v6" />
+      <path d="M2 20h20" />
+      <path d="M6.5 9h1" />
+      <path d="M6.5 12h1" />
+      <path d="M12.5 14h1" />
+    </Base>
+  );
+}
+
+/** Moneda — política monetaria (panel admin). */
+export function IconCoin(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5v9" />
+      <path d="M14.8 9.3c-.6-1-1.6-1.5-2.8-1.5-1.7 0-3 1-3 2.3 0 2.9 6 1.5 6 4.3 0 1.3-1.3 2.3-3 2.3-1.3 0-2.4-.6-3-1.6" />
+    </Base>
+  );
+}

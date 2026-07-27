@@ -19,11 +19,10 @@ import {
   parseMoneyToCents,
   parseQtyToCent,
 } from "../../lib/format";
+import { TTL_MAX_SIM_SECONDS, TTL_MIN_SIM_SECONDS } from "./simTime";
 
-/** TTL mínimo permitido por la API: 1 minuto simulado. */
-export const TTL_MIN_SIM_SECONDS = 60;
-/** TTL máximo permitido por la API: 1 semana simulada. */
-export const TTL_MAX_SIM_SECONDS = 604_800;
+// Límites del TTL: única fuente en simTime.ts (compartida con orderFormLogic).
+export { TTL_MAX_SIM_SECONDS, TTL_MIN_SIM_SECONDS };
 
 /**
  * Campos del formulario a los que se anclan errores inline.

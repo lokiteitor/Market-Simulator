@@ -10,7 +10,10 @@ Caddy: REST en `http://localhost:9080/v1` y WebSocket de notificaciones en
 @tanstack/react-query v5, CSS plano con custom properties + CSS Modules (sin Tailwind ni UI kits).
 
 Pantallas: `/auth` (login/registro) · `/dashboard` · `/market[/:productId]` · `/catalog` ·
-`/orders` · `/transformations` · `/installations` · `/history` · `/profile`.
+`/orders` · `/transformations` · `/installations` · `/bank` (ventanilla del patrón oro) ·
+`/history` · `/profile`. Panel admin (rol `admin`, que además opera el mercado como cuenta
+personal): `/admin` (resumen) · `/admin/agents` · `/admin/cities` (ingreso circular, ADR-020) ·
+`/admin/market` · `/admin/production` · `/admin/bank` (moneda).
 
 ## Desarrollo
 
@@ -26,9 +29,10 @@ bun run dev                 # http://localhost:5173
 
 Variables de entorno (Vite las inlinea en build/dev):
 
-| Variable            | Default                    | Uso                                            |
-|---------------------|----------------------------|------------------------------------------------|
-| `VITE_API_BASE_URL` | `http://localhost:9080/v1` | Base REST; el WS deriva de ella (`…/v1/ws`).   |
+| Variable               | Default                    | Uso                                                                  |
+|------------------------|----------------------------|----------------------------------------------------------------------|
+| `VITE_API_BASE_URL`    | `http://localhost:9080/v1` | Base REST; el WS deriva de ella (`…/v1/ws`).                         |
+| `VITE_SIM_TIME_FACTOR` | `5`                        | Factor de simulación; DEBE coincidir con `SIM_TIME_FACTOR` del backend. |
 
 Comandos útiles:
 

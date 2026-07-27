@@ -22,6 +22,7 @@ import { useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   Deposit,
   Problem,
@@ -62,17 +63,6 @@ import styles from "./MarketPage.module.css";
 
 function cx(...names: Array<string | false | undefined>): string {
   return names.filter(Boolean).join(" ");
-}
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
 }
 
 const TIME_FMT = new Intl.DateTimeFormat("es", {

@@ -1,13 +1,16 @@
 /**
- * Bootstrap del agente administrador (rol de solo-monitoreo) — panel admin.
+ * Bootstrap del agente administrador — panel admin + cuenta personal del
+ * operador humano (monitorea Y opera el mercado como trader/transformer).
  *
  * Ejecutable con `bun src/seed-admin.ts` (script `bun run seed:admin`).
  *
  *   - IDEMPOTENTE: si ya existe un agente con `config.adminUsername`, no hace
  *     nada y sale con 0.
- *   - Crea UN agente con rol `admin`, status `active`, capital 0 y SIN
- *     capacidades (no participa en el mercado). Credenciales con argon2id (la
- *     misma función de M1). Todo en una transacción.
+ *   - Crea UN agente con rol `admin`, status `active` y capital 0; después del
+ *     commit lo financia con `fundAgentSeedCapital` (misma vía que el registro
+ *     dinámico: capital del banco + acuñación respaldada por oro). Sigue FUERA
+ *     de los agregados de mercado (NON_MARKET_ROLES) y exento de quiebra.
+ *     Credenciales con argon2id (la misma función de M1).
  *   - Registra el evento de auditoría `agent_registered` (§9).
  *
  * El rol `admin` NO es registrable por POST /auth/register (el schema del body
@@ -21,19 +24,22 @@ import { appendEvent, type AgentRegisteredPayload } from "./lib/event-log";
 import { logger } from "./observability/logger";
 import { agentRepository } from "./repositories/agent-repository";
 import { authRepository } from "./repositories/auth-repository";
+import { agentService } from "./services/agent-service";
 
 /**
  * Crea el agente admin si no existe. Devuelve "created" o "skipped".
- * Idempotente por username.
+ * Idempotente por username. Tras el commit de la creación lo financia con
+ * `fundAgentSeedCapital` (tx propia, idempotente: no hace nada si el agente
+ * ya tiene seed_capital > 0), así el admin puede operar el mercado.
  */
 export async function ensureAdminAgent(): Promise<"created" | "skipped"> {
   // argon2id es costoso: hashear FUERA de la tx.
   const passwordHash = await hashPassword(config.adminPassword);
 
-  return withTransaction(async (tx) => {
+  const outcome = await withTransaction(async (tx) => {
     const existing = await authRepository.findAgentByUsername(tx, config.adminUsername);
     if (existing !== null) {
-      return "skipped";
+      return { result: "skipped" as const, agentId: existing.agentId };
     }
 
     const agentRow = await agentRepository.insertAgent(tx, {
@@ -58,8 +64,14 @@ export async function ensureAdminAgent(): Promise<"created" | "skipped"> {
       payload,
     });
 
-    return "created";
+    return { result: "created" as const, agentId: agentRow.agentId };
   });
+
+  // Financiación FUERA de la tx de creación (misma coreografía que el registro
+  // dinámico): requiere el patrón oro ya sembrado (`make seed` corre antes).
+  await agentService.fundAgentSeedCapital(outcome.agentId);
+
+  return outcome.result;
 }
 
 // ===========================================================================

@@ -19,12 +19,12 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   AcquireInstallationRequest,
   AcquireInstallationResponse,
   InstallationStatus,
   InstallationType,
-  Problem,
   SelfState,
 } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
@@ -40,17 +40,6 @@ import {
 import { fmtMoney } from "../../lib/format";
 import styles from "./InstallationsPage.module.css";
 
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
-
 function cx(...names: Array<string | undefined>): string {
   return names.filter(Boolean).join(" ");
 }
@@ -65,6 +54,11 @@ interface InstallationRow {
 function nextPriceCents(row: InstallationRow): number | null {
   if (row.owned === null) return row.type.base_price_cents;
   return row.owned.next_upgrade_price_cents;
+}
+
+/** Factor de encarecimiento por nivel: growth_bps → "×1,7". */
+function growthLabel(type: InstallationType): string {
+  return `×${(type.growth_bps / 10_000).toLocaleString("es", { maximumFractionDigits: 2 })}`;
 }
 
 export default function InstallationsPage() {
@@ -93,14 +87,15 @@ export default function InstallationsPage() {
   const bankrupt = self !== null && self.agent.status === "bankrupt";
   const capital = self?.capital_available_cents ?? 0;
 
-  // Tipos del rol del agente, con su instalación comprada (si la hay).
+  // Tipos del rol del agente, con su instalación comprada (si la hay). El
+  // admin (cuenta personal del operador) puede comprar los de cualquier rol.
   // Los no comprados van al final; dentro de cada grupo, por precio ascendente.
   const rows = useMemo<InstallationRow[]>(() => {
     if (self === null || typesQuery.data === undefined) return [];
     const ownedByKey = new Map<string, InstallationStatus>();
     for (const i of self.installations) ownedByKey.set(i.installation_type, i);
     return typesQuery.data
-      .filter((t) => t.role === self.agent.role)
+      .filter((t) => t.role === self.agent.role || self.agent.role === "admin")
       .map((t) => ({ type: t, owned: ownedByKey.get(t.key) ?? null }))
       .sort((a, b) => {
         if ((a.owned === null) !== (b.owned === null)) {
@@ -196,7 +191,7 @@ export default function InstallationsPage() {
         ) : rows.length === 0 ? (
           <EmptyState
             title="Tu rol no requiere instalaciones"
-            hint="Solo los roles productivos (productor primario y transformador) compran instalaciones para ejecutar recetas."
+            hint="Solo el rol transformador (único rol productivo, ADR-022) y el administrador compran instalaciones para ejecutar recetas."
           />
         ) : (
           <div className={styles["grid"]}>
@@ -226,14 +221,16 @@ export default function InstallationsPage() {
                       />
                       <p className={styles["cardMeta"]}>
                         {row.owned.level} {row.type.unit_label} · máx.{" "}
-                        {row.type.max_level}
+                        {row.type.max_level} · precio {growthLabel(row.type)} por
+                        nivel
                       </p>
                     </>
                   ) : (
                     <p className={styles["cardMeta"]}>
                       Sin esta instalación no puedes ejecutar sus recetas
                       (ADR-021). Unidad: {row.type.unit_label} · máx.{" "}
-                      {row.type.max_level}
+                      {row.type.max_level} · precio {growthLabel(row.type)} por
+                      nivel
                     </p>
                   )}
 

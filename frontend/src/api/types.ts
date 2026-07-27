@@ -506,6 +506,33 @@ export interface AdminAgentItem {
   capital_available_cents: number;
   capital_reserved_cents: number;
   registered_at: string;
+  /** Peso de reparto del ingreso urbano (ADR-020); null en roles no-city. */
+  population_weight: number | null;
+}
+
+/** GET /admin/cities — panel de ciudades e ingreso circular (ADR-020/025). */
+export interface AdminCityItem {
+  agent_id: string;
+  username: string;
+  status: AgentStatus;
+  population_weight: number;
+  capital_available_cents: number;
+  capital_reserved_cents: number;
+}
+
+export interface AdminCities {
+  cities: AdminCityItem[];
+  city_count: number;
+  total_population_weight: number;
+  /** Ingreso aún no repartido (income_ledger sin materializar). */
+  pending_income_cents: number;
+  pending_income_by_source: {
+    wage_cents: number;
+    tax_cents: number;
+  };
+  /** Suma de los repartos del sweeper en las últimas 24h. */
+  distributed_income_24h_cents: number;
+  distributions_24h: number;
 }
 
 export interface AdminAgentsPage {

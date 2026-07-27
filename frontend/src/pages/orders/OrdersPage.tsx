@@ -24,6 +24,7 @@ import {
 } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   Order,
   OrderPage,
@@ -73,17 +74,6 @@ const STATUS_PLURAL: Record<OrderStatus, string> = {
   cancelled: "Canceladas",
   expired: "Expiradas",
 };
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
 
 /** Query string de GET /orders (status repetible + cursor). */
 function buildOrdersQuery(

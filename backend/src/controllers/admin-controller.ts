@@ -3,12 +3,39 @@
  */
 import type {
   AdminAgentsPageDto,
+  AdminCitiesDto,
   AdminMarketProductDto,
   AdminOverviewDto,
   AdminProductionDto,
   AdminSnapshotPointDto,
 } from "../schemas/admin";
-import { adminService } from "../services/admin-service";
+import { adminService, type AdminCities } from "../services/admin-service";
+
+/**
+ * Mapper puro de la vista del service al DTO (testeable sin DB). Pliega el
+ * desglose por fuente (`wage`/`tax`) a campos fijos con default 0.
+ */
+export function toAdminCitiesDto(view: AdminCities): AdminCitiesDto {
+  const bySource = new Map(view.pendingBySource.map((s) => [s.source, s.cents]));
+  const wageCents = bySource.get("wage") ?? 0;
+  const taxCents = bySource.get("tax") ?? 0;
+  return {
+    cities: view.cities.map((c) => ({
+      agent_id: c.agentId,
+      username: c.username,
+      status: c.status,
+      population_weight: c.populationWeight,
+      capital_available_cents: c.capitalAvailableCents,
+      capital_reserved_cents: c.capitalReservedCents,
+    })),
+    city_count: view.cities.length,
+    total_population_weight: view.cities.reduce((sum, c) => sum + c.populationWeight, 0),
+    pending_income_cents: wageCents + taxCents,
+    pending_income_by_source: { wage_cents: wageCents, tax_cents: taxCents },
+    distributed_income_24h_cents: view.distributed.totalCents,
+    distributions_24h: view.distributed.sweeps,
+  };
+}
 
 export const adminController = {
   async getOverview(): Promise<AdminOverviewDto> {
@@ -49,11 +76,16 @@ export const adminController = {
         capital_available_cents: a.capitalAvailableCents,
         capital_reserved_cents: a.capitalReservedCents,
         registered_at: a.registeredAt.toISOString(),
+        population_weight: a.populationWeight,
       })),
       total: page.total,
       limit: q.limit,
       offset: q.offset,
     };
+  },
+
+  async getCities(): Promise<AdminCitiesDto> {
+    return toAdminCitiesDto(await adminService.getCities());
   },
 
   async getMarket(): Promise<AdminMarketProductDto[]> {

@@ -1,8 +1,9 @@
 /**
  * Rutas /bank/* (ventanilla del banco central, patrón oro) — [bank].
  *
- * AUTENTICADAS (Bearer). El convert está vetado a `bank`/`admin` (403 en el
- * service). Errores 422: insufficient_capital, insufficient_inventory,
+ * AUTENTICADAS (Bearer). El convert está vetado a `bank` (403 en el service;
+ * el `admin` sí opera: es la cuenta personal del operador humano). Errores
+ * 422: insufficient_capital, insufficient_inventory,
  * bank_insufficient_gold, conversion_below_minimum; 409 no_gold_standard.
  *
  * M10 registra esta función con prefix "/v1" (contrato §15).

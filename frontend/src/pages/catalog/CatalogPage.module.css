@@ -36,6 +36,20 @@
   flex: 0 1 22rem;
 }
 
+/* Buscador + selects de categoría y tipo de instalación. */
+.filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  flex: 0 1 44rem;
+}
+
+.filters > * {
+  min-width: 11rem;
+  flex: 1 1 11rem;
+}
+
 /* ---- Paneles ------------------------------------------------------------------- */
 
 .panel {
@@ -144,4 +158,12 @@
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
   white-space: nowrap;
+}
+
+/* Insumo energético destacado (ADR-024). */
+.chipEnergy {
+  composes: chip;
+  border-color: var(--color-state-partial);
+  background-color: var(--color-state-partial-soft);
+  font-weight: var(--weight-medium);
 }

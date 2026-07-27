@@ -13,16 +13,26 @@
  * - Tabla de productos: nombre, categoría (Badge) + chip Finito/Agotado si
  *   el producto tiene yacimiento, unidad, enlace al mercado.
  * - Tabla de yacimientos: remanente/inicial con barra y rendimiento actual.
- * - Tabla de recetas: output con cantidad, insumos inline, duración REAL
- *   formateada legible (hint con equivalencia simulada, factor 5×) y
+ * - Tabla de recetas: output con cantidad, tipo de instalación requerido
+ *   (ADR-021), insumos inline con la electricidad destacada (ADR-024),
+ *   duración REAL formateada legible (hint con equivalencia simulada) y
  *   salario por segundo.
+ * Filtros: buscador + categoría de producto + tipo de instalación (con 149
+ * productos / 152 recetas el filtrado es imprescindible para navegar).
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { api, ApiError } from "../../api/client";
-import type { Deposit, Problem, Product, Recipe } from "../../api/types";
+import { api } from "../../api/client";
+import { toProblem } from "../../api/problem";
+import type {
+  Deposit,
+  InstallationType,
+  Product,
+  ProductCategory,
+  Recipe,
+} from "../../api/types";
 import {
   Badge,
   CopyId,
@@ -35,19 +45,12 @@ import {
 } from "../../components";
 import { fmtBps, fmtMoney, fmtQty, truncId } from "../../lib/format";
 import { fmtDurationSeconds, realDurationSimHint } from "../market/simTime";
-import { PRODUCT_CATEGORY_LABEL } from "./labels";
+import { PRODUCT_CATEGORY_LABEL, PRODUCT_CATEGORY_ORDER } from "./labels";
 import styles from "./CatalogPage.module.css";
 
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
+/** key del producto electricidad (ADR-024) y del tipo generación. */
+const ELECTRICITY_PRODUCT_KEY = "electricidad";
+const GENERATION_TYPE_KEY = "generacion";
 
 export default function CatalogPage() {
   // ---- Datos (catálogo público y estático) -----------------------------------
@@ -73,7 +76,20 @@ export default function CatalogPage() {
     refetchInterval: 5_000,
   });
 
+  // Tipos de instalación (ADR-021): estáticos como el resto del catálogo.
+  const installationTypesQuery = useQuery({
+    queryKey: ["catalog", "installation-types"],
+    queryFn: ({ signal }) =>
+      api.get<InstallationType[]>("/catalog/installation-types", {
+        signal,
+        auth: false,
+      }),
+    staleTime: Infinity,
+  });
+
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<ProductCategory | "">("");
+  const [typeFilter, setTypeFilter] = useState("");
   const q = search.trim().toLowerCase();
 
   const productById = useMemo(() => {
@@ -94,8 +110,24 @@ export default function CatalogPage() {
     return map;
   }, [depositsQuery.data]);
 
+  const typeById = useMemo(() => {
+    const map = new Map<string, InstallationType>();
+    for (const t of installationTypesQuery.data ?? [])
+      map.set(t.installation_type_id, t);
+    return map;
+  }, [installationTypesQuery.data]);
+
+  // Id del producto electricidad para destacar el insumo energético (ADR-024).
+  const electricityProductId = useMemo(
+    () =>
+      (productsQuery.data ?? []).find((p) => p.key === ELECTRICITY_PRODUCT_KEY)
+        ?.product_id ?? null,
+    [productsQuery.data],
+  );
+
   const filteredProducts = useMemo(() => {
-    const all = productsQuery.data ?? [];
+    let all = productsQuery.data ?? [];
+    if (category !== "") all = all.filter((p) => p.category === category);
     if (q === "") return all;
     return all.filter(
       (p) =>
@@ -103,10 +135,16 @@ export default function CatalogPage() {
         p.unit.toLowerCase().includes(q) ||
         PRODUCT_CATEGORY_LABEL[p.category].toLowerCase().includes(q),
     );
-  }, [productsQuery.data, q]);
+  }, [productsQuery.data, q, category]);
 
   const filteredRecipes = useMemo(() => {
-    const all = recipesQuery.data ?? [];
+    let all = recipesQuery.data ?? [];
+    if (category !== "")
+      all = all.filter(
+        (r) => productById.get(r.output_product_id)?.category === category,
+      );
+    if (typeFilter !== "")
+      all = all.filter((r) => r.installation_type_id === typeFilter);
     if (q === "") return all;
     return all.filter(
       (r) =>
@@ -117,7 +155,7 @@ export default function CatalogPage() {
         ),
     );
     // productName es derivado puro de productById (dependencia incluida).
-  }, [recipesQuery.data, q, productById]);
+  }, [recipesQuery.data, q, productById, category, typeFilter]);
 
   // ---- Columnas: productos --------------------------------------------------------
   const productColumns: Array<DataTableColumn<Product>> = [
@@ -263,6 +301,22 @@ export default function CatalogPage() {
       ),
     },
     {
+      key: "installation",
+      header: "Instalación",
+      sortValue: (row) => typeById.get(row.installation_type_id)?.name ?? "",
+      render: (row) => {
+        const type = typeById.get(row.installation_type_id);
+        if (type === undefined)
+          return <span className={styles.subtle}>—</span>;
+        // La generación eléctrica se distingue de un vistazo (ADR-024).
+        return (
+          <Badge kind="neutral">
+            {type.key === GENERATION_TYPE_KEY ? `⚡ ${type.name}` : type.name}
+          </Badge>
+        );
+      },
+    },
+    {
       key: "inputs",
       header: "Insumos (por ejecución)",
       render: (row) =>
@@ -272,17 +326,31 @@ export default function CatalogPage() {
           </span>
         ) : (
           <ul className={styles.chipList}>
-            {row.inputs.map((input) => (
-              <li key={input.product_id} className={styles.chip}>
-                <span className={styles.mono}>
-                  {fmtQty(
-                    input.qty_required_cent,
-                    productUnit(input.product_id),
-                  )}
-                </span>
-                <span>{productName(input.product_id)}</span>
-              </li>
-            ))}
+            {row.inputs.map((input) => {
+              const isElectricity = input.product_id === electricityProductId;
+              return (
+                <li
+                  key={input.product_id}
+                  className={isElectricity ? styles.chipEnergy : styles.chip}
+                  title={
+                    isElectricity
+                      ? "Insumo energético (ADR-024): esta receta consume electricidad"
+                      : undefined
+                  }
+                >
+                  <span className={styles.mono}>
+                    {fmtQty(
+                      input.qty_required_cent,
+                      productUnit(input.product_id),
+                    )}
+                  </span>
+                  <span>
+                    {isElectricity ? "⚡ " : ""}
+                    {productName(input.product_id)}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         ),
     },
@@ -328,7 +396,7 @@ export default function CatalogPage() {
             estático: cualquier agente puede operar cualquier producto.
           </p>
         </div>
-        <div className={styles.search}>
+        <div className={styles.filters}>
           <Field label="Buscar en el catálogo">
             <input
               type="search"
@@ -337,6 +405,32 @@ export default function CatalogPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </Field>
+          <Field label="Categoría">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ProductCategory | "")}
+            >
+              <option value="">Todas</option>
+              {PRODUCT_CATEGORY_ORDER.map((c) => (
+                <option key={c} value={c}>
+                  {PRODUCT_CATEGORY_LABEL[c]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Tipo de instalación">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="">Todos</option>
+              {(installationTypesQuery.data ?? []).map((t) => (
+                <option key={t.installation_type_id} value={t.installation_type_id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
       </div>

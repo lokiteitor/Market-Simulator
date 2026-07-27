@@ -50,7 +50,8 @@ Agente único creado por el seed (`BANK_USERNAME`, default `central_bank`):
 
 - **Sin credenciales**: no es logueable ni registrable por `/auth/register`.
 - **Sin capacidades**: no produce ni coloca órdenes; no participa en el mercado.
-- **Excluido de los agregados de mercado** (junto con el rol `admin` de solo-monitoreo;
+- **Excluido de los agregados de mercado** (junto con el rol `admin`, la cuenta personal
+  del operador humano — monitorea Y opera el mercado, pero sigue fuera de los agregados;
   ver `NON_MARKET_ROLES` en `backend/src/types/contracts.ts`). En particular, su capital
   **no** entra en el promedio que fija el capital semilla de los registros dinámicos.
 - Recibe: el **capital inicial** (`GOLD_BANK_INITIAL_CAPITAL_CENTS`, 13 M$ por defecto),

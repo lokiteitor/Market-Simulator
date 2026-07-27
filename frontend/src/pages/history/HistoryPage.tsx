@@ -17,6 +17,7 @@ import { useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import type {
   EventEntry,
   EventPage,
@@ -43,17 +44,6 @@ import styles from "./HistoryPage.module.css";
 const PAGE_LIMIT = 50;
 
 type HistoryTab = "trades" | "events";
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
-}
 
 function buildCursorQuery(cursor: string | null): string {
   const params = new URLSearchParams();

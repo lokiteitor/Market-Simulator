@@ -8,10 +8,12 @@
  * consistente, igual que snapshot-runner.
  */
 import { withTransaction } from "../db";
+import { incomeLedgerRepository } from "../repositories/income-ledger-repository";
 import {
   monitoringRepository,
   type AgentsByRoleView,
   type AgentsPage,
+  type CityListItemView,
   type MarketProductView,
   type OverviewView,
   type ProductionView,
@@ -22,6 +24,13 @@ import {
 export interface AdminOverview {
   kpis: OverviewView;
   byRole: AgentsByRoleView[];
+}
+
+/** Panel de ciudades (ADR-020/025): listado + agregados del flujo circular. */
+export interface AdminCities {
+  cities: CityListItemView[];
+  pendingBySource: Array<{ source: string; cents: number }>;
+  distributed: { totalCents: number; sweeps: number };
 }
 
 export const adminService = {
@@ -43,6 +52,20 @@ export const adminService = {
     status?: "active" | "bankrupt";
   }): Promise<AgentsPage> {
     return withTransaction((tx) => monitoringRepository.listAgents(tx, opts));
+  },
+
+  async getCities(): Promise<AdminCities> {
+    // Foto consistente: capitales, pendiente y repartido deben ser coherentes
+    // entre sí (conservación monetaria, ADR-020).
+    return withTransaction(
+      async (tx) => {
+        const cities = await monitoringRepository.listCities(tx);
+        const pendingBySource = await incomeLedgerRepository.sumUnmaterializedBySource(tx);
+        const distributed = await monitoringRepository.distributedIncome24h(tx);
+        return { cities, pendingBySource, distributed };
+      },
+      { isolationLevel: "repeatable read" },
+    );
   },
 
   async getMarket(): Promise<MarketProductView[]> {

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
+import { toProblem } from "../../api/problem";
 import { generateUUID } from "../../lib/uuid";
 import type {
   OrderSide,
@@ -45,17 +46,6 @@ export interface OrderFormModalProps {
   initialProductId?: string;
   /** Lado preseleccionado (default: compra). */
   initialSide?: OrderSide;
-}
-
-/** Error desconocido → Problem RFC 7807 mostrable en ErrorBanner. */
-function toProblem(err: unknown): Problem {
-  if (err instanceof ApiError) return err.problem;
-  return {
-    type: "about:blank",
-    title: "Error de comunicación",
-    status: 0,
-    detail: err instanceof Error ? err.message : "Fallo de red desconocido.",
-  };
 }
 
 export function OrderFormModal({
