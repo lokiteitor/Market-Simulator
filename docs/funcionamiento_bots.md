@@ -274,6 +274,55 @@ estrategias armaban órdenes que el servidor rechazaba con 422
    `-quiet`. La anticipación y el backoff loguean solo en `debug` para no
    ensuciar el log del enjambre.
 
+### 4.6 Quiebra: confirmación con el servidor y apagado (ADR-026)
+
+Quedarse sin capital no es quebrar. La quiebra la decide **solo el servidor**
+(condición §10 del diseño: capital total 0, inventario 0, sin órdenes activas y
+sin procesos), y hasta ADR-026 podía no llegar a evaluarse nunca: la vía
+reactiva se dispara en transiciones terminales, y un bot arruinado que ya no
+puede ni colocar órdenes ni producir no atraviesa ninguna. El resultado era un
+**bot zombi**: sesión y WebSocket abiertos, un tick cada 5 s devolviendo `nil`,
+para siempre. Con 10.000 bots eso es carga pura.
+
+El bot ahora pregunta: `POST /agents/me/bankruptcy-check`. El endpoint **no es
+una lectura** — si la condición se cumple, el servidor aplica la quiebra en esa
+misma llamada. La respuesta trae `bankrupt` y, cuando es `false`, los `reasons`
+que explican qué le queda vivo (`has_capital`, `has_inventory`,
+`has_active_orders`, `has_running_processes`, `role_exempt`).
+
+Cuatro disparadores en el engine, todos convergiendo en la misma señal:
+
+1. **422 `insufficient_capital` confirmado**: junto al backoff y la
+   resincronización, se lanza el sondeo.
+2. **Tick con el estado local a cero**: capital 0 (disponible y reservado), sin
+   inventario, sin órdenes activas y sin procesos. Se comprueba **antes** del
+   early-return por sueño, porque el bot arruinado vive precisamente dormido
+   por el backoff de capital.
+3. **`bankruptcy_notice` por WebSocket**: la vía rápida cuando el servidor lo
+   detectó por su cuenta. Sin sondeo de por medio.
+4. **403 `agent_bankrupt` en cualquier acción**: definitivo, se señala directo.
+
+El sondeo va **throttled** a un mínimo de 60 s por bot (el endpoint muta y el
+enjambre es grande) y no se repite una vez confirmada la quiebra.
+
+`Engine.Bankrupt()` es el canal que se cierra al confirmarse, análogo a
+`LowCapital()` pero **terminal**: el agente no puede volver a operar ni
+re-loguearse (el login de un quebrado devuelve 403). El engine **solo señala**:
+llamarse `Stop()` a sí mismo sería un deadlock, porque `Stop` espera al
+`eventDispatcher` que estaría emitiendo la señal. Es el runner quien apaga:
+
+- **Modo normal**: la goroutine de cada bot se queda de vigilante tras `Start`;
+  al cerrarse el canal hace `Stop()`, contabiliza la baja y, si ya no queda
+  ningún bot vivo, cancela el contexto raíz y el proceso termina.
+- **Modo rotación**: el bot sale de la rotación **para siempre** (no es ceder el
+  turno como con `LowCapital`); el ticker salta a los quebrados al elegir el
+  siguiente y termina si no queda ninguno.
+
+El `[RESUMEN]` de `-quiet` incluye el contador `Quebrados`.
+
+`bots-ciudad` no se ve afectado: el rol `city` está exento de quiebra, así que
+el endpoint le responde siempre `role_exempt` y la señal nunca se cierra.
+
 ---
 
 ## 5. Estrategias por rol
@@ -465,6 +514,8 @@ make run-swarm
 ```
 
 - **Apagado:** `Ctrl-C` (SIGINT) cancela el contexto y hace `Stop()` de todos los engines.
+  Un bot concreto también se apaga solo al confirmarse su quiebra (§4.6), y el proceso
+  termina por su cuenta cuando **todos** sus bots han quebrado.
 - **Estado en disco:** solo los ficheros de sesión (`bots-v1/sessions/`, `.session_*`);
   todo el estado económico vive en el servidor. Borrar las sesiones fuerza re-login (o
   re-registro si el usuario no existe, p. ej. tras un `clean-docker`).

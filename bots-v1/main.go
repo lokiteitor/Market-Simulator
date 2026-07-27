@@ -213,6 +213,31 @@ func main() {
 	var engines []*engine.Engine
 	var enginesMu sync.Mutex
 
+	// Bots retirados por quiebra confirmada (ADR-026). No se reintentan: el
+	// login de un quebrado devuelve 403 agent_bankrupt.
+	var bankruptMu sync.Mutex
+	var bankruptCount int
+
+	// onBankrupt contabiliza la baja y, si ya no queda ningún bot vivo, cancela
+	// el contexto raíz: el proceso no tiene nada más que hacer.
+	onBankrupt := func(username string) {
+		enginesMu.Lock()
+		total := len(engines)
+		enginesMu.Unlock()
+
+		bankruptMu.Lock()
+		bankruptCount++
+		n := bankruptCount
+		bankruptMu.Unlock()
+
+		// log.Printf (no logInfo) para que la baja se vea también en -quiet.
+		log.Printf("[%s] Quiebra confirmada por el servidor: bot retirado (%d/%d)", username, n, total)
+		if n >= total {
+			log.Println("Todos los bots están en quiebra. Terminando.")
+			cancel()
+		}
+	}
+
 	if quietMode {
 		go func() {
 			ticker := time.NewTicker(10 * time.Second)
@@ -225,7 +250,10 @@ func main() {
 					enginesMu.Lock()
 					runningCount := len(engines)
 					enginesMu.Unlock()
-					log.Printf("[RESUMEN] Bots activos iniciados: %d / %d", runningCount, len(botsToRun))
+					bankruptMu.Lock()
+					broke := bankruptCount
+					bankruptMu.Unlock()
+					log.Printf("[RESUMEN] Bots activos iniciados: %d / %d | Quebrados: %d", runningCount, len(botsToRun), broke)
 				}
 			}
 		}()
@@ -265,6 +293,18 @@ func main() {
 				} else {
 					log.Printf("[%s] Bot failed to start: %v", username, err)
 				}
+				return
+			}
+
+			// Start no bloquea (el trabajo lo hacen el scheduler y el dispatcher
+			// del engine), así que esta goroutine se queda de vigilante: la
+			// quiebra es el único motivo por el que un bot muere antes que el
+			// proceso. El apagado global lo maneja el Stop() del shutdown.
+			select {
+			case <-e.Bankrupt():
+				e.Stop()
+				onBankrupt(username)
+			case <-ctx.Done():
 			}
 		}(eng, botCfg.Username, idx)
 	}
@@ -363,6 +403,29 @@ func runWithRotation(
 	var activeMu sync.Mutex
 	var wg sync.WaitGroup
 
+	// Bots retirados por quiebra (ADR-026): salen de la rotación para siempre,
+	// porque el login de un quebrado devuelve 403 agent_bankrupt.
+	bankruptBots := make(map[string]struct{})
+	var bankruptMu sync.Mutex
+
+	isBankrupt := func(username string) bool {
+		bankruptMu.Lock()
+		defer bankruptMu.Unlock()
+		_, ok := bankruptBots[username]
+		return ok
+	}
+	markBankrupt := func(username string) int {
+		bankruptMu.Lock()
+		defer bankruptMu.Unlock()
+		bankruptBots[username] = struct{}{}
+		return len(bankruptBots)
+	}
+	bankruptTotal := func() int {
+		bankruptMu.Lock()
+		defer bankruptMu.Unlock()
+		return len(bankruptBots)
+	}
+
 	if quietMode {
 		go func() {
 			ticker := time.NewTicker(10 * time.Second)
@@ -375,7 +438,7 @@ func runWithRotation(
 					activeMu.Lock()
 					activeCount := len(activeEngines)
 					activeMu.Unlock()
-					log.Printf("[RESUMEN] Bots totales: %d | Activos concurrentemente: %d / %d | Rotación: %v", totalBots, activeCount, maxActive, activeDuration)
+					log.Printf("[RESUMEN] Bots totales: %d | Activos concurrentemente: %d / %d | Quebrados: %d | Rotación: %v", totalBots, activeCount, maxActive, bankruptTotal(), activeDuration)
 				}
 			}
 		}()
@@ -427,10 +490,16 @@ func runWithRotation(
 			return
 		}
 
-		// Wait for active duration to end, capital exhaustion or global shutdown
+		// Wait for active duration to end, capital exhaustion, bankruptcy or
+		// global shutdown
 		select {
 		case <-botCtx.Done():
 			logInfo("[%s] Active period finished, stopping and going to sleep...", botCfg.Username)
+		case <-eng.Bankrupt():
+			// A diferencia de LowCapital, esto NO es ceder el turno: el bot sale
+			// de la rotación para siempre (ADR-026).
+			n := markBankrupt(botCfg.Username)
+			log.Printf("[%s] Quiebra confirmada por el servidor: fuera de la rotación (%d/%d)", botCfg.Username, n, totalBots)
 		case <-eng.LowCapital():
 			// log.Printf (no logInfo) para que el aviso se vea también en -quiet.
 			log.Printf("[%s] Sin capital: cede su lugar en la rotación", botCfg.Username)
@@ -469,10 +538,27 @@ func runWithRotation(
 			return
 
 		case <-ticker.C:
-			// Start the next bot
-			botCfg := bots[nextBotIdx]
+			// Elegir el siguiente bot NO quebrado. Se recorre como mucho una
+			// vuelta completa: si todos han quebrado no queda nada que rotar y
+			// el proceso termina.
+			var botCfg BotRunnerConfig
+			found := false
+			for i := 0; i < totalBots; i++ {
+				candidate := bots[nextBotIdx]
+				nextBotIdx = (nextBotIdx + 1) % totalBots
+				if !isBankrupt(candidate.Username) {
+					botCfg = candidate
+					found = true
+					break
+				}
+			}
+			if !found {
+				log.Println("Todos los bots están en quiebra. Terminando la rotación.")
+				close(shutdownChan)
+				wg.Wait()
+				return
+			}
 			go runBot(botCfg)
-			nextBotIdx = (nextBotIdx + 1) % totalBots
 		}
 	}
 }

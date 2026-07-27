@@ -256,11 +256,14 @@ export const agentRepository = {
     }
   },
 
-  /** Marca al agente como bankrupt con bankrupt_at = now() (§10.13). */
-  async markBankrupt(tx: Tx, agentId: string): Promise<void> {
+  /**
+   * Marca al agente como bankrupt (§10.13). El caller pasa el instante para
+   * poder devolvérselo al cliente sin releer la fila.
+   */
+  async markBankrupt(tx: Tx, agentId: string, bankruptAt: Date): Promise<void> {
     await tx
       .update(agent)
-      .set({ status: "bankrupt", bankruptAt: new Date() })
+      .set({ status: "bankrupt", bankruptAt })
       .where(eq(agent.agentId, agentId));
   },
 

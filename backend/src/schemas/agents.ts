@@ -147,6 +147,28 @@ export const AgentSnapshotSchema = z.object({
 
 export type AgentSnapshotJson = z.infer<typeof AgentSnapshotSchema>;
 
+/**
+ * Motivos por los que el agente NO está en quiebra (ADR-026). Espejo de
+ * `BankruptcyReason` en types/contracts.ts y del enum del openapi.
+ */
+export const BankruptcyReasonSchema = z.enum([
+  "has_capital",
+  "has_inventory",
+  "has_active_orders",
+  "has_running_processes",
+  "role_exempt",
+]);
+
+/** openapi components.schemas.BankruptcyCheck (POST /agents/me/bankruptcy-check). */
+export const BankruptcyCheckSchema = z.object({
+  bankrupt: z.boolean(),
+  bankrupt_at: z.string().nullable(),
+  /** Vacío cuando `bankrupt` es true. */
+  reasons: z.array(BankruptcyReasonSchema),
+});
+
+export type BankruptcyCheckJson = z.infer<typeof BankruptcyCheckSchema>;
+
 export const InstallationStatusListSchema = z.array(InstallationStatusSchema);
 export const InventoryPositionListSchema = z.array(InventoryPositionSchema);
 export const InventoryLotListSchema = z.array(InventoryLotSchema);

@@ -297,6 +297,17 @@ type AgentSnapshot struct {
 	RecentEvents          []Event                 `json:"recent_events"`
 }
 
+// BankruptcyCheck: respuesta de POST /agents/me/bankruptcy-check (ADR-026).
+// El servidor evalúa la condición de quiebra y, si se cumple, la APLICA. Un
+// `Bankrupt: true` es definitivo: el bot debe apagarse. `Reasons` explica qué
+// le queda vivo cuando no lo está (`has_capital`, `has_inventory`,
+// `has_active_orders`, `has_running_processes`, `role_exempt`).
+type BankruptcyCheck struct {
+	Bankrupt   bool       `json:"bankrupt"`
+	BankruptAt *time.Time `json:"bankrupt_at,omitempty"`
+	Reasons    []string   `json:"reasons"`
+}
+
 // Request and Response helper structures
 
 type RegisterAgentRequest struct {

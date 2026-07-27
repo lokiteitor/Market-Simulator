@@ -30,8 +30,14 @@ import { intervalToSimSeconds, realMsToSimSeconds } from "../lib/simtime";
 import { agentRepository } from "../repositories/agent-repository";
 import { bankRepository } from "../repositories/bank-repository";
 import { installationRepository } from "../repositories/installation-repository";
-import type { AgentRegistrar, AgentRole } from "../types/contracts";
+import type {
+  AgentRegistrar,
+  AgentRole,
+  BankruptcyEvaluation,
+} from "../types/contracts";
 import { bankService } from "./bank-service";
+import { publishBankruptcyNotifications } from "./bankruptcy-notify";
+import { bankruptcyService } from "./bankruptcy-service";
 import { inventoryService } from "./inventory-service";
 import { transformationService } from "./transformation-service";
 
@@ -108,6 +114,13 @@ export interface AgentService extends AgentRegistrar {
    * los procesos vencidos del agente (abre su propia tx, §8).
    */
   getSelfState(agentId: string, eventsLimit?: number): Promise<AgentSelfState>;
+  /**
+   * POST /agents/me/bankruptcy-check (ADR-026): evalúa la condición §10 y, si
+   * se cumple, APLICA la quiebra. Es la vía pull con la que un bot sin capital
+   * confirma que debe apagarse, sin depender de que ocurra una transición
+   * terminal que dispare la evaluación reactiva.
+   */
+  checkSelfBankruptcy(agentId: string): Promise<BankruptcyEvaluation>;
   /** Inventario agregado por producto (openapi InventoryPosition). */
   getInventory(agentId: string, productId?: string): Promise<InventoryPositionView[]>;
   /** Detalle por lote, orden FIFO (acquired_at ASC, lot_id ASC). */
@@ -221,6 +234,25 @@ export const agentService: AgentService = {
         recentEvents,
       };
     });
+  },
+
+  async checkSelfBankruptcy(agentId) {
+    // Materialización lazy ANTES de evaluar, por partida doble: un proceso
+    // vencido sin materializar cuenta como `running` (⇒ nunca quebraría) y su
+    // output todavía no está en inventario (⇒ el agente parecería más pobre de
+    // lo que es). Abre su propia tx, igual que en getSelfState.
+    await transformationService.materializeExpiredForAgent(agentId);
+
+    const evaluation = await withTransaction((tx) =>
+      bankruptcyService.evaluateAndApply(tx, agentId),
+    );
+
+    // Post-commit y solo si la quiebra se aplicó AQUÍ: si ya venía quebrado,
+    // las notificaciones se emitieron en su momento.
+    if (evaluation.applied) {
+      await publishBankruptcyNotifications(agentId, evaluation.username);
+    }
+    return evaluation;
   },
 
   async getInventory(agentId, productId) {

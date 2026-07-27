@@ -369,16 +369,47 @@ paths:
             default: 100
       responses:
         '200':
-          description: Estado del agente.
+          description: |
+            Estado del agente. Un agente en quiebra con access token vigente
+            también recibe 200: el estado `bankrupt` solo bloquea escrituras de
+            dominio, no las lecturas.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AgentSnapshot' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403':
-          description: Agente en quiebra; operación rechazada.
+
+  /agents/me/bankruptcy-check:
+    post:
+      tags: [agent]
+      summary: Comprobar (y aplicar) la quiebra del agente autenticado
+      description: |
+        Evalúa la condición de quiebra del agente y, **si se cumple, la aplica**
+        en la misma llamada: cancela sus órdenes residuales liberando reservas,
+        marca `status: bankrupt` con `bankrupt_at`, revoca todos sus refresh
+        tokens y emite `bankruptcy_notice` (personal) + `agent_bankrupt`
+        (broadcast). No es una lectura.
+
+        Es la vía **pull** con la que un cliente sin capital confirma que debe
+        apagarse, sin depender de que ocurra una transición terminal
+        (cancelar/expirar una orden, completar/cancelar un proceso) que dispare
+        la evaluación reactiva. Antes de evaluar se materializan lazy los
+        procesos vencidos del agente.
+
+        Los roles exentos de quiebra por diseño (`city`, `admin`) responden
+        siempre `bankrupt: false` con `reasons: ["role_exempt"]`.
+
+        Un agente **ya** quebrado recibe `bankrupt: true` sin efectos
+        adicionales (idempotente): es justo el caso en que su access token sigue
+        vigente pero sus refresh tokens ya están revocados, y necesita
+        enterarse. Los clientes deben espaciar las llamadas (el enjambre las
+        limita a una por minuto y bot).
+      responses:
+        '200':
+          description: Resultado de la evaluación.
           content:
-            application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+            application/json:
+              schema: { $ref: '#/components/schemas/BankruptcyCheck' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /agents/me/installations:
     get:
@@ -1437,6 +1468,35 @@ components:
             ejecutados, procesos completados, órdenes expiradas, agentes nuevos,
             agentes quebrados).
           items: { $ref: '#/components/schemas/Event' }
+
+    BankruptcyCheck:
+      type: object
+      description: |
+        Resultado de `POST /agents/me/bankruptcy-check`. `bankrupt: true` es
+        terminal: el agente no puede volver a operar ni iniciar sesión, y un
+        cliente automatizado debe apagarse.
+      required: [bankrupt, bankrupt_at, reasons]
+      properties:
+        bankrupt:
+          type: boolean
+        bankrupt_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Instante en que se marcó la quiebra; `null` si no está en quiebra.
+        reasons:
+          type: array
+          description: |
+            Motivos por los que el agente NO está en quiebra, es decir qué le
+            queda vivo. Vacío cuando `bankrupt` es `true`.
+          items:
+            type: string
+            enum:
+              - has_capital             # capital_available + capital_reserved != 0
+              - has_inventory           # queda inventario (disponible o reservado)
+              - has_active_orders       # órdenes en estado active o partial
+              - has_running_processes   # procesos de transformación en curso
+              - role_exempt             # rol exento de quiebra por diseño (city, admin)
 
     InstallationStatus:
       type: object

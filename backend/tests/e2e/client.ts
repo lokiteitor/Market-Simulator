@@ -41,6 +41,13 @@ export interface AgentPublic {
   bankrupt_at?: string | null;
 }
 
+/** POST /agents/me/bankruptcy-check (ADR-026). */
+export interface BankruptcyCheck {
+  bankrupt: boolean;
+  bankrupt_at: string | null;
+  reasons: string[];
+}
+
 export interface InstallationStatus {
   installation_type: string;
   name: string;

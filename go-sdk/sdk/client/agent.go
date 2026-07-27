@@ -30,6 +30,19 @@ func (c *Client) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models
 	return &resp, nil
 }
 
+// CheckBankruptcy pregunta al servidor si el agente está en quiebra
+// (POST /agents/me/bankruptcy-check, ADR-026). NO es una lectura: si se cumple
+// la condición, el servidor la aplica en esa misma llamada (marca el agente,
+// cancela sus órdenes residuales y revoca sus tokens).
+func (c *Client) CheckBankruptcy(ctx context.Context) (*models.BankruptcyCheck, error) {
+	var resp models.BankruptcyCheck
+	err := c.do(ctx, http.MethodPost, "/agents/me/bankruptcy-check", nil, &resp, true)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // GetInstallations retrieves the installations bought by the authenticated
 // agent (economía de instalaciones, ADR-021).
 func (c *Client) GetInstallations(ctx context.Context) ([]models.InstallationStatus, error) {

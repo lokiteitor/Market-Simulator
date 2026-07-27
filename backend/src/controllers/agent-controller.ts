@@ -142,6 +142,22 @@ export const agentController = {
     });
   },
 
+  /**
+   * POST /agents/me/bankruptcy-check — evalúa y aplica la quiebra (ADR-026).
+   *
+   * Responde 200 SIEMPRE, también a un agente ya quebrado: es justo el caso en
+   * que su access token sigue vivo pero sus refresh tokens ya están revocados,
+   * y necesita enterarse para apagarse.
+   */
+  async checkBankruptcy(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const result = await agentService.checkSelfBankruptcy(request.agentId);
+    await reply.code(200).send({
+      bankrupt: result.bankrupt,
+      bankrupt_at: result.bankruptAt === null ? null : result.bankruptAt.toISOString(),
+      reasons: result.reasons,
+    });
+  },
+
   /** GET /agents/me/inventory — posiciones agregadas por producto. */
   async getMyInventory(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const { product_id: productId } = request.query as InventoryQuery;

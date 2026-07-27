@@ -47,6 +47,7 @@ import {
 } from "../repositories/transformation-repository";
 import { buildPage } from "../schemas/common";
 import type { TransformationMaterializer } from "../types/contracts";
+import { publishBankruptcyNotifications } from "./bankruptcy-notify";
 import { bankruptcyService } from "./bankruptcy-service";
 import { inventoryService } from "./inventory-service";
 
@@ -202,18 +203,7 @@ async function safePublish(what: string, fn: () => Promise<void>): Promise<void>
 }
 
 async function publishBankruptcy(b: BankruptcyNotice): Promise<void> {
-  const occurredAt = new Date().toISOString();
-  const payload = { agent_id: b.agentId, username: b.username };
-  await safePublish("bankruptcy_notice", () =>
-    publishToAgent(b.agentId, {
-      type: "bankruptcy_notice",
-      occurred_at: occurredAt,
-      payload,
-    }),
-  );
-  await safePublish("agent_bankrupt", () =>
-    publishBroadcast({ type: "agent_bankrupt", occurred_at: occurredAt, payload }),
-  );
+  await publishBankruptcyNotifications(b.agentId, b.username);
 }
 
 async function publishMaterialized(results: MaterializedProcess[]): Promise<void> {

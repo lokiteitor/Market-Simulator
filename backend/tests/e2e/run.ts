@@ -33,6 +33,7 @@ import {
   type AcquireInstallationResponse,
   type AgentRole,
   type AgentSnapshot,
+  type BankruptcyCheck,
   type Deposit,
   type EventItem,
   type InventoryLot,
@@ -1235,6 +1236,47 @@ async function main(): Promise<void> {
       "GET /history/trades?side=buyer (alice)",
     );
     assertEqual(aliceAsBuyer.items.length, 0, "alice sin trades como buyer");
+  });
+
+  await step("25b. quiebra: POST /agents/me/bankruptcy-check informa sin quebrar a quien sigue vivo", async () => {
+    const check = expectStatus<BankruptcyCheck>(
+      await api.post("/agents/me/bankruptcy-check", { token: alice.accessToken }),
+      200,
+      "POST /agents/me/bankruptcy-check (alice)",
+    );
+    assertEqual(check.bankrupt, false, "alice tiene capital e inventario: no quiebra");
+    assertEqual(check.bankrupt_at, null, "bankrupt_at null mientras no hay quiebra");
+    assert(check.reasons.length > 0, "un agente vivo debe explicar POR QUÉ lo está");
+    for (const reason of check.reasons) {
+      assert(
+        ["has_capital", "has_inventory", "has_active_orders", "has_running_processes", "role_exempt"].includes(
+          reason,
+        ),
+        `motivo '${reason}' fuera del enum del contrato`,
+      );
+    }
+    assert(check.reasons.includes("has_capital"), "alice conserva capital tras operar");
+
+    // El endpoint MUTA (aplica la quiebra si procede), así que su no-efecto
+    // sobre un agente vivo tiene que ser verificable: mismo estado después.
+    const snap = await me(alice);
+    assertEqual(snap.agent.status, "active", "alice sigue activa tras el check");
+
+    // Idempotente para quien no quiebra: repetirlo no cambia nada.
+    const again = expectStatus<BankruptcyCheck>(
+      await api.post("/agents/me/bankruptcy-check", { token: alice.accessToken }),
+      200,
+      "POST /agents/me/bankruptcy-check (alice, 2ª vez)",
+    );
+    assertEqual(again.bankrupt, false, "segunda llamada consistente");
+
+    // Sin token ⇒ 401 (la ruta exige autenticación como el resto de /agents/me).
+    expectProblem(
+      await api.post("/agents/me/bankruptcy-check"),
+      401,
+      "POST /agents/me/bankruptcy-check sin token",
+      { code: "invalid_token" },
+    );
   });
 
   await step("26. conservación de dinero: Σ capital + Σ fees + Σ salarios == Σ capital semilla", async () => {

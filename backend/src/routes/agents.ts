@@ -17,6 +17,7 @@ import {
   AgentIdParamsSchema,
   AgentPublicSchema,
   AgentSnapshotSchema,
+  BankruptcyCheckSchema,
   InventoryLotListSchema,
   InventoryLotsQuerySchema,
   InventoryPositionListSchema,
@@ -44,6 +45,20 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     agentController.getMe,
+  );
+
+  // POST /agents/me/bankruptcy-check — el agente pregunta si está en quiebra
+  // (ADR-026). Muta: si se cumple la condición §10 la APLICA. Deliberadamente
+  // SIN gate de bankrupt: un quebrado debe poder recibir `bankrupt: true`.
+  r.post(
+    "/agents/me/bankruptcy-check",
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        response: { 200: BankruptcyCheckSchema },
+      },
+    },
+    agentController.checkBankruptcy,
   );
 
   // GET /agents/me/installations — instalaciones compradas (nivel + slots).

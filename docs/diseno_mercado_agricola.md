@@ -326,7 +326,12 @@ El sistema soporta desconexión arbitraria de agentes sin pérdida de informaci�
 ## 10. Quiebra de agentes
 
 **Detección:**
-El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas que puedan generar ingresos. La evaluación ocurre de forma reactiva cuando se cancela su última orden, vence su última orden, o se completa su último proceso de transformación sin recuperar capital.
+El agente entra en quiebra cuando se vuelve incapaz de continuar: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas que puedan generar ingresos. Hay dos vías de evaluación, ambas sobre la misma condición y con los mismos efectos:
+
+- **Reactiva (push):** cuando se cancela su última orden, vence su última orden, o se completa (o se cancela) su último proceso de transformación sin recuperar capital.
+- **A petición (pull):** el propio agente llama a `POST /agents/me/bankruptcy-check` y el servidor evalúa y aplica en el acto. Existe porque un agente puede quedarse sin nada **sin** atravesar ninguna transición terminal —simplemente deja de poder actuar—, y en ese caso la vía reactiva no se dispara nunca: seguiría vivo y consumiendo recursos indefinidamente. Es la vía por la que un bot sin capital confirma que debe apagarse (ADR-026).
+
+Los roles exentos por diseño (`city`, `admin`) nunca quiebran por ninguna de las dos vías.
 
 **Acciones del sistema al detectar quiebra:**
 1. Cancelar todas las órdenes activas residuales del agente (libera reservas).

@@ -50,6 +50,19 @@ type Engine struct {
 	// retirar el bot y ceder su lugar al siguiente.
 	lowCapitalOnce sync.Once
 	lowCapitalCh   chan struct{}
+
+	// bankruptCh se cierra (una sola vez) cuando el SERVIDOR confirma la
+	// quiebra (ADR-026). A diferencia de lowCapital, es DEFINITIVA: el
+	// agente no puede volver a operar ni re-loguearse, así que el runner debe
+	// apagar el engine y no reintentarlo. El engine solo señala: llamar a
+	// Stop() desde dentro sería un deadlock (Stop hace wg.Wait sobre el
+	// eventDispatcher).
+	bankruptOnce sync.Once
+	bankruptCh   chan struct{}
+	// lastBankruptcyCheck acota la frecuencia del sondeo al servidor (bajo el
+	// mutex del engine): con 10.000 bots sin capital, un POST por tick sería un
+	// martilleo inútil.
+	lastBankruptcyCheck time.Time
 }
 
 var sharedTransport = &http.Transport{
@@ -106,6 +119,7 @@ func NewEngine(cfg *Config, strat strategy.Strategy, metricsProvider metrics.Pro
 		scheduler:    sched,
 		strategy:     strat,
 		lowCapitalCh: make(chan struct{}),
+		bankruptCh:   make(chan struct{}),
 	}
 
 	e.stratCtx = &strategy.Context{
@@ -230,6 +244,13 @@ func (e *Engine) Start(ctx context.Context) error {
 		"capital_reserved", snap.CapitalReservedCents,
 	)
 
+	// Defensa: el agente ya venía quebrado. En la práctica no debería llegar
+	// aquí (el login de un quebrado devuelve 403), pero una sesión persistida
+	// aún válida podría colarlo; se señala para que el runner lo apague.
+	if snap.Agent.Status == models.StatusBankrupt {
+		e.markBankrupt()
+	}
+
 	// 4. Initialize strategy
 	e.logger.Info("initializing strategy...")
 	stratCtx := e.newStrategyContext()
@@ -269,6 +290,14 @@ func (e *Engine) Start(ctx context.Context) error {
 		interval = 5 * time.Second
 	}
 	e.scheduler.SchedulePeriodic(interval, func(ctx context.Context) {
+		// Confirmación de quiebra (ADR-026) ANTES del early-return por sueño:
+		// el bot arruinado vive precisamente dormido por el backoff de capital,
+		// así que comprobarlo después no llegaría nunca. El throttle interno
+		// evita el martilleo.
+		if e.atZeroLocally() {
+			go e.checkBankruptcy()
+		}
+
 		e.Lock()
 		sleeping := e.clock.Now().Before(e.sleepUntil)
 		e.Unlock()
@@ -333,6 +362,15 @@ func (e *Engine) eventDispatcher() {
 			// Apply to StateManager cache
 			e.state.ApplyEvent(ev)
 
+			// Vía rápida de quiebra: el servidor la detectó por su cuenta (una
+			// transición terminal disparó la evaluación reactiva) y avisa por el
+			// canal personal. Sin sondeo ni throttle de por medio.
+			if notice, ok := ev.(events.BankruptcyNotice); ok {
+				if agentID, _, _, _ := e.state.GetAgentInfo(); notice.AgentID == agentID {
+					e.markBankrupt()
+				}
+			}
+
 			e.Lock()
 			sleeping := e.clock.Now().Before(e.sleepUntil)
 			e.Unlock()
@@ -355,6 +393,104 @@ func (e *Engine) eventDispatcher() {
 // siguiente; en modo normal basta con el backoff interno (sleepUntil).
 func (e *Engine) LowCapital() <-chan struct{} {
 	return e.lowCapitalCh
+}
+
+// Bankrupt devuelve un canal que se cierra la primera vez que el servidor
+// confirma la quiebra del agente (ADR-026). Es terminal: el runner debe llamar
+// a Stop() y NO reintentar el bot — el login de un quebrado devuelve 403.
+func (e *Engine) Bankrupt() <-chan struct{} {
+	return e.bankruptCh
+}
+
+// isBankrupt indica si la quiebra ya está confirmada localmente.
+func (e *Engine) isBankrupt() bool {
+	select {
+	case <-e.bankruptCh:
+		return true
+	default:
+		return false
+	}
+}
+
+// markBankrupt cierra la señal de quiebra (idempotente).
+func (e *Engine) markBankrupt() {
+	e.bankruptOnce.Do(func() {
+		e.logger.Warn("quiebra confirmada por el servidor: el bot debe apagarse")
+		close(e.bankruptCh)
+	})
+}
+
+// bankruptcyCheckInterval es la pausa mínima entre sondeos de quiebra. Se
+// apoya en el backoff de capital insuficiente (mismo orden de magnitud: el bot
+// está dormido esperando recuperarse) con un suelo de 60 s.
+func (e *Engine) bankruptcyCheckInterval() time.Duration {
+	interval := e.capitalBackoff()
+	if interval < 60*time.Second {
+		return 60 * time.Second
+	}
+	return interval
+}
+
+// checkBankruptcy pregunta al servidor si el agente está en quiebra y, si lo
+// confirma, cierra la señal. Pensada para invocarse como `go e.checkBankruptcy()`
+// desde el tick o desde el manejo de errores: nunca bloquea al caller.
+//
+// Ojo: el endpoint MUTA (aplica la quiebra si se cumple la condición), de ahí
+// el throttle. Los agentes exentos (`city`, `admin`) reciben siempre
+// `role_exempt` y nunca cierran la señal.
+func (e *Engine) checkBankruptcy() {
+	if e.isBankrupt() {
+		return
+	}
+
+	e.Lock()
+	now := e.clock.Now()
+	if !e.lastBankruptcyCheck.IsZero() && now.Sub(e.lastBankruptcyCheck) < e.bankruptcyCheckInterval() {
+		e.Unlock()
+		return
+	}
+	e.lastBankruptcyCheck = now
+	ctx := e.ctx
+	e.Unlock()
+
+	if ctx == nil {
+		return
+	}
+	res, err := e.client.CheckBankruptcy(ctx)
+	if err != nil {
+		// El apagado puede cancelar el contexto con la request en vuelo.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			e.logger.Debug("bankruptcy check aborted by shutdown", "error", err)
+		} else {
+			e.logger.Warn("bankruptcy check failed", "error", err)
+		}
+		return
+	}
+	if res.Bankrupt {
+		e.markBankrupt()
+		return
+	}
+	e.logger.Debug("bankruptcy check: el agente sigue vivo", "reasons", res.Reasons)
+}
+
+// atZeroLocally indica si la vista local del agente está completamente vacía:
+// sin capital (disponible ni reservado), sin inventario, sin órdenes activas y
+// sin procesos en curso. Es la condición §10 vista desde el cliente — motivo
+// suficiente para preguntarle al servidor, que es quien decide.
+func (e *Engine) atZeroLocally() bool {
+	available, reserved := e.state.Capital()
+	if available+reserved != 0 {
+		return false
+	}
+	if len(e.state.ActiveOrders()) > 0 || len(e.state.RunningProcesses()) > 0 {
+		return false
+	}
+	for _, pos := range e.state.Inventory() {
+		if pos.QtyAvailableCent+pos.QtyReservedCent > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // resyncSnapshot rebasea el estado local con un snapshot fresco del servidor,
@@ -523,6 +659,13 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 			// enjambre), descartar el resto del lote (moriría igual) y rebasear
 			// el estado con un snapshot fresco.
 			var apiErr *client.APIError
+			// agent_bankrupt (403): el servidor ya marcó al agente. Es terminal
+			// —no puede operar ni re-loguearse—, así que se señala sin sondear.
+			if errors.As(err, &apiErr) && apiErr.HasCode(client.CodeAgentBankrupt) {
+				e.logger.Warn("agent_bankrupt confirmed by server", "type", action.Type())
+				e.markBankrupt()
+				return
+			}
 			if errors.As(err, &apiErr) && apiErr.HasCode(client.CodeInsufficientCapital) {
 				backoff := e.capitalBackoff()
 				e.logger.Debug("insufficient capital confirmed by server, backing off",
@@ -532,6 +675,9 @@ func (e *Engine) executeActions(ctx context.Context, actionsList []actions.Actio
 				e.Unlock()
 				e.lowCapitalOnce.Do(func() { close(e.lowCapitalCh) })
 				go e.resyncSnapshot()
+				// El capital local venía inflado: puede que ya no quede nada.
+				// Preguntar si esto es quiebra y no solo una racha mala.
+				go e.checkBankruptcy()
 				return
 			}
 			// insufficient_inventory confirmado por el servidor: el inventario

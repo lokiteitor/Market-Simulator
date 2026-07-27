@@ -8,6 +8,7 @@ import {
   AgentIdParamsSchema,
   AgentPublicSchema,
   AgentSnapshotSchema,
+  BankruptcyCheckSchema,
   InventoryLotsQuerySchema,
   InventoryQuerySchema,
   SelfStateQuerySchema,
@@ -152,6 +153,58 @@ describe("Schemas de respuesta (shapes del openapi)", () => {
         installations: [],
         recent_events: [],
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("BankruptcyCheckSchema (POST /agents/me/bankruptcy-check)", () => {
+  test("agente quebrado: bankrupt_at con fecha y reasons vacío", () => {
+    const parsed = BankruptcyCheckSchema.parse({
+      bankrupt: true,
+      bankrupt_at: "2026-07-27T10:00:00.000Z",
+      reasons: [],
+    });
+    expect(parsed.bankrupt).toBe(true);
+    expect(parsed.reasons).toEqual([]);
+  });
+
+  test("agente vivo: bankrupt_at null y los motivos que lo mantienen en pie", () => {
+    const parsed = BankruptcyCheckSchema.parse({
+      bankrupt: false,
+      bankrupt_at: null,
+      reasons: ["has_inventory", "has_running_processes"],
+    });
+    expect(parsed.bankrupt_at).toBeNull();
+    expect(parsed.reasons).toEqual(["has_inventory", "has_running_processes"]);
+  });
+
+  test("acepta los cinco motivos del contrato y rechaza cualquier otro", () => {
+    expect(
+      BankruptcyCheckSchema.parse({
+        bankrupt: false,
+        bankrupt_at: null,
+        reasons: [
+          "has_capital",
+          "has_inventory",
+          "has_active_orders",
+          "has_running_processes",
+          "role_exempt",
+        ],
+      }).reasons,
+    ).toHaveLength(5);
+    expect(
+      BankruptcyCheckSchema.safeParse({
+        bankrupt: false,
+        bankrupt_at: null,
+        reasons: ["esta_pobre"],
+      }).success,
+    ).toBe(false);
+  });
+
+  test("los tres campos son obligatorios (bankrupt_at explícitamente nullable, no opcional)", () => {
+    expect(BankruptcyCheckSchema.safeParse({ bankrupt: true, reasons: [] }).success).toBe(false);
+    expect(
+      BankruptcyCheckSchema.safeParse({ bankrupt: true, bankrupt_at: null }).success,
     ).toBe(false);
   });
 });

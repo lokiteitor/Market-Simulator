@@ -21,7 +21,7 @@ import {
 import { withProductLock } from "../lib/locks";
 import { notionalCents, reserveForQty } from "../lib/money";
 import { expiresAtFromTtl } from "../lib/simtime";
-import { publishBroadcast, publishToAgent, publishToProduct, type Notification } from "../notifier";
+import { publishToAgent, publishToProduct, type Notification } from "../notifier";
 import { logger } from "../observability/logger";
 import { tradesExecutedTotal, tradeVolumeUnitsTotal } from "../observability/metrics";
 import { productLabels } from "../observability/product-names";
@@ -38,6 +38,7 @@ import { tradeToApi } from "../schemas/orders";
 import type { InventoryService, BankruptcyService } from "../types/contracts";
 // Módulos paralelos ([M5], [M2]); nombres exactos del contrato §8.
 import { inventoryService } from "./inventory-service";
+import { publishBankruptcyNotifications } from "./bankruptcy-notify";
 import { bankruptcyService } from "./bankruptcy-service";
 import { splitFeeForCity } from "./city-income-service";
 import { bankRepository } from "../repositories/bank-repository";
@@ -289,18 +290,6 @@ async function publishTradeNotifications(executed: ExecutedTrade[]): Promise<voi
       }),
     );
   }
-}
-
-/** bankruptcy_notice personal + agent_bankrupt broadcast (post-commit, §8). */
-async function publishBankruptcyNotifications(agentId: string, username: string): Promise<void> {
-  const occurredAt = new Date().toISOString();
-  const payload = { agent_id: agentId, username };
-  await safePublish("bankruptcy_notice", () =>
-    publishToAgent(agentId, { type: "bankruptcy_notice", occurred_at: occurredAt, payload }),
-  );
-  await safePublish("agent_bankrupt broadcast", () =>
-    publishBroadcast({ type: "agent_bankrupt", occurred_at: occurredAt, payload }),
-  );
 }
 
 /** Libera las reservas residuales de una orden viva (cancelación/expiración §5). */

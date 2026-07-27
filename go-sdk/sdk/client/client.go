@@ -47,6 +47,12 @@ const CodeInsufficientInventory = "insufficient_inventory"
 // está muerta para el resto de la corrida, no es un fallo transitorio.
 const CodeResourceDepleted = "resource_depleted"
 
+// CodeAgentBankrupt es el código de sub-error que el backend devuelve (403)
+// cuando el agente está en quiebra e intenta cualquier escritura de dominio.
+// Es DEFINITIVO, no transitorio: el agente no puede volver a operar ni
+// re-loguearse, así que el bot debe apagarse (ADR-026).
+const CodeAgentBankrupt = "agent_bankrupt"
+
 // HasCode indica si el Problem+JSON trae un sub-error con ese código.
 func (e *APIError) HasCode(code string) bool {
 	for _, err := range e.Problem.Errors {

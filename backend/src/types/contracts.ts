@@ -145,6 +145,30 @@ export interface TransformationMaterializer {
 // Quiebra (implementa [M2 agents])
 // ---------------------------------------------------------------------------
 
+/**
+ * Motivo por el que un agente NO está en quiebra. Se devuelve al cliente en
+ * `POST /agents/me/bankruptcy-check` para que un bot sepa qué le queda vivo
+ * (p.ej. `has_running_processes` ⇒ conviene esperar, no apagarse).
+ */
+export type BankruptcyReason =
+  | "has_capital"
+  | "has_inventory"
+  | "has_active_orders"
+  | "has_running_processes"
+  /** Rol exento de quiebra por diseño (`city`, `admin`). */
+  | "role_exempt";
+
+export interface BankruptcyEvaluation {
+  /** La quiebra se aplicó en ESTA llamada ⇒ el caller notifica post-commit. */
+  applied: boolean;
+  /** Estado final del agente (true también si ya venía quebrado). */
+  bankrupt: boolean;
+  bankruptAt: Date | null;
+  username: string;
+  /** Vacío si `bankrupt === true`. */
+  reasons: BankruptcyReason[];
+}
+
 export interface BankruptcyService {
   /**
    * Llamar DESPUÉS de transiciones terminales (cancel/expire de orden,
@@ -162,6 +186,14 @@ export interface BankruptcyService {
    * broadcast) si devolvió true.
    */
   checkAndApply(tx: Tx, agentId: string): Promise<boolean>;
+
+  /**
+   * Idéntica a `checkAndApply` pero devuelve el detalle en vez de un booleano:
+   * misma condición, mismos efectos, mismos locks. La usa el endpoint
+   * `POST /agents/me/bankruptcy-check`, donde el cliente necesita saber si
+   * sigue vivo y por qué (§10; ADR-026).
+   */
+  evaluateAndApply(tx: Tx, agentId: string): Promise<BankruptcyEvaluation>;
 }
 
 // ---------------------------------------------------------------------------
