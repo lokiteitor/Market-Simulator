@@ -10,6 +10,10 @@
  *   host <Toast/> lo escucha) + invalidación de queries por tipo según un
  *   mapa explícito (["self"], ["orders"], ["market", productId],
  *   ["processes"], ["history"]).
+ * - Excepción de ruido: los fills propios (`order_executed`) NO emiten un
+ *   toast cada uno; se acumulan en una ventana (fillDigest.ts) y se anuncian
+ *   juntos. Las invalidaciones sí son inmediatas, así que las tablas se
+ *   actualizan al instante.
  * - Cierre limpio (sin reintentos fantasma) al perder la autenticación o
  *   desmontar. Único mensaje cliente→servidor: `subscribe_products` en cada
  *   onopen (el tape `trade_printed` es por suscripción; la SPA usa `"*"`).
@@ -30,7 +34,14 @@ import { API_BASE_URL } from "../api/client";
 import { ConnectionContext } from "../components/ConnectionContext";
 import type { Notification, NotificationType, Product } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { fmtMoney, fmtQty } from "../lib/format";
+import { fmtMoney } from "../lib/format";
+import {
+  addFill,
+  digestToast,
+  emptyDigest,
+  FILL_DIGEST_WINDOW_MS,
+  type FillDigest,
+} from "./fillDigest";
 
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -103,15 +114,11 @@ function toastForNotification(
 ): ToastDetail | null {
   const p = msg.payload;
   switch (msg.type) {
-    case "order_executed": {
-      const qty = numField(p, "qty_executed_cent") ?? numField(p, "qty_cent");
-      const price = numField(p, "price_cents");
-      const body =
-        qty !== null && price !== null
-          ? `Ejecutado: ${fmtQty(qty)} a ${fmtMoney(price)}.`
-          : "Una de tus órdenes se ejecutó.";
-      return { kind: "success", title: "Orden ejecutada", body };
-    }
+    case "order_executed":
+      // Fills propios: llegan en ráfaga con el mercado activo, así que no se
+      // anuncian uno a uno. El toast lo emite el digest (fillDigest.ts) al
+      // cerrar su ventana; aquí solo se invalidan queries.
+      return null;
     case "order_expired":
       return {
         kind: "warning",
@@ -275,6 +282,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
 
+  // Digest de fills: los `order_executed` no emiten toast uno a uno (con bots
+  // operando llegan en ráfaga), se acumulan y se anuncian juntos al cerrar la
+  // ventana. Las invalidaciones NO se agrupan: siguen siendo inmediatas.
+  const fillDigestRef = useRef<FillDigest>(emptyDigest());
+  const fillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Último token vigente: las RE-conexiones usan siempre el más reciente
   // sin reiniciar el socket en cada rotación proactiva del access token.
   const tokenRef = useRef<string | null>(accessToken);
@@ -291,6 +304,26 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let socket: WebSocket | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /** Vuelca el digest acumulado (si hay algo) y cierra la ventana. */
+    const flushFillDigest = () => {
+      if (fillTimerRef.current !== null) {
+        clearTimeout(fillTimerRef.current);
+        fillTimerRef.current = null;
+      }
+      const toast = digestToast(fillDigestRef.current);
+      fillDigestRef.current = emptyDigest();
+      if (toast !== null) emitToast(toast);
+    };
+
+    /** Acumula un fill y programa el volcado si la ventana no estaba abierta. */
+    const pushFill = (payload: Record<string, unknown>) => {
+      fillDigestRef.current = addFill(fillDigestRef.current, payload);
+      if (fillTimerRef.current === null) {
+        fillTimerRef.current = setTimeout(flushFillDigest, FILL_DIGEST_WINDOW_MS);
+      }
+    };
+
     let attempts = 0; // reintentos consecutivos fallidos
     let wasConnected = false; // ya hubo conexión en esta sesión de efecto
 
@@ -347,8 +380,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         ]);
         const productName = (productId: string): string | null =>
           products?.find((p) => p.product_id === productId)?.name ?? null;
-        const toast = toastForNotification(msg, productName);
-        if (toast !== null) emitToast(toast);
+        if (msg.type === "order_executed") {
+          // Agregado en ventana; el resto del pipeline sigue igual.
+          pushFill(msg.payload);
+        } else {
+          const toast = toastForNotification(msg, productName);
+          if (toast !== null) emitToast(toast);
+        }
         invalidateForNotification(queryClient, msg);
       };
 
@@ -369,6 +407,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return () => {
       // Cierre limpio al perder auth o desmontar: sin reintentos fantasma.
       disposed = true;
+      // Los fills pendientes se anuncian ahora: mejor un toast tardío que
+      // perder la señal (y así no queda un timer huérfano).
+      flushFillDigest();
       if (retryTimer !== null) clearTimeout(retryTimer);
       if (socket !== null) {
         socket.onopen = null;

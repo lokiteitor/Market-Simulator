@@ -10,6 +10,7 @@ import { NavLink } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import {
   IconBank,
+  IconBoxes,
   IconCatalog,
   IconCity,
   IconCoin,
@@ -39,6 +40,7 @@ const MARKET_NAV: ReadonlyArray<NavItem> = [
   { to: "/dashboard", label: "Dashboard", icon: IconDashboard },
   { to: "/market", label: "Mercado", icon: IconMarket },
   { to: "/catalog", label: "Catálogo", icon: IconCatalog },
+  { to: "/inventory", label: "Inventario", icon: IconBoxes },
   { to: "/orders", label: "Órdenes", icon: IconOrders },
   { to: "/transformations", label: "Transformaciones", icon: IconTransformations },
   { to: "/installations", label: "Instalaciones", icon: IconFactory },

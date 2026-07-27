@@ -7,8 +7,13 @@
  *
  * Columnas: {key, header, render?, align?, mono?} (contrato §componentes).
  * Sin `render`, la celda muestra el valor crudo de `row[key]` (— si nulo).
+ *
+ * Con `renderExpanded` la tabla gana una columna de despliegue a la izquierda
+ * y cada fila puede abrir una sub-fila con su detalle (p. ej. los lotes FIFO
+ * de una posición de inventario). El estado de despliegue se indexa por
+ * `rowKey`, no por índice, porque la ordenación client-side reordena las filas.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
@@ -42,6 +47,13 @@ export interface DataTableProps<T> {
   caption?: string;
   /** Alto máximo del contenedor (activa el scroll con header pegajoso). */
   maxHeight?: string;
+  /**
+   * Detalle desplegable de la fila. Si se pasa, aparece una columna extra con
+   * el botón de despliegue y la sub-fila se renderiza a todo lo ancho.
+   */
+  renderExpanded?: (row: T) => ReactNode;
+  /** Etiqueta accesible del botón de despliegue. Default: "Ver detalle". */
+  expandLabel?: (row: T) => string;
 }
 
 type SortDir = "asc" | "desc";
@@ -81,8 +93,25 @@ export function DataTable<T>({
   rowKey,
   caption,
   maxHeight,
+  renderExpanded,
+  expandLabel,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<SortState | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string | number>>(
+    new Set(),
+  );
+
+  const expandable = renderExpanded !== undefined;
+  const totalCols = columns.length + (expandable ? 1 : 0);
+
+  const toggleExpanded = (key: string | number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const sortedRows = useMemo(() => {
     if (!sortable || sort === null) return rows;
@@ -130,6 +159,11 @@ export function DataTable<T>({
         {caption && <caption className={styles["srCaption"]}>{caption}</caption>}
         <thead>
           <tr>
+            {expandable && (
+              <th scope="col" className={styles["th"]}>
+                <span className="visually-hidden">Detalle</span>
+              </th>
+            )}
             {columns.map((col) => {
               const sorted =
                 sortable && sort !== null && sort.key === col.key ? sort : null;
@@ -170,35 +204,71 @@ export function DataTable<T>({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={columns.length} className={styles["stateCell"]}>
+              <td colSpan={totalCols} className={styles["stateCell"]}>
                 <Skeleton rows={4} />
               </td>
             </tr>
           ) : sortedRows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className={styles["stateCell"]}>
+              <td colSpan={totalCols} className={styles["stateCell"]}>
                 {emptyNode}
               </td>
             </tr>
           ) : (
-            sortedRows.map((row, i) => (
-              <tr key={rowKey ? rowKey(row, i) : i} className={styles["row"]}>
-                {columns.map((col) => {
-                  const cellClass = [
-                    styles["td"],
-                    alignClass(col.align),
-                    col.mono ? styles["mono"] : undefined,
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                  return (
-                    <td key={col.key} className={cellClass}>
-                      {col.render ? col.render(row) : defaultCell(rawValue(row, col.key))}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))
+            sortedRows.map((row, i) => {
+              const key = rowKey ? rowKey(row, i) : i;
+              const isOpen = expanded.has(key);
+              const detailId = `datatable-detail-${String(key)}`;
+              return (
+                <Fragment key={key}>
+                  <tr className={styles["row"]}>
+                    {expandable && (
+                      <td className={`${styles["td"]} ${styles["toggleCell"]}`}>
+                        <button
+                          type="button"
+                          className={styles["toggleBtn"]}
+                          onClick={() => toggleExpanded(key)}
+                          aria-expanded={isOpen}
+                          aria-controls={detailId}
+                          aria-label={
+                            expandLabel ? expandLabel(row) : "Ver detalle"
+                          }
+                        >
+                          <span aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+                        </button>
+                      </td>
+                    )}
+                    {columns.map((col) => {
+                      const cellClass = [
+                        styles["td"],
+                        alignClass(col.align),
+                        col.mono ? styles["mono"] : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+                      return (
+                        <td key={col.key} className={cellClass}>
+                          {col.render
+                            ? col.render(row)
+                            : defaultCell(rawValue(row, col.key))}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {expandable && isOpen && (
+                    <tr>
+                      <td
+                        id={detailId}
+                        colSpan={totalCols}
+                        className={styles["expandedCell"]}
+                      >
+                        {renderExpanded(row)}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })
           )}
         </tbody>
       </table>

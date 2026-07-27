@@ -204,6 +204,20 @@ export function IconInbox(props: IconProps) {
   );
 }
 
+/** Caja apilada — Inventario (lotes en almacén). */
+export function IconBoxes(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M12 3 6.5 5.8 12 8.6l5.5-2.8L12 3Z" />
+      <path d="M3 12.6 8.5 9.8 3 7v5.6Z" />
+      <path d="M21 12.6 15.5 9.8 21 7v5.6Z" />
+      <path d="M12 21v-6.3" />
+      <path d="M12 14.7 6.5 11.9M12 14.7l5.5-2.8" />
+      <path d="M3 7v9.4L12 21l9-4.6V7" />
+    </Base>
+  );
+}
+
 /** Escudo — sección de administración/monitoreo. */
 export function IconShield(props: IconProps) {
   return (

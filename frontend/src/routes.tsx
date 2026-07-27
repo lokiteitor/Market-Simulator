@@ -11,6 +11,7 @@ const AuthPage = lazy(() => import("./pages/auth/AuthPage"));
 const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
 const MarketPage = lazy(() => import("./pages/market/MarketPage"));
 const CatalogPage = lazy(() => import("./pages/catalog/CatalogPage"));
+const InventoryPage = lazy(() => import("./pages/inventory/InventoryPage"));
 const OrdersPage = lazy(() => import("./pages/orders/OrdersPage"));
 const TransformationsPage = lazy(
   () => import("./pages/transformations/TransformationsPage"),
@@ -77,6 +78,7 @@ export function AppRoutes() {
         <Route path="/market" element={<MarketPage />} />
         <Route path="/market/:productId" element={<MarketPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/transformations" element={<TransformationsPage />} />
         <Route path="/installations" element={<InstallationsPage />} />

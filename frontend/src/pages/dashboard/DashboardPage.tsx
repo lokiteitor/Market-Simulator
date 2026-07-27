@@ -20,6 +20,7 @@
  * mientras haya procesos) contra `expected_end_at`.
  */
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "../../api/client";
@@ -27,10 +28,7 @@ import { toProblem } from "../../api/problem";
 import type {
   AgentRole,
   InventoryLot,
-  InventoryPosition,
   Order,
-  OrderSide,
-  OrderStatus,
   Problem,
   Product,
   Recipe,
@@ -59,6 +57,19 @@ import {
   truncId,
 } from "../../lib/format";
 import { processProgress, useNow } from "../../lib/processTime";
+import {
+  estimateInventoryValueCents,
+  groupLotsByProduct,
+  type ProductPosition,
+} from "../inventory/inventoryMath";
+import {
+  EXPIRING_HINT,
+  isCancellable,
+  ORDER_DISPLAY_STATUS_LABEL,
+  orderDisplayStatus,
+} from "../orders/orderDisplayStatus";
+import { ORDER_SIDE_LABEL, ORDER_STATUS_LABEL } from "../orders/orderLabels";
+import { CancelOrderModal } from "../orders/CancelOrderModal";
 import styles from "./DashboardPage.module.css";
 
 // ---------------------------------------------------------------------------
@@ -73,38 +84,15 @@ const ROLE_LABEL: Record<AgentRole, string> = {
   city: "Ciudad",
 };
 
-const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  active: "Activa",
-  partial: "Parcial",
-  completed: "Completada",
-  cancelled: "Cancelada",
-  expired: "Expirada",
-};
+// Las etiquetas de estado/lado y la valoración del inventario viven en sus
+// módulos hoja (orders/orderLabels, inventory/inventoryMath): una sola fuente.
 
-const SIDE_LABEL: Record<OrderSide, string> = {
-  buy: "Compra",
-  sell: "Venta",
-};
+/** Posiciones destacadas en el widget de inventario (el resto, en /inventory). */
+const INVENTORY_PREVIEW_ROWS = 5;
 
 // ---------------------------------------------------------------------------
 // Helpers puros
 // ---------------------------------------------------------------------------
-
-/**
- * Valor estimado del inventario en centavos:
- * Σ (qty_available + qty_reserved) × unit_cost_cents / 100 sobre los lotes.
- * (qty en centésimas × costo en centavos → /100 para volver a centavos.)
- */
-function estimateInventoryValueCents(lots: readonly InventoryLot[]): number {
-  let total = 0;
-  for (const lot of lots) {
-    total +=
-      ((lot.qty_available_cent + lot.qty_reserved_cent) *
-        lot.unit_cost_cents) /
-      100;
-  }
-  return Math.round(total);
-}
 
 function cx(...names: Array<string | undefined>): string {
   return names.filter(Boolean).join(" ");
@@ -154,9 +142,13 @@ export default function DashboardPage() {
   const bankrupt = self !== null && self.agent.status === "bankrupt";
   const runningProcesses = self?.running_processes ?? [];
 
-  // Tick: 1s mientras haya procesos running (ProgressBar); 30s si no
-  // (mantiene frescos los "expira dentro de…" de las órdenes).
-  const nowMs = useNow(runningProcesses.length > 0 ? 1_000 : 30_000);
+  // Tick: 1s mientras haya procesos running (ProgressBar) u órdenes abiertas
+  // (el estado "Vencida" se deriva del reloj); 30s si no hay nada vivo.
+  const nowMs = useNow(
+    runningProcesses.length > 0 || (self?.active_orders.length ?? 0) > 0
+      ? 1_000
+      : 30_000,
+  );
 
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
@@ -175,6 +167,14 @@ export default function DashboardPage() {
       lotsQuery.data !== undefined
         ? estimateInventoryValueCents(lotsQuery.data)
         : null,
+    [lotsQuery.data],
+  );
+
+  // Vista previa del inventario: las posiciones de mayor valor
+  // (groupLotsByProduct ya las devuelve ordenadas desc). El detalle por lote
+  // vive en /inventory.
+  const topPositions = useMemo(
+    () => groupLotsByProduct(lotsQuery.data ?? []).slice(0, INVENTORY_PREVIEW_ROWS),
     [lotsQuery.data],
   );
 
@@ -245,7 +245,7 @@ export default function DashboardPage() {
   };
 
   // ---- Columnas --------------------------------------------------------------
-  const inventoryColumns: Array<DataTableColumn<InventoryPosition>> = [
+  const inventoryColumns: Array<DataTableColumn<ProductPosition>> = [
     {
       key: "product",
       header: "Producto",
@@ -271,6 +271,13 @@ export default function DashboardPage() {
       mono: true,
       render: (row) => fmtQty(row.qty_reserved_cent, productUnit(row.product_id)),
     },
+    {
+      key: "value_cents",
+      header: "Valor a coste",
+      align: "right",
+      mono: true,
+      render: (row) => fmtMoney(row.value_cents),
+    },
   ];
 
   const orderColumns: Array<DataTableColumn<Order>> = [
@@ -282,7 +289,9 @@ export default function DashboardPage() {
     {
       key: "side",
       header: "Lado",
-      render: (row) => <Badge kind={row.side}>{SIDE_LABEL[row.side]}</Badge>,
+      render: (row) => (
+        <Badge kind={row.side}>{ORDER_SIDE_LABEL[row.side]}</Badge>
+      ),
     },
     {
       key: "product",
@@ -312,9 +321,20 @@ export default function DashboardPage() {
     {
       key: "status",
       header: "Estado",
-      render: (row) => (
-        <Badge kind={row.status}>{ORDER_STATUS_LABEL[row.status]}</Badge>
-      ),
+      render: (row) => {
+        // Estado de presentación: el barrido de expiración corre cada ~5 s, así
+        // que una orden ya vencida sigue llegando como `active`/`partial`.
+        const display = orderDisplayStatus(row, nowMs);
+        return display === "expiring" ? (
+          <Badge kind="expired">
+            <span title={EXPIRING_HINT}>
+              {ORDER_DISPLAY_STATUS_LABEL.expiring}
+            </span>
+          </Badge>
+        ) : (
+          <Badge kind={display}>{ORDER_DISPLAY_STATUS_LABEL[display]}</Badge>
+        );
+      },
     },
     {
       key: "expires_at",
@@ -331,17 +351,22 @@ export default function DashboardPage() {
       key: "actions",
       header: <span className="visually-hidden">Acciones</span>,
       align: "right",
-      render: (row) => (
-        <button
-          type="button"
-          className={cx(styles["btn"], styles["btnDangerGhost"])}
-          onClick={() => openCancelOrder(row)}
-          disabled={bankrupt}
-          aria-label={`Cancelar orden ${truncId(row.order_id)}`}
-        >
-          Cancelar
-        </button>
-      ),
+      render: (row) => {
+        const display = orderDisplayStatus(row, nowMs);
+        if (!isCancellable(display)) return null;
+        const releasing = display === "expiring";
+        return (
+          <button
+            type="button"
+            className={cx(styles["btn"], styles["btnDangerGhost"])}
+            onClick={() => openCancelOrder(row)}
+            disabled={bankrupt}
+            aria-label={`${releasing ? "Liberar las reservas de la orden" : "Cancelar orden"} ${truncId(row.order_id)}`}
+          >
+            {releasing ? "Liberar" : "Cancelar"}
+          </button>
+        );
+      },
     },
   ];
 
@@ -495,21 +520,26 @@ export default function DashboardPage() {
         )
       )}
 
-      {/* Inventario */}
+      {/* Inventario (resumen; el detalle por lote vive en /inventory) */}
       <section className={styles["panel"]} aria-labelledby="dash-inventory">
         <div className={styles["panelHead"]}>
           <h2 id="dash-inventory" className={styles["panelTitle"]}>
             Inventario
           </h2>
-          <p className={styles["panelHint"]}>Posiciones agregadas por producto</p>
+          <p className={styles["panelHint"]}>
+            Las {INVENTORY_PREVIEW_ROWS} posiciones de mayor valor
+          </p>
+          <Link to="/inventory" className={styles["panelLink"]}>
+            Ver inventario completo →
+          </Link>
         </div>
         <DataTable
           columns={inventoryColumns}
-          rows={self?.inventory ?? []}
-          loading={loading}
+          rows={topPositions}
+          loading={lotsQuery.isPending}
           sortable
           rowKey={(row) => row.product_id}
-          caption="Inventario del agente: cantidades disponibles y reservadas por producto"
+          caption="Inventario del agente: cantidades disponibles y reservadas por producto, valoradas a coste"
           empty={
             <EmptyState
               title="Sin inventario"
@@ -570,72 +600,18 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* Modal: cancelar orden */}
-      <Modal
-        open={orderToCancel !== null}
-        onClose={() => {
-          if (!cancelOrder.isPending) setOrderToCancel(null);
-        }}
-        title="Cancelar orden"
-      >
-        {orderToCancel !== null && (
-          <div className={styles["modalBody"]}>
-            <p>
-              ¿Seguro que quieres cancelar la orden{" "}
-              <code className={styles["mono"]}>
-                {truncId(orderToCancel.order_id)}
-              </code>
-              ?
-            </p>
-            <dl className={styles["detailList"]}>
-              <dt>Producto</dt>
-              <dd>{productName(orderToCancel.product_id)}</dd>
-              <dt>Lado</dt>
-              <dd>
-                <Badge kind={orderToCancel.side}>
-                  {SIDE_LABEL[orderToCancel.side]}
-                </Badge>
-              </dd>
-              <dt>Pendiente</dt>
-              <dd className={styles["mono"]}>
-                {fmtQty(
-                  orderToCancel.qty_pending_cent,
-                  productUnit(orderToCancel.product_id),
-                )}
-              </dd>
-              <dt>Precio límite</dt>
-              <dd className={styles["mono"]}>
-                {fmtMoney(orderToCancel.limit_price_cents)}
-              </dd>
-            </dl>
-            <p className={styles["subtle"]}>
-              Se liberarán las reservas residuales (capital o inventario). La
-              cancelación es gratuita.
-            </p>
-            {cancelOrder.isError && (
-              <ErrorBanner problem={toProblem(cancelOrder.error)} />
-            )}
-            <div className={styles["modalActions"]}>
-              <button
-                type="button"
-                className={cx(styles["btn"], styles["btnSecondary"])}
-                onClick={() => setOrderToCancel(null)}
-                disabled={cancelOrder.isPending}
-              >
-                Mantener orden
-              </button>
-              <button
-                type="button"
-                className={cx(styles["btn"], styles["btnDanger"])}
-                onClick={() => cancelOrder.mutate(orderToCancel.order_id)}
-                disabled={cancelOrder.isPending || bankrupt}
-              >
-                {cancelOrder.isPending ? "Cancelando…" : "Cancelar orden"}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modal: cancelar orden (o liberar reservas si ya venció) */}
+      <CancelOrderModal
+        order={orderToCancel}
+        nowMs={nowMs}
+        productName={productName}
+        productUnit={productUnit}
+        onClose={() => setOrderToCancel(null)}
+        onConfirm={(orderId) => cancelOrder.mutate(orderId)}
+        pending={cancelOrder.isPending}
+        error={cancelOrder.isError ? toProblem(cancelOrder.error) : null}
+        disabled={bankrupt}
+      />
 
       {/* Modal: cancelar proceso (SIN reembolso) */}
       <Modal

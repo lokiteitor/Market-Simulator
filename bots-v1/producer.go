@@ -317,21 +317,36 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 
 		// A0. Comprar/mejorar la instalación del tipo si la receta es rentable
 		// pero la producción está bloqueada por falta de huecos (ADR-021).
+		//
+		// Los insumos van SIEMPRE por delante del capex: una mejora que deje al
+		// bot sin con qué alimentar la línea nueva no aumenta la producción, la
+		// para. Por eso la mejora exige (a) insumos ya cubiertos para el nivel
+		// resultante y (b) que tras pagar quede el capital de trabajo de
+		// `bufferExecs` ejecuciones de ese nivel.
+		compradaEsteTick := false
 		if profitable && (!owned || inst.AvailableSlots <= 0) &&
-			!typesBought[typ.Key] && buysActed < s.maxBuysPerTick {
-			if buy, ok := installationBuyAction(inst, typ, owned, capitalAvail,
-				s.maxDesiredLevel, s.capitalReserveFactor); ok {
+			!typesBought[typ.Key] && buysActed < s.maxBuysPerTick &&
+			(!owned || insumosCubrenNivelExtra(ctx, recipe, inst, activeBuyQty)) {
+			trabajo := (inputsCost + wage) * int64(inst.Level+1) * int64(s.p.bufferExecs)
+			if buy, price, ok := installationBuyAction(inst, typ, owned, capitalAvail,
+				trabajo, s.maxDesiredLevel, s.capitalReserveFactor); ok {
 				acts = append(acts, buy)
 				buysActed++
 				typesBought[typ.Key] = true
-				// El capital/estado reales se rebasearán en el próximo snapshot;
-				// no seguimos produciendo con esta receta este tick.
-				continue
+				// Descontar ya lo comprometido: si no, las bids de insumos de
+				// este mismo tick se dimensionan con capital que la instalación
+				// se va a llevar antes (las acciones se ejecutan en orden) y el
+				// servidor las rechaza por fondos insuficientes.
+				capitalAvail -= price
+				// El estado real se rebaseará en el próximo snapshot: no
+				// producimos con esta receta este tick, pero sí seguimos al
+				// bloque B para comprar los insumos del nivel nuevo.
+				compradaEsteTick = true
 			}
 		}
 
 		// A. Arrancar ejecuciones solo si son rentables a precios de mercado y hay capital para salarios.
-		if profitable && owned && inst.AvailableSlots > 0 {
+		if !compradaEsteTick && profitable && owned && inst.AvailableSlots > 0 {
 			maxExecutions := inst.AvailableSlots
 			for _, input := range recipe.Inputs {
 				inv := ctx.State.InventoryForProduct(input.ProductID)
@@ -379,6 +394,9 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			handledInputs[input.ProductID] = true
 			inv := ctx.State.InventoryForProduct(input.ProductID)
 			buffLevel := inst.Level
+			if compradaEsteTick {
+				buffLevel++ // la línea recién comprada también hay que alimentarla
+			}
 			if buffLevel < 1 {
 				buffLevel = 1
 			}

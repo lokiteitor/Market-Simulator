@@ -1,0 +1,144 @@
+/* ============================================================================
+ * InventoryPage.module.css — inventario del agente con detalle de lotes.
+ * Solo consume tokens de src/styles/tokens.css (regla del contrato).
+ * ========================================================================== */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- Cabecera --------------------------------------------------------------- */
+
+.pageHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+}
+
+.lede {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ---- KPIs ------------------------------------------------------------------- */
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-4);
+}
+
+/* ---- Panel ------------------------------------------------------------------ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.panelTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.search {
+  min-width: 14rem;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background-color: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+}
+
+.footNote {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* ---- Celdas ----------------------------------------------------------------- */
+
+.cellProduct {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.productLink {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.productLink:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* ---- Detalle de lotes (sub-fila desplegable) -------------------------------- */
+
+.lotsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lotsTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+/* ---- Botones ---------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+}
+
+.btnPrimary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}

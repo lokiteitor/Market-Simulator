@@ -12,8 +12,13 @@
  *
  * Acciones:
  * - Nueva orden → OrderFormModal (POST /orders).
- * - Cancelar (solo activas/parciales) → Modal de confirmación
- *   → DELETE /orders/{id} → invalidate ["orders"] + ["self"].
+ * - Cancelar (activas/parciales) o liberar reservas (ya vencidas pero aún sin
+ *   barrer) → CancelOrderModal → DELETE /orders/{id}
+ *   → invalidate ["orders"] + ["self"].
+ *
+ * El estado que se pinta es el DE PRESENTACIÓN (orderDisplayStatus): una orden
+ * cuyo `expires_at` ya pasó se marca «Vencida» aunque el servidor todavía la
+ * devuelva como activa, porque el barrido de expiración corre cada ~5 s.
  */
 import { useMemo, useState } from "react";
 import {
@@ -40,7 +45,6 @@ import {
   DataTable,
   EmptyState,
   ErrorBanner,
-  Modal,
   showToast,
   type DataTableColumn,
 } from "../../components";
@@ -51,6 +55,14 @@ import {
   fmtRelative,
   truncId,
 } from "../../lib/format";
+import { useNow } from "../../lib/processTime";
+import { CancelOrderModal } from "./CancelOrderModal";
+import {
+  EXPIRING_HINT,
+  isCancellable,
+  ORDER_DISPLAY_STATUS_LABEL,
+  orderDisplayStatus,
+} from "./orderDisplayStatus";
 import { ORDER_SIDE_LABEL, ORDER_STATUS_LABEL } from "./orderLabels";
 import { OrderFormModal } from "./OrderFormModal";
 import styles from "./OrdersPage.module.css";
@@ -95,6 +107,10 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const { status } = useAuth();
   const authenticated = status === "authenticated";
+
+  // Tick de 1s: el estado "Vencida" y el "expira dentro de…" se derivan del
+  // reloj del cliente, no del servidor.
+  const nowMs = useNow(1_000);
 
   // ---- Filtro de estados (multi-chip; vacío = todas) -------------------------
   const [selected, setSelected] = useState<ReadonlySet<OrderStatus>>(
@@ -228,11 +244,22 @@ export default function OrdersPage() {
       align: "right",
       mono: true,
       sortValue: (row) => row.qty_pending_cent,
-      render: (row) =>
-        `${fmtQty(row.qty_pending_cent)} / ${fmtQty(
+      render: (row) => {
+        const text = `${fmtQty(row.qty_pending_cent)} / ${fmtQty(
           row.qty_original_cent,
           productUnit(row.product_id),
-        )}`,
+        )}`;
+        // En las terminales no completadas, lo pendiente ya volvió al agente.
+        const released =
+          row.status === "cancelled" || row.status === "expired";
+        return released ? (
+          <span title="Cantidad no ejecutada: sus reservas ya se devolvieron a tu capital o a tus lotes">
+            {text}
+          </span>
+        ) : (
+          text
+        );
+      },
     },
     {
       key: "limit_price_cents",
@@ -244,9 +271,22 @@ export default function OrdersPage() {
     {
       key: "status",
       header: "Estado",
-      render: (row) => (
-        <Badge kind={row.status}>{ORDER_STATUS_LABEL[row.status]}</Badge>
-      ),
+      sortValue: (row) => ORDER_DISPLAY_STATUS_LABEL[orderDisplayStatus(row, nowMs)],
+      render: (row) => {
+        // El barrido de expiración corre cada ~5 s: hasta que pasa, una orden
+        // ya vencida sigue llegando como `active`/`partial`. Se marca aparte
+        // para no hacerla pasar por activa.
+        const display = orderDisplayStatus(row, nowMs);
+        return display === "expiring" ? (
+          <Badge kind="expired">
+            <span title={EXPIRING_HINT}>
+              {ORDER_DISPLAY_STATUS_LABEL.expiring}
+            </span>
+          </Badge>
+        ) : (
+          <Badge kind={display}>{ORDER_DISPLAY_STATUS_LABEL[display]}</Badge>
+        );
+      },
     },
     {
       key: "created_at",
@@ -260,38 +300,60 @@ export default function OrdersPage() {
       header: "Expira",
       mono: true,
       sortValue: (row) => Date.parse(row.expires_at),
-      render: (row) =>
-        row.status === "active" || row.status === "partial" ? (
+      render: (row) => {
+        const display = orderDisplayStatus(row, nowMs);
+        // Las completadas/canceladas ya no vencen: su expires_at no dice nada.
+        if (display === "completed" || display === "cancelled") {
+          return <span className={styles["subtle"]}>—</span>;
+        }
+        // Las expiradas sí: interesa CUÁNDO vencieron.
+        if (display === "expired") {
+          return (
+            <span className={styles["subtle"]} title={fmtDateTime(row.expires_at)}>
+              {fmtRelative(row.expires_at)}
+            </span>
+          );
+        }
+        return (
           <span title={fmtDateTime(row.expires_at)}>
             {fmtRelative(row.expires_at)}
           </span>
-        ) : (
-          <span className={styles["subtle"]}>—</span>
-        ),
+        );
+      },
     },
     {
       key: "actions",
       header: <span className="visually-hidden">Acciones</span>,
       align: "right",
-      render: (row) =>
-        row.status === "active" || row.status === "partial" ? (
+      render: (row) => {
+        const display = orderDisplayStatus(row, nowMs);
+        if (!isCancellable(display)) return null;
+        const releasing = display === "expiring";
+        return (
           <button
             type="button"
             className={cx(styles["btn"], styles["btnDangerGhost"])}
             onClick={() => openCancel(row)}
             disabled={bankrupt}
-            aria-label={`Cancelar orden ${truncId(row.order_id)}`}
+            aria-label={`${releasing ? "Liberar las reservas de la orden" : "Cancelar orden"} ${truncId(row.order_id)}`}
           >
-            Cancelar
+            {releasing ? "Liberar reservas" : "Cancelar"}
           </button>
-        ) : null,
+        );
+      },
     },
   ];
 
   return (
     <div className={styles["page"]}>
       <div className={styles["pageHead"]}>
-        <h1 className={styles["title"]}>Órdenes</h1>
+        <div>
+          <h1 className={styles["title"]}>Órdenes</h1>
+          <p className={styles["lede"]}>
+            Al cancelar o expirar una orden, sus reservas —capital en las
+            compras, mercancía en las ventas— vuelven íntegras a tu cuenta.
+          </p>
+        </div>
         <button
           type="button"
           className={cx(styles["btn"], styles["btnPrimary"])}
@@ -406,72 +468,18 @@ export default function OrdersPage() {
       {/* Modal: nueva orden */}
       <OrderFormModal open={formOpen} onClose={() => setFormOpen(false)} />
 
-      {/* Modal: cancelar orden */}
-      <Modal
-        open={orderToCancel !== null}
-        onClose={() => {
-          if (!cancelOrder.isPending) setOrderToCancel(null);
-        }}
-        title="Cancelar orden"
-      >
-        {orderToCancel !== null && (
-          <div className={styles["modalBody"]}>
-            <p>
-              ¿Seguro que quieres cancelar la orden{" "}
-              <code className={styles["mono"]}>
-                {truncId(orderToCancel.order_id)}
-              </code>
-              ?
-            </p>
-            <dl className={styles["detailList"]}>
-              <dt>Producto</dt>
-              <dd>{productName(orderToCancel.product_id)}</dd>
-              <dt>Lado</dt>
-              <dd>
-                <Badge kind={orderToCancel.side}>
-                  {ORDER_SIDE_LABEL[orderToCancel.side]}
-                </Badge>
-              </dd>
-              <dt>Pendiente</dt>
-              <dd className={styles["mono"]}>
-                {fmtQty(
-                  orderToCancel.qty_pending_cent,
-                  productUnit(orderToCancel.product_id),
-                )}
-              </dd>
-              <dt>Precio límite</dt>
-              <dd className={styles["mono"]}>
-                {fmtMoney(orderToCancel.limit_price_cents)}
-              </dd>
-            </dl>
-            <p className={styles["subtle"]}>
-              Se liberarán las reservas residuales (capital o inventario). La
-              cancelación es gratuita.
-            </p>
-            {cancelOrder.isError && (
-              <ErrorBanner problem={toProblem(cancelOrder.error)} />
-            )}
-            <div className={styles["modalActions"]}>
-              <button
-                type="button"
-                className={cx(styles["btn"], styles["btnSecondary"])}
-                onClick={() => setOrderToCancel(null)}
-                disabled={cancelOrder.isPending}
-              >
-                Mantener orden
-              </button>
-              <button
-                type="button"
-                className={cx(styles["btn"], styles["btnDanger"])}
-                onClick={() => cancelOrder.mutate(orderToCancel.order_id)}
-                disabled={cancelOrder.isPending || bankrupt}
-              >
-                {cancelOrder.isPending ? "Cancelando…" : "Cancelar orden"}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modal: cancelar orden (o liberar reservas si ya venció) */}
+      <CancelOrderModal
+        order={orderToCancel}
+        nowMs={nowMs}
+        productName={productName}
+        productUnit={productUnit}
+        onClose={() => setOrderToCancel(null)}
+        onConfirm={(orderId) => cancelOrder.mutate(orderId)}
+        pending={cancelOrder.isPending}
+        error={cancelOrder.isError ? toProblem(cancelOrder.error) : null}
+        disabled={bankrupt}
+      />
     </div>
   );
 }

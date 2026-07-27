@@ -19,6 +19,7 @@
 ├─ /dashboard (estado completo del agente)
 ├─ /market/{product_id} (top of book + trades recientes)
 ├─ /catalog (productos, yacimientos y recetas)
+├─ /inventory (posiciones por producto + lotes FIFO con coste)
 ├─ /orders (lista, detalle, colocar)
 ├─ /transformations (lista, detalle, iniciar)
 ├─ /installations (comprar/mejorar instalaciones, ADR-021)
@@ -50,8 +51,8 @@
 - **Header:** Nombre de agente, rol (badge de color), estado (`active`/`bankrupt`), capital disponible y reservado.
 - **Grid de KPIs:** 4 cards → Capital, Inventario total (agregado), Órdenes activas, Procesos en curso.
 - **Paneles inferiores (tabs o acordeón):**
-  - Inventario por producto (tabla: producto, disponible, reservado)
-  - Órdenes activas/parciales (tabla: producto, lado, precio, pendiente, TTL, acciones)
+  - Inventario: las 5 posiciones de mayor valor (producto, disponible, reservado, valor a coste) con enlace a `/inventory` para el detalle por lote
+  - Órdenes activas/parciales (tabla: producto, lado, precio, pendiente, TTL, estado —incluido el derivado «Vencida»—, acciones)
   - Procesos en curso (tabla: receta, ejecución X/Y, tiempo restante, salario pagado)
 **Componentes clave:** `StatCard`, `DataTable` (ordenable, filtrable), `Badge`, `ProgressBar` (para procesos), `ActionButton`.
 
@@ -99,7 +100,17 @@
 - **Ventanilla:** posición propia (oro en inventario + capital) y formulario de conversión: dirección (radio `sell_gold`/`buy_gold` con el precio de cada una), cantidad y preview del total (`floor(qty × precio / 100)`, sin fees). Validación client-side espejo de los 422 (`insufficient_capital`, `insufficient_inventory`, `bank_insufficient_gold`, `conversion_below_minimum`); deshabilitado para agentes quebrados y roles `admin`/`bank` (403).
 **Estado degradado:** `GET /bank` con 409 `no_gold_standard` → EmptyState "Sin patrón oro" (la entrada del menú es fija).
 
-### 4.7 Catálogo: yacimientos (`/catalog`, ADR-023)
+### 4.7 Inventario (`/inventory`)
+**Propósito:** Ver de dónde salió cada unidad y a qué coste — el dashboard solo resume cantidades, y sin el coste FIFO no se puede fijar un precio de venta sin producir a pérdida.
+**Datos:** `GET /agents/me/inventory/lots` (misma queryKey `["self","lots"]` que el dashboard: caché compartida y refresco común por las invalidaciones de `["self"]`) + `GET /catalog/products` para nombre/unidad/categoría. Toda la agregación es client-side y pura (`pages/inventory/inventoryMath.ts`).
+**Layout:**
+- **Grid de KPIs:** Valor a coste (Σ lotes), Productos con stock, Lotes abiertos, % reservado (`fmtBps`).
+- **Tabla de posiciones** (buscador por nombre): producto (con badge de categoría y enlace a `/market/{id}`), disponible, reservado, total, **coste medio ponderado**, **valor a coste** y número de lotes.
+- **Fila desplegable** con los lotes del producto **en orden FIFO** (el primero es el próximo en consumirse): lote, origen (`Semilla`/`Producción`/`Compra`/`Conversión`), original/disponible/reservado, coste unitario, valor y fecha de adquisición.
+**Notas:** solo lotes con stock (`only_with_stock` por defecto). La valoración es **a coste histórico**, sin P&L de mercado: no existe endpoint de precios multi-producto para roles no-admin. El pie de la tabla recuerda que lo reservado vuelve íntegro a disponible si la orden se cancela o expira.
+**Componente:** el `DataTable` compartido gana la prop opcional `renderExpanded` (sub-fila a todo lo ancho, estado indexado por `rowKey` porque la ordenación reordena las filas). El dashboard conserva un resumen de las 5 posiciones de mayor valor con enlace a esta pantalla.
+
+### 4.8 Catálogo: yacimientos (`/catalog`, ADR-023)
 Sección dinámica entre productos y recetas (`GET /catalog/deposits`, refetch 5 s — la excepción al catálogo estático): tabla con remanente/inicial (`ProgressBar`), rendimiento (`yield_bps` como %) y estado (Activo/Agotado). La tabla de productos añade el chip `Finito`/`Agotado`, y la pantalla de mercado muestra el mismo contexto en el detalle del producto.
 
 ---
@@ -121,7 +132,7 @@ Sección dinámica entre productos y recetas (`GET /catalog/deposits`, refetch 5
 
 | Evento | Origen | Comportamiento UI |
 |--------|--------|-------------------|
-| `order_executed` | WS | Toast + actualización de fila en tabla de órdenes. Si es total, mover a pestaña "Completadas". |
+| `order_executed` | WS | **Sin toast por evento** (con el mercado activo llegan en ráfaga): se acumulan en una ventana de 10 s y se anuncia un único toast agregado — «N ejecuciones de tus órdenes · cantidad · nocional» (`ws/fillDigest.ts`; con un solo fill conserva el detalle). Las invalidaciones (`self`, `orders`, `market`, `history`) **no** se agrupan: la fila de la tabla se actualiza al instante. |
 | `order_expired` / `order_cancelled` | WS | Toast + cambio de estado visual (badge gris/rojo). Liberar visualmente reservas si aplica. |
 | `transformation_completed` | WS | Toast + actualización de inventario. Marcar proceso como `completed` y mostrar lote producido. |
 | `agent_joined` / `agent_bankrupt` | WS | Toast global (no intrusivo). Actualizar listados públicos si están visibles. |
@@ -129,6 +140,7 @@ Sección dinámica entre productos y recetas (`GET /catalog/deposits`, refetch 5
 | `installation_purchased` | WS | Sin toast (la pestaña compradora ya emite el suyo); invalida `self` para sincronizar otras pestañas. |
 | `deposit_depleted` | WS (broadcast) | Toast de aviso "Yacimiento agotado" (con nombre del producto si el catálogo está en caché) + invalidar `["catalog","deposits"]` e historial. |
 | `city_income` | WS (solo rol `city`) | Toast "Ingreso urbano" con el importe + invalidar `self` e historial. |
+| Orden vencida sin barrer | Cliente (reloj) | Estado de **presentación** «Vencida» derivado comparando `expires_at` con la hora local (`pages/orders/orderDisplayStatus.ts`, tick de 1 s). El barrido del Worker corre cada ~5 s, así que hasta que pasa la orden sigue llegando como `active`/`partial` aunque el matching ya la ignore: pintarla como activa engañaba. La acción de fila cambia a **«Liberar reservas»** — es el mismo `DELETE /orders/{id}`, que comparte `releaseOrderReserves` con la expiración y solo adelanta la devolución. |
 | Pérdida de conexión WS | Cliente | Indicador visual "Conexión en modo offline". Reintentar backoff exponencial. Al reconectar, llamar `GET /agents/me` y resincronizar estado sin recargar página. |
 | Error 422 (dominio) | REST | Mostrar `errors[].message` en línea con el campo correspondiente. Destacar campos inválidos. |
 | Error 401/403 | REST | Redirigir a login o mostrar modal de sesión expirada/agente quebrado. Bloquear acciones de escritura si `bankrupt`. |
@@ -141,6 +153,7 @@ Sección dinámica entre productos y recetas (`GET /catalog/deposits`, refetch 5
 |-----------------------|-------------------|--------|------------------------|
 | Login/Registro | `/auth/login`, `/auth/register` | POST | Token pair, estado inicial del agente |
 | Dashboard | `GET /agents/me` | GET | Capital, inventario, órdenes activas, procesos, capacidades |
+| Inventario | `GET /agents/me/inventory/lots` | GET | Posiciones agregadas y lotes FIFO: origen, coste unitario, valor a coste, adquisición |
 | Catálogo | `GET /catalog/products`, `GET /catalog/recipes` | GET | Lista de productos/recetas, insumos, duración, salario |
 | Catálogo (yacimientos) | `GET /catalog/deposits` | GET | Remanente/inicial, `yield_bps`; dinámico (refetch 5 s), también usado por transformaciones, mercado y admin |
 | Instalaciones | `GET /catalog/installation-types`, `GET/POST /agents/me/installations` | GET/POST | Tipos comprables, nivel/huecos, precio de la siguiente mejora |

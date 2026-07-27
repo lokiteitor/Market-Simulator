@@ -86,3 +86,37 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Columna de despliegue (solo con renderExpanded) */
+.toggleCell {
+  width: 1%;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+.toggleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toggleBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.expandedCell {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--surface-border);
+  background-color: var(--surface-2);
+}

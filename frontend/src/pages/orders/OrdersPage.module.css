@@ -24,6 +24,13 @@
   font-weight: var(--weight-bold);
 }
 
+.lede {
+  max-width: 52ch;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 /* ---- Filtros (chips de estado) ------------------------------------------------ */
 
 .filters {
