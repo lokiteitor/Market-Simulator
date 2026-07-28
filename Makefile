@@ -58,3 +58,8 @@ run-swarm-rpi: build-bots
 run-swarm-lite: build-bots
 	ulimit -n 65535	
 	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900 -max-active 1500 -active-duration 4m -no-persist -quiet
+
+clean-sessions:
+	rm -rf bots-v1/sessions
+	rm -rf bots-hidro/sessions
+	rm -rf bots-ciudad/sessions
