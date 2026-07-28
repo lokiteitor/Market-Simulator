@@ -1,6 +1,6 @@
 server:
-  base_url: "http://localhost:9080/v1"
-  ws_url: "ws://localhost:9080/v1/ws"
+  base_url: "http://market-simulator:9080/v1"
+  ws_url: "ws://market-simulator:9080/v1/ws"
 
 logging:
   level: "info"
