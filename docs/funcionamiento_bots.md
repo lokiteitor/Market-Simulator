@@ -1,12 +1,13 @@
-# Funcionamiento de los Bots — `bots-v1` + `bots-ciudad` + `go-sdk`
+# Funcionamiento de los Bots — `bots-v1` + `bots-ciudad` + `bots-hidro` + `go-sdk`
 
-> **Estado:** documento vivo, refleja el código a 2026-07-20.
-> Hay **dos binarios** de bots, ambos sobre **`go-sdk/`** (motor de agente reutilizable):
-> **`bots-v1/`** (enjambre de estrategias heurísticas, replicable en varias instancias) y
+> **Estado:** documento vivo, refleja el código a 2026-07-28.
+> Hay **tres binarios** de bots, todos sobre **`go-sdk/`** (motor de agente reutilizable):
+> **`bots-v1/`** (enjambre de estrategias heurísticas, replicable en varias instancias),
 > **`bots-ciudad/`** (las ciudades-consumidor: conjunto FIJO de capitales, **instancia
-> única**). El antiguo `bot-engine/` fue eliminado (commit `b0f4e242`) y no debe
-> referenciarse. El cliente Python (`market-client/`) y los ejemplos del SDK son
-> herramientas auxiliares, no forman parte del runtime de bots.
+> única**) y **`bots-hidro/`** (parque de centrales hidroeléctricas dedicadas, replicable
+> como `bots-v1` y **sin rotación**). El antiguo `bot-engine/` fue eliminado (commit
+> `b0f4e242`) y no debe referenciarse. El cliente Python (`market-client/`) y los ejemplos
+> del SDK son herramientas auxiliares, no forman parte del runtime de bots.
 
 ---
 
@@ -66,13 +67,13 @@ graph LR
 | `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `energetico`, `farmer`, `miner`, `transformer` (los cinco conjuntos particionan los 17 tipos). |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
-| `selling.go` | `sellAtMarket`: venta en tranches con undercut y suelo de coste. |
 | `botkit_aliases.go` | Shim: re-exporta con los nombres locales los helpers que ahora viven en `go-sdk/sdk/botkit` (ver abajo). Al tocar un helper, editarlo en `botkit`, no aquí. |
 
-> **`consumer.go`, `market_view.go`, `money.go`, `humanize.go` y `config_helpers.go` ya no
-> están en `bots-v1/`**: se movieron a `go-sdk/sdk/botkit` para que `bots-v1` y `bots-ciudad`
-> compartan UNA sola fuente de verdad (eran helpers puros usados por todas las estrategias, y
-> duplicarlos habría hecho divergir los dos binarios).
+> **`consumer.go`, `market_view.go`, `money.go`, `humanize.go`, `config_helpers.go`,
+> `selling.go` e `installations.go` ya no están en `bots-v1/`**: se movieron a
+> `go-sdk/sdk/botkit` para que los tres binarios compartan UNA sola fuente de verdad (eran
+> helpers puros usados por todas las estrategias, y duplicarlos habría dejado dos suelos de
+> venta y dos políticas de capex divergiendo en silencio).
 
 ### `bots-ciudad/` — las ciudades (demanda urbana)
 
@@ -93,6 +94,47 @@ Dos diferencias esenciales con `bots-v1`:
   rotarían mutuamente el refresh token (que es de un solo uso), provocando thrashing de auth.
   El flock sobre `.bots-ciudad.lock` lo impide: la segunda ejecución aborta.
 
+### `bots-hidro/` — el parque hidroeléctrico (ADR-024)
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `main.go` | Lee `config.yaml`, deriva N usernames con UUID v5 desde `--runner-id` y lanza una goroutine por central. Autorregistro, jitter, apagado limpio y retirada por quiebra (ADR-026). **Sin rotación.** |
+| `hidro.go` | `HidroStrategy`: selección de la receta renovable, capex de la central, compra de agua, generación y venta de electricidad. |
+| `config.yaml` | Servidor, MarketView, parámetros propios de la estrategia y el bloque `prices:` **generado** (el mismo que los otros dos binarios). |
+
+**Por qué no es una especialidad más de `bots-v1`.** El `energetico` de `bots-v1` se queda
+con el tipo `generacion` **entero** —la hidro y las dos térmicas— y las tres recetas se
+disputan el nivel de la instalación, que es un presupuesto de concurrencia compartido
+(ADR-021). `prioridadRenovablePrimero` empuja la hidro delante mientras solo hay una línea,
+pero a partir del nivel 2 las líneas nuevas se van a las térmicas: son ~1,6× más baratas por
+kWh (27 y 31 ¢ contra los ~44 de la hidro) y eso es lo racional para un generalista. **La
+capacidad renovable acaba siendo un residuo del arranque, no una decisión.** Importa por
+ADR-023: carbón y gas salen de yacimientos finitos, y el día que se agoten la hidro es la
+única generación que queda en pie — si nadie construyó centrales hidráulicas, las 113 recetas
+industriales que consumen electricidad se paran de golpe.
+
+Las tres diferencias de comportamiento frente al `producer.go` genérico:
+
+- **Solo recetas renovables.** De las recetas del tipo se queda con las que consumen
+  exclusivamente insumos de la lista blanca (`insumos_renovables`, por defecto `agua`) y
+  ninguno de yacimiento finito. No filtra por nombre (la API no expone la key de la receta).
+  La lista blanca **manda** sobre el criterio del yacimiento porque `GET /catalog/deposits`
+  puede fallar al arrancar y el engine sigue asumiendo recursos infinitos: con solo ese
+  criterio, un fallo de red convertiría a este bot en un generalista que quema carbón.
+- **Margen mínimo bajo y apagado tardío.** La hidro es la generadora **marginal** por
+  construcción, así que el criterio genérico —parar si alguien vende bajo coste+margen— la
+  apagaría casi siempre. Aquí solo para cuando el precio ajeno deja de cubrir el **coste
+  variable**. Su propio ask nunca cuenta como competencia.
+- **Se apaga por almacén, no por precio.** Si la electricidad se acumula sin venderse
+  (`inventario_max_execs` ejecuciones por línea), deja de turbinar en vez de seguir pagando
+  salarios. Por lo mismo, `liqCapEfectivo` desactiva de hecho el modo liquidación de
+  `SellAtMarket`: el suelo de venta nunca baja del coste de reponer el kWh, porque para esta
+  central "coste por encima del fair" no es un episodio de stock sobrecosteado sino su
+  estado permanente. Acumular y parar, no rematar.
+
+Como `bots-v1` y a diferencia de `bots-ciudad`, es **replicable**: los usernames se derivan
+de `--runner-id` (con un namespace UUID propio, para no colisionar con los de `bots-v1`).
+
 ### `go-sdk/sdk/botkit` — estrategia y helpers compartidos
 
 | Archivo | Responsabilidad |
@@ -102,6 +144,9 @@ Dos diferencias esenciales con `bots-v1`:
 | `money.go` | Conversión centi-unidades/centavos (`NotionalCents`, `MaxQtyForBudget`, `IsReservable`). |
 | `humanize.go` | "Humanización": precios bonitos, cantidades perturbadas, TTL con jitter, cancel/replace (`NicePrice`, `HumanQty`, `TTLJitter`, `CancelStale`, `Chance`, `SampleRange`). |
 | `config_helpers.go` | Parseo del contexto de estrategia (`ResolveBasePrices`, `ConfigFloat`, `ConfigInt`). |
+| `selling.go` | `SellAtMarket`: venta en tranches con undercut y suelo de coste (`SellParams`). |
+| `installations.go` | Economía de instalaciones (ADR-021): `InstallationForRecipe`, `InstallationBuyAction` (capex con colchón **y** capital de trabajo), `InsumosCubrenNivelExtra`. |
+| `deposits.go` | `EffectiveOutputQtyCent`: output real de una ejecución según el rendimiento del yacimiento (ADR-023). |
 
 ### `go-sdk/sdk/` — motor de agente
 
@@ -115,7 +160,7 @@ Dos diferencias esenciales con `bots-v1`:
 | `scheduler/` | Programación de ticks periódicos. |
 | `strategy/` | Interfaz `Strategy` (`Initialize`, `Tick`, `HandleEvent`). |
 | `actions/` | Acciones declarativas que devuelve la estrategia y ejecuta el engine. |
-| `botkit/` | Estrategia consumidor (solo la usa `bots-ciudad`) + helpers puros compartidos por ambos binarios (ver arriba). |
+| `botkit/` | Estrategia consumidor (solo la usa `bots-ciudad`) + helpers compartidos por los tres binarios (ver arriba). |
 
 La estrategia nunca llama a la API directamente para mutar estado: **devuelve acciones** y el
 engine las ejecuta (`PlaceOrder` → `POST /orders`, `CancelOrder` → `DELETE /orders/{id}`,
@@ -137,11 +182,18 @@ run-swarm:         ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900
 
 build-bots-ciudad: cd bots-ciudad && go build -o bots-ciudad-runner
 run-bots-ciudad:   ./bots-ciudad-runner -config config.yaml        # las ~50 capitales
+
+build-bots-hidro:  cd bots-hidro && go build -o bots-hidro-runner
+run-bots-hidro:    ./bots-hidro-runner -config config.yaml -jitter 60   # el parque renovable
 ```
 
 `run-bots-ciudad` **no** lleva `-no-persist`: conviene conservar la sesión (SQLite) para
 reutilizar la cadena de refresh tokens de las cuentas fijas entre reinicios. Y no admite
 `-scale` ni rotación: las ciudades corren todas, siempre.
+
+`run-bots-hidro` sí admite `-scale` y `-runner-id` (como `bots-v1`), pero **no** rotación:
+la industria consume electricidad de forma continua y una central que se apaga cada pocos
+minutos no es una central.
 
 Flags de `main.go`:
 
@@ -445,6 +497,22 @@ relleno aleatorio).
   probabilidad `reactProb`.
 - **Arbitraje de oro:** antes de cotizar mantiene el precio de mercado del oro dentro de la
   banda de la ventanilla (los "gold points"), ver §6.
+
+### 5.4 Hidro (`bots-hidro/hidro.go`) — parque renovable dedicado
+
+Generador hidroeléctrico puro: compra agua, la turbina y vende electricidad. Vive en su
+propio binario, no en `bots-v1`. El razonamiento económico completo (por qué el `energetico`
+generalista no construye parque renovable, y por qué eso rompe la economía cuando se agoten
+los yacimientos de carbón y gas) está en §2, `bots-hidro/`. En resumen, tres reglas propias:
+
+| Regla | Contra qué protege |
+|-------|--------------------|
+| Solo recetas de `generacion` con insumos de la lista blanca (`agua`) y sin yacimiento | Que el bot derive a térmicas, que es lo que hace el generalista al escalar de nivel |
+| Apagado por **coste variable**, no por coste+margen | Que la marginal se apague en cuanto hay una térmica en el libro, o sea, casi siempre |
+| Freno por almacén (`inventario_max_execs`) + suelo de venta que nunca baja del coste | Que, al no apagarse por precio, siga pagando salarios contra stock invendible o lo remate a pérdida |
+
+Comparte con `producer.go` todo lo demás vía `botkit`: vista de mercado, humanización,
+compra de instalaciones (ADR-021), rendimiento de yacimientos (ADR-023) y venta a mercado.
 
 ---
 

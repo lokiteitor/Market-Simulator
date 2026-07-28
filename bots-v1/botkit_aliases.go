@@ -10,7 +10,10 @@ package main
 import "github.com/lokiteitor/market-simulator/sdk/botkit"
 
 // Tipos.
-type MarketView = botkit.MarketView
+type (
+	MarketView = botkit.MarketView
+	sellParams = botkit.SellParams
+)
 
 // Helpers de humanizacion.
 var (
@@ -39,6 +42,19 @@ var (
 	configFloat       = botkit.ConfigFloat
 	configInt         = botkit.ConfigInt
 	newMarketView     = botkit.NewMarketView
+)
+
+// Venta a mercado, economia de instalaciones (ADR-021) y rendimiento de
+// yacimientos (ADR-023). Vivian aqui como selling.go / installations.go hasta
+// que aparecio un segundo binario productor (bots-hidro) que los necesitaba
+// igual: duplicarlos habria dejado dos suelos de venta y dos politicas de capex
+// divergiendo en silencio.
+var (
+	sellAtMarket            = botkit.SellAtMarket
+	installationForRecipe   = botkit.InstallationForRecipe
+	installationBuyAction   = botkit.InstallationBuyAction
+	insumosCubrenNivelExtra = botkit.InsumosCubrenNivelExtra
+	effectiveOutputQtyCent  = botkit.EffectiveOutputQtyCent
 )
 
 // La estrategia del consumidor (botkit.NewConsumerStrategy) NO se re-exporta

@@ -2,9 +2,10 @@
  * Regenera todo lo que se DERIVA del catálogo (`infra/seed-config.json`, fuente
  * única):
  *
- *   1. el bloque `prices:` de `bots-v1/config.yaml` y `bots-ciudad/config.yaml`
- *      (el mismo en los dos: si divergen, los bots de mercado y las ciudades
- *      valoran distinto el mismo producto);
+ *   1. el bloque `prices:` de `bots-v1/config.yaml`, `bots-ciudad/config.yaml` y
+ *      `bots-hidro/config.yaml` (el mismo en los tres: si divergen, los bots de
+ *      mercado, las ciudades y las centrales valoran distinto el mismo
+ *      producto);
  *   2. las tablas §3-§5 de `docs/catalogo_productos_recetas.md` (tipos de
  *      instalación, productos con su precio base, y recetas con el coste de una
  *      ejecución y la cuota que se va en insumos).
@@ -29,7 +30,11 @@ type Recipe = SeedConfig["recipes"][number];
 
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
 const SEED_CONFIG = resolve(REPO_ROOT, "infra/seed-config.json");
-const YAML_TARGETS = ["bots-v1/config.yaml", "bots-ciudad/config.yaml"];
+const YAML_TARGETS = [
+  "bots-v1/config.yaml",
+  "bots-ciudad/config.yaml",
+  "bots-hidro/config.yaml",
+];
 const CATALOG_DOC = "docs/catalogo_productos_recetas.md";
 /** Tipos de instalación extractivos: los que deben respetar la banda de insumos. */
 const EXTRACTIVOS = new Set(["campo", "granja", "mina", "cantera", "pozo", "bosque"]);

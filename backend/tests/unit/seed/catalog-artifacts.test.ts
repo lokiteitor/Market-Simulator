@@ -3,8 +3,8 @@
  *
  * `infra/seed-config.json` es la fuente única, y de ella salen por propagación
  * de coste (`src/scripts/generate-catalog-artifacts.ts`):
- *   - el bloque `prices:` de `bots-v1/config.yaml` y `bots-ciudad/config.yaml`
- *     (el MISMO en los dos);
+ *   - el bloque `prices:` de `bots-v1/config.yaml`, `bots-ciudad/config.yaml` y
+ *     `bots-hidro/config.yaml` (el MISMO en los tres);
  *   - las tablas §3-§5 de `docs/catalogo_productos_recetas.md`.
  *
  * Si alguien toca el catálogo y no regenera, los bots valoran con costes viejos
@@ -39,10 +39,12 @@ function preciosDelYaml(raw: string): Map<string, number> {
 }
 
 describe("artefactos derivados del catálogo", () => {
-  test("bots-v1 y bots-ciudad llevan el mismo bloque de precios", async () => {
+  test("los tres binarios de bots llevan el mismo bloque de precios", async () => {
     const v1 = preciosDelYaml(await leer("bots-v1/config.yaml"));
-    const ciudad = preciosDelYaml(await leer("bots-ciudad/config.yaml"));
-    expect(Object.fromEntries(ciudad)).toEqual(Object.fromEntries(v1));
+    for (const rel of ["bots-ciudad/config.yaml", "bots-hidro/config.yaml"]) {
+      const otro = preciosDelYaml(await leer(rel));
+      expect(Object.fromEntries(otro)).toEqual(Object.fromEntries(v1));
+    }
   });
 
   test("los precios de los bots son el coste propagado del seed-config", async () => {

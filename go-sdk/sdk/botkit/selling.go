@@ -1,4 +1,4 @@
-package main
+package botkit
 
 import (
 	"math/rand/v2"
@@ -8,52 +8,52 @@ import (
 	"github.com/lokiteitor/market-simulator/sdk/strategy"
 )
 
-// sellParams parametriza la venta a mercado; los valores vienen muestreados
+// SellParams parametriza la venta a mercado; los valores vienen muestreados
 // por bot (heterogeneidad de la poblacion).
-type sellParams struct {
-	minMargin     float64 // margen minimo sobre coste (suelo)
-	targetMargin  float64 // margen objetivo sobre fair cuando no hay ask que mejorar
-	undercut      float64 // rebaja relativa sobre el mejor ask
-	tranche       float64 // fraccion del inventario listada por llamada
-	requoteThresh float64 // desviacion que dispara cancel/replace
-	liqCap        float64 // techo del suelo relativo al fair (modo liquidacion)
+type SellParams struct {
+	MinMargin     float64 // margen minimo sobre coste (suelo)
+	TargetMargin  float64 // margen objetivo sobre fair cuando no hay ask que mejorar
+	Undercut      float64 // rebaja relativa sobre el mejor ask
+	Tranche       float64 // fraccion del inventario listada por llamada
+	RequoteThresh float64 // desviacion que dispara cancel/replace
+	LiqCap        float64 // techo del suelo relativo al fair (modo liquidacion)
 }
 
-// sellAtMarket lista una tranche del inventario del producto a precio de
+// SellAtMarket lista una tranche del inventario del producto a precio de
 // mercado: undercut del mejor ask, con suelo de coste. Si el coste queda muy
 // por encima del fair (producto sobrecosteado), el suelo se recorta a
-// fair*liqCap: liquidar despacio en vez de descansar en un ask que jamas
+// fair*LiqCap: liquidar despacio en vez de descansar en un ask que jamas
 // cruzara nadie (la parada de produccion corta el reabastecimiento).
 // costPU <= 0 significa coste desconocido: se vende solo contra el fair.
-func sellAtMarket(
+func SellAtMarket(
 	ctx *strategy.Context,
 	rnd *rand.Rand,
 	view *MarketView,
 	pos models.InventoryPosition,
 	costPU int64,
-	p sellParams,
+	p SellParams,
 ) []actions.Action {
 	fair, hasFair := view.Fair(pos.ProductID)
 	var desired int64
 	if hasFair {
-		desired = int64(float64(fair) * (1 + p.targetMargin))
+		desired = int64(float64(fair) * (1 + p.TargetMargin))
 	} else if costPU > 0 {
 		// Sin referencia de mercado ni base: cotizar desde coste.
-		fair = int64(float64(costPU) * (1 + p.targetMargin))
+		fair = int64(float64(costPU) * (1 + p.TargetMargin))
 		desired = fair
 	} else {
 		return nil
 	}
 
 	if top := view.Top(ctx, pos.ProductID); top != nil && top.BestAsk != nil {
-		under := int64(float64(top.BestAsk.PriceCents) * (1 - p.undercut))
+		under := int64(float64(top.BestAsk.PriceCents) * (1 - p.Undercut))
 		if under < desired {
 			desired = under
 		}
 	}
 	if costPU > 0 {
-		floor := int64(float64(costPU) * (1 + p.minMargin))
-		if liq := int64(float64(fair) * p.liqCap); floor > liq {
+		floor := int64(float64(costPU) * (1 + p.MinMargin))
+		if liq := int64(float64(fair) * p.LiqCap); floor > liq {
 			floor = liq
 		}
 		if desired < floor {
@@ -61,12 +61,12 @@ func sellAtMarket(
 		}
 	}
 
-	price := nicePrice(rnd, desired)
+	price := NicePrice(rnd, desired)
 	if price < 1 {
 		return nil
 	}
 
-	cancels, _, _ := cancelStale(ctx.State.ActiveOrders(), pos.ProductID, models.SideSell, price, p.requoteThresh)
+	cancels, _, _ := CancelStale(ctx.State.ActiveOrders(), pos.ProductID, models.SideSell, price, p.RequoteThresh)
 	acts := cancels
 	// Vendible = SOLO lo disponible ahora. NO se suma la qty que liberarian las
 	// cancelaciones de este mismo lote: el cancel puede fallar en el servidor
@@ -79,11 +79,11 @@ func sellAtMarket(
 	if sellable <= 0 {
 		return acts
 	}
-	qty := humanQty(rnd, int64(float64(sellable)*p.tranche))
+	qty := HumanQty(rnd, int64(float64(sellable)*p.Tranche))
 	if qty > sellable {
 		qty = sellable
 	}
-	if !isReservable(qty, price) {
+	if !IsReservable(qty, price) {
 		return acts
 	}
 	return append(acts, actions.PlaceOrder{
@@ -91,6 +91,6 @@ func sellAtMarket(
 		Side:            models.SideSell,
 		QtyCent:         qty,
 		LimitPriceCents: price,
-		TTLSeconds:      ttlJitter(rnd),
+		TTLSeconds:      TTLJitter(rnd),
 	})
 }

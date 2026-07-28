@@ -1,4 +1,4 @@
-package main
+package botkit
 
 import (
 	"github.com/lokiteitor/market-simulator/sdk/actions"
@@ -6,13 +6,19 @@ import (
 	"github.com/lokiteitor/market-simulator/sdk/strategy"
 )
 
-// installationForRecipe resuelve la instalación del agente que habilita una
-// receta (economía de instalaciones, ADR-021): recipe.InstallationTypeID →
-// tipo del catálogo → instalación comprada (por key del tipo).
+// Economía de instalaciones (ADR-021) para cualquier estrategia productora: el
+// agente nace sin instalaciones y compra/mejora la de cada tipo con su capital,
+// siendo el `level` el presupuesto de concurrencia COMPARTIDO por las recetas
+// del tipo. Estos helpers los usan por igual el productor genérico de bots-v1 y
+// los binarios especializados (bots-hidro).
+
+// InstallationForRecipe resuelve la instalación del agente que habilita una
+// receta: recipe.InstallationTypeID → tipo del catálogo → instalación comprada
+// (por key del tipo).
 //
 // Devuelve (instalación, tipo, owned, typeKnown). `owned` es true si el agente
 // ya compró el tipo; `typeKnown` es false si el catálogo de tipos aún no cargó.
-func installationForRecipe(
+func InstallationForRecipe(
 	ctx *strategy.Context,
 	recipe models.Recipe,
 ) (models.InstallationStatus, models.InstallationType, bool, bool) {
@@ -24,7 +30,7 @@ func installationForRecipe(
 	return inst, t, owned, true
 }
 
-// installationBuyAction decide si comprar (nivel 0→1) o mejorar (+1) la
+// InstallationBuyAction decide si comprar (nivel 0→1) o mejorar (+1) la
 // instalación de `recipe` cuando la producción está bloqueada por falta de
 // huecos, y hay capital de sobra. Devuelve la acción, el precio que costará
 // (para descontarlo del capital comprometido en el tick) y true si procede.
@@ -39,7 +45,7 @@ func installationForRecipe(
 //     acaba de comprar (capex sin opex: instalación grande, producción cero).
 //   - No mejora más allá de `maxDesiredLevel` (aunque el tipo permita más).
 //   - Compra inicial (no owned) usa base_price; mejora usa next_upgrade_price.
-func installationBuyAction(
+func InstallationBuyAction(
 	inst models.InstallationStatus,
 	typ models.InstallationType,
 	owned bool,
@@ -85,7 +91,7 @@ func capitalAlcanza(capitalAvail, price, workingCapital, capitalReserveFactor in
 		capitalAvail-price >= workingCapital
 }
 
-// insumosCubrenNivelExtra: ¿hay insumos —inventario más bids vivos— para
+// InsumosCubrenNivelExtra: ¿hay insumos —inventario más bids vivos— para
 // alimentar el nivel que abriría la mejora, contando que los niveles actuales
 // también tendrán que recargar al terminar?
 //
@@ -95,7 +101,7 @@ func capitalAlcanza(capitalAvail, price, workingCapital, capitalReserveFactor in
 // evidente (ADR-024): primero el agua, después la turbina. La compra INICIAL no
 // pasa por aquí — sin instalación no hay nada que alimentar y el bot nunca
 // arrancaría.
-func insumosCubrenNivelExtra(
+func InsumosCubrenNivelExtra(
 	ctx *strategy.Context,
 	recipe models.Recipe,
 	inst models.InstallationStatus,

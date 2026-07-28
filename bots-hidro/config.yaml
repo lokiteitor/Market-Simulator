@@ -1,0 +1,242 @@
+server:
+  base_url: "http://localhost:9080/v1"
+  ws_url: "ws://localhost:9080/v1/ws"
+
+logging:
+  level: "info"
+  format: "text" # text o json
+
+retry:
+  max_attempts: 5
+  initial_backoff_ms: 1000
+  max_backoff_ms: 30000
+
+# Factor de tiempo de simulacion del servidor (env SIM_TIME_FACTOR, default 5).
+# El servidor cobra el salario como wage_rate_cents_per_sec * segundos SIMULADOS,
+# pero /catalog/recipes expone duration_seconds ya convertido a segundos REALES.
+# DEBE coincidir con el del backend o el coste de generar queda sesgado.
+sim_time_factor: 5
+
+# Cuantas centrales lanza este proceso. Los usernames se derivan de --runner-id
+# con UUID v5, asi que el parque se puede repartir entre varias maquinas.
+scale: 40
+
+# Contraseña de las cuentas autorregistradas.
+password: "dev-password-123"
+
+# Cada cuanto decide cada central (segundos reales).
+tick_interval_seconds: 5
+
+# Si el servidor rechaza una accion con 422 insufficient_capital, la central
+# duerme este backoff (segundos reales) y rebasea su estado con un snapshot
+# fresco, en vez de martillar la API. 0 = default del SDK (60s).
+insufficient_capital_backoff_seconds: 120
+
+# Refresco de yacimientos finitos (ADR-023, GET /catalog/deposits). La hidro no
+# depende de ninguno, pero es lo que descarta las termicas: si el catalogo
+# ganara una generacion "renovable" cuyo insumo si sale de yacimiento, este
+# refresco es lo que la saca de la lista. 0 = default del SDK (300).
+deposit_refresh_seconds: 300
+
+# --- Estrategia hidroelectrica ----------------------------------------------
+# Todos opcionales; comentados van los defaults de hidro.go.
+
+# Tipo de instalacion que compran estas centrales.
+tipo_instalacion: "generacion"
+
+# Lista blanca de insumos (keys de producto del catalogo) que puede consumir una
+# receta de ese tipo para contar como HIDROELECTRICA. Es lo que separa este bot
+# del `energetico` de bots-v1: con solo `agua` dentro, las dos centrales
+# termicas del catalogo (carbon y gas natural) quedan fuera y el nivel entero de
+# la instalacion se dedica a generacion renovable.
+insumos_renovables:
+  - agua
+
+# Tope de niveles (lineas de produccion) de la central. Mas alto que el del
+# productor generico: este bot existe para acumular capacidad renovable y su
+# unica receta no compite con nadie por las lineas que compra.
+max_desired_level: 6
+
+# Freno por almacen: ejecuciones de electricidad sin vender que se toleran por
+# linea antes de dejar de turbinar. Como esta estrategia casi no se apaga por
+# precio (es la generadora marginal por construccion), esto es lo que impide
+# que siga pagando salarios contra un stock que nadie compra.
+inventario_max_execs: 6
+
+# Vista de mercado (MarketView). Todos opcionales; defaults en el SDK.
+market:
+  # Peso del ultimo trade en la EMA del valor justo (0-1).
+  ema_alpha: 0.25
+  # Banda del fair alrededor del precio base: evita fugas de precio por
+  # retroalimentacion bot-a-bot. fair queda en [base*lo, base*hi].
+  fair_band_lo: 0.4
+  fair_band_hi: 2.5
+  # Frescura del cache de top-of-book (segundos) antes de refetchear.
+  top_ttl_seconds: 12
+  # Llamadas REST de top-of-book por central y por tick.
+  rest_budget_per_tick: 4
+  # Ventana (segundos) para considerar que un producto tiene mercado "vivo".
+  recent_window_seconds: 600
+
+# Precios base (cents/unidad) para evaluar margenes.
+# NO EDITAR A MANO: bloque generado por propagacion de costo desde
+# infra/seed-config.json (fuente unica del catalogo) con
+#   cd backend && bun src/scripts/generate-catalog-artifacts.ts
+# El MISMO bloque va en bots-v1, bots-ciudad y bots-hidro: si divergen, los bots
+# de mercado, las ciudades y las centrales valoran distinto lo mismo. Esta
+# estrategia solo opera dos de estos productos (agua y electricidad), pero el
+# bloque va completo para que el generador lo mantenga al dia sin casos
+# especiales.
+prices:
+  # --- Materias primas ---
+  trigo: 21
+  maiz: 17
+  leche: 51
+  tomate: 26
+  hierro: 20
+  carbon: 20
+  mineral_cobre: 20
+  bauxita: 20
+  litio: 204
+  niquel: 34
+  oro: 820
+  plata: 680
+  uranio: 1020
+  arena: 10
+  piedra: 10
+  caliza: 10
+  arcilla: 10
+  fosfato: 26
+  sal: 13
+  petroleo: 41
+  gas_natural: 51
+  agua: 10
+  troncos: 25
+  soya: 21
+  algodon: 26
+  cana_azucar: 17
+  cafe: 52
+  cacao: 52
+  frutas: 19
+  verduras: 19
+  ganado_bovino: 2056
+  cerdos: 1028
+  pollos: 103
+  lana: 51
+  # --- Intermedios ---
+  semillas: 26
+  harina: 79
+  masa: 44
+  acero: 63
+  acero_inoxidable: 137
+  aluminio: 100
+  cobre_refinado: 125
+  cemento: 39
+  hormigon: 35
+  vidrio: 45
+  ladrillos: 25
+  asfalto: 55
+  plastico: 94
+  caucho_sintetico: 94
+  fertilizantes: 78
+  productos_quimicos: 75
+  silicio: 162
+  tablas: 64
+  celulosa: 64
+  papel: 105
+  carton: 153
+  azucar: 87
+  aceite_vegetal: 115
+  carne_procesada: 94
+  lacteos: 102
+  gasolina: 114
+  diesel: 114
+  electricidad: 27
+  queroseno: 142
+  lubricantes: 189
+  viga_acero: 132
+  lamina_acero: 132
+  tubo_acero: 140
+  perfil_metalico: 132
+  lamina_aluminio: 206
+  perfil_aluminio: 206
+  cable_cobre: 223
+  bobina_cobre: 241
+  cristal_plano: 108
+  cristal_tecnico: 159
+  polimeros: 174
+  resinas: 157
+  fibra_sintetica: 180
+  lubricante_industrial: 301
+  madera_tratada: 123
+  contrachapado: 131
+  conservas: 47
+  piensos: 47
+  bebidas: 51
+  chasis: 38514
+  motor_combustion: 44992
+  caja_cambios: 23589
+  suspension: 25311
+  frenos: 20772
+  rodamientos: 10044
+  bomba_industrial: 26142
+  motor_electrico: 32176
+  generador: 74944
+  bateria: 26873
+  cableado: 294
+  circuito_impreso: 20792
+  microchip: 49274
+  sensor: 41069
+  pantalla: 46352
+  ventana: 17368
+  puerta_industrial: 14264
+  panel_prefabricado: 19674
+  tuberia: 242
+  asiento: 25371
+  panel_interior: 19704
+  neumatico: 23195
+  sistema_hidraulico: 58814
+  motor_aeronautico: 102353
+  sistema_control: 225122
+  tanque_especializado: 43360
+  sistema_refrigeracion: 63427
+  aislamiento_termico: 276
+  # --- Consumo final ---
+  pan: 190
+  tortilla: 94
+  queso: 2365
+  salsa: 111
+  camion_carga: 669723
+  camion_cisterna: 634291
+  camion_refrigerado: 636739
+  locomotora_diesel: 547796
+  vagon_carga: 158880
+  barco_carga: 777729
+  barco_petrolero: 947568
+  avion_carga: 876629
+  planta_industrial: 146075
+  refineria: 735020
+  planta_ensamblaje: 637081
+  astillero: 468498
+  fabrica_aeronaves: 525063
+  planta_quimica: 691231
+  estacion_carga: 89910
+  terminal_ferroviaria: 581674
+  puerto_comercial: 245075
+  aeropuerto_carga: 864346
+  automovil: 573644
+  refrigerador: 119788
+  lavadora: 313152
+  televisor: 100614
+  computadora: 187635
+  telefono: 177068
+  excavadora: 507955
+  grua: 257993
+  edificio_residencial: 204848
+  edificio_comercial: 290549
+  fabrica_urbana_ligera: 327914
+  almacen_logistico: 128976
+  mantequilla: 383
+  yogur: 100
+  chocolate: 182
+  textiles: 118

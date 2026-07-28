@@ -202,23 +202,6 @@ func (s *ProducerStrategy) outputFair(productID string) (int64, bool) {
 	return fair, has
 }
 
-// effectiveOutputQtyCent es lo que una ejecucion produce DE VERDAD: el output
-// nominal de la receta escalado por el rendimiento de su yacimiento (ADR-023).
-//
-// Para los ~140 productos inagotables devuelve el output tal cual. Para los 15
-// recursos no renovables cae con el vaciado del yacimiento, y usarlo importa:
-// el salario y los insumos se pagan enteros produzca lo que produzca la mina,
-// asi que valorar la receta con el output nominal cuando el yacimiento esta a
-// la mitad hace creer que se gana el doble de lo que se gana. Un bot que ignore
-// esto mina a perdida convencido de que le renta.
-func effectiveOutputQtyCent(ctx *strategy.Context, recipe models.Recipe) int64 {
-	dep, ok := ctx.State.Deposit(recipe.OutputProductID)
-	if !ok {
-		return recipe.OutputQtyCent
-	}
-	return recipe.OutputQtyCent * dep.YieldBps / 10000
-}
-
 // execEconomics valora una ejecucion de la receta a precios fair: coste de
 // insumos, salario e ingreso del output. ok=false si falta el fair de alguna
 // pata (sin valoracion no hay decision). Con `inputs: []` (la raíz del
@@ -616,12 +599,12 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 		// — que es justo la señal de escasez que debe llegar al precio de mercado.
 		costPU, _ := s.costeUnitario(ctx, recipe)
 		acts = append(acts, sellAtMarket(ctx, s.rnd, s.view, pos, costPU, sellParams{
-			minMargin:     s.p.minMargin,
-			targetMargin:  s.p.targetMargin,
-			undercut:      s.p.undercut,
-			tranche:       s.p.tranche,
-			requoteThresh: s.p.requoteThresh,
-			liqCap:        s.p.liqCap,
+			MinMargin:     s.p.minMargin,
+			TargetMargin:  s.p.targetMargin,
+			Undercut:      s.p.undercut,
+			Tranche:       s.p.tranche,
+			RequoteThresh: s.p.requoteThresh,
+			LiqCap:        s.p.liqCap,
 		})...)
 	}
 

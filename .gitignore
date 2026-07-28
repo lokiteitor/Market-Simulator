@@ -197,3 +197,8 @@ bots-ciudad/bots-ciudad-runner
 bots-ciudad/bots-ciudad
 bots-ciudad/.bots-ciudad.lock
 bots-ciudad/sessions/
+
+# bots-hidro: artefactos de runtime (binario y sesiones)
+bots-hidro/bots-hidro-runner
+bots-hidro/bots-hidro
+bots-hidro/sessions/

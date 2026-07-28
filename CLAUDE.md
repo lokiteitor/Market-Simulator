@@ -24,6 +24,11 @@ make run-swarm         # 10.000 bots con jitter de arranque de 900s
 # Ciudades (demanda urbana): conjunto FIJO de ~50 capitales, INSTANCIA ÚNICA (flock).
 make build-bots-ciudad
 make run-bots-ciudad
+
+# Centrales hidroeléctricas (parque renovable dedicado). Replicable como bots-v1
+# (usernames por --runner-id), SIN rotación: la industria consume kWh sin parar.
+make build-bots-hidro
+make run-bots-hidro
 ```
 
 Backend (desde `backend/`, requiere Bun >= 1.3; para dev local levantar solo postgres+redis del compose y `cp .env.example .env`):
@@ -88,9 +93,11 @@ Las ciudades están **exentas de quiebra** (cumplirían la condición §8 entre 
 
 ## Bots (`bots-v1/` + `go-sdk/`)
 
-Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`producer.go` + `specialties.go`, `trader.go`; la consumidora vive en `botkit` y solo la usan las ciudades) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 149 productos —**generados**, no escritos a mano: `cd backend && bun src/scripts/generate-catalog-artifacts.ts` los propaga por coste desde `infra/seed-config.json` a `bots-v1/`, `bots-ciudad/` y las tablas del catálogo— y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
+Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; cada bot usa el `engine.Engine` del SDK (`go-sdk/sdk/`): auth con re-login automático (los refresh tokens son de un solo uso), snapshot, WS con reconexión, tick periódico. Las estrategias (`producer.go` + `specialties.go`, `trader.go`; la consumidora vive en `botkit` y solo la usan las ciudades) devuelven acciones declarativas; nunca llaman a la API directamente. `bots-v1/config.yaml` contiene los precios base de los 149 productos —**generados**, no escritos a mano: `cd backend && bun src/scripts/generate-catalog-artifacts.ts` los propaga por coste desde `infra/seed-config.json` a `bots-v1/`, `bots-ciudad/`, `bots-hidro/` y las tablas del catálogo— y `sim_time_factor`, que **debe coincidir** con el `SIM_TIME_FACTOR` del backend o todos los cálculos de margen quedan sesgados. El directorio `bot-engine/` fue eliminado; no referenciarlo.
 
-La estrategia consumidor y los helpers puros (humanización, dinero, market view, precios base) viven en **`go-sdk/sdk/botkit`**; los helpers los comparten `bots-v1` y `bots-ciudad`, pero la estrategia consumidora la usa **solo `bots-ciudad`** desde ADR-025. `bots-v1/botkit_aliases.go` es solo un shim que re-exporta los helpers con los nombres locales. **Al tocar un helper, editarlo en `botkit`.**
+La estrategia consumidor y los helpers compartidos (humanización, dinero, market view, precios base, venta a mercado, economía de instalaciones, rendimiento de yacimientos) viven en **`go-sdk/sdk/botkit`**; los helpers los comparten los tres binarios de bots, pero la estrategia consumidora la usa **solo `bots-ciudad`** desde ADR-025. `bots-v1/botkit_aliases.go` es solo un shim que re-exporta los helpers con los nombres locales. **Al tocar un helper, editarlo en `botkit`.**
+
+`bots-hidro/` es el parque hidroeléctrico: bots que compran agua, la turbinan y venden electricidad, y **solo eso**. Existe aparte porque el `energetico` de `bots-v1` se queda con el tipo `generacion` entero y, al escalar de nivel, las líneas nuevas se van a las térmicas (más baratas por kWh), así que la capacidad renovable acaba siendo un residuo del arranque; cuando los yacimientos de carbón y gas se agoten (ADR-023) la hidro es la única generación que queda en pie. Selecciona su receta por lista blanca de insumos (`insumos_renovables`, default `agua`) **y** ausencia de yacimiento —la lista blanca manda, porque `GET /catalog/deposits` puede fallar al arrancar y el engine sigue asumiendo recursos infinitos—; se apaga por **coste variable** en vez de coste+margen (es la generadora marginal por construcción) y por **almacén lleno** en vez de por precio. Es replicable como `bots-v1` (usernames UUID v5 desde `--runner-id`, con namespace propio) y **no rota**.
 
 `market-client/` es un cliente Python **auxiliar** (pruebas/manual y base del bot trader RL); no forma parte del runtime de bots.
 

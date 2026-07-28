@@ -28,6 +28,17 @@ build-bots-ciudad:
 run-bots-ciudad: build-bots-ciudad
 	cd bots-ciudad && ./bots-ciudad-runner -config config.yaml
 
+# Centrales hidroelectricas (ADR-024): parque renovable dedicado. Se autorregistran
+# como `transformer` con usernames derivados de --runner-id (UUID v5), asi que se
+# puede repartir entre varias maquinas. SIN rotacion a proposito: la industria
+# consume electricidad de forma continua y una central que se apaga cada pocos
+# minutos no es una central.
+build-bots-hidro:
+	cd bots-hidro && go build -o bots-hidro-runner
+
+run-bots-hidro: build-bots-hidro
+	cd bots-hidro && ./bots-hidro-runner -config config.yaml -jitter 60
+
 run-swarm: build-bots
 	ulimit -n 65535	
 	cd bots-v1 && ./bots-v1-runner -config config.yaml -jitter 900 -no-persist -quiet
