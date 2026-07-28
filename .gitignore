@@ -202,3 +202,6 @@ bots-ciudad/sessions/
 bots-hidro/bots-hidro-runner
 bots-hidro/bots-hidro
 bots-hidro/sessions/
+
+# Registro de bots quebrados de los runners (ADR-026)
+.bots-*-bankrupt.list

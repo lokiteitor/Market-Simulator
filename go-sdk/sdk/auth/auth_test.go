@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -259,5 +260,157 @@ func TestMemorySessionsReuseRefreshAcrossActivations(t *testing.T) {
 	}
 	if _, ok := memorySessions.Load(username); ok {
 		t.Fatal("ClearSession no eliminó la sesión en RAM")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Auto-registro condicionado al motivo del fallo de login
+// ---------------------------------------------------------------------------
+
+// apiErrStub imita a *client.APIError: lo único que auth necesita de él es
+// HasCode (por eso el package no importa client, ver codedError).
+type apiErrStub struct {
+	status int
+	code   string
+}
+
+func (e *apiErrStub) Error() string {
+	return fmt.Sprintf("API error (status %d): %s", e.status, e.code)
+}
+func (e *apiErrStub) HasCode(code string) bool { return code == e.code }
+
+// scriptedClient devuelve errores de login/registro programados y cuenta las
+// llamadas, para comprobar QUÉ hace PerformAuth ante cada motivo.
+type scriptedClient struct {
+	loginErrs   []error // uno por llamada; nil = login correcto
+	logins      int
+	registers   int
+	registerErr error
+}
+
+func (c *scriptedClient) Login(ctx context.Context, req models.LoginRequest) (*models.TokenPair, error) {
+	idx := c.logins
+	c.logins++
+	if idx < len(c.loginErrs) && c.loginErrs[idx] != nil {
+		return nil, c.loginErrs[idx]
+	}
+	return &models.TokenPair{
+		AccessToken:      "access",
+		RefreshToken:     "refresh",
+		AccessExpiresAt:  time.Now().Add(15 * time.Minute),
+		RefreshExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}, nil
+}
+
+func (c *scriptedClient) Register(ctx context.Context, req models.RegisterAgentRequest) (*models.RegisterAgentResponse, error) {
+	c.registers++
+	if c.registerErr != nil {
+		return nil, c.registerErr
+	}
+	return &models.RegisterAgentResponse{
+		TokenPair: models.TokenPair{
+			AccessToken:      "access-reg",
+			RefreshToken:     "refresh-reg",
+			AccessExpiresAt:  time.Now().Add(15 * time.Minute),
+			RefreshExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+		},
+		Agent: models.AgentSnapshot{Agent: models.AgentPublic{AgentID: "agent-reg-1", Role: models.RoleTrader}},
+	}, nil
+}
+
+func (c *scriptedClient) GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models.AgentSnapshot, error) {
+	return &models.AgentSnapshot{Agent: models.AgentPublic{AgentID: "agent-snap-1", Role: models.RoleTrader}}, nil
+}
+
+// Un agente quebrado (403 agent_bankrupt, ADR-026) NO debe auto-registrarse:
+// la cuenta existe y el registro solo devolvería un 409 username_taken que
+// enmascara la causa real. El runner necesita ErrAgentBankrupt para retirarlo.
+func TestPerformAuthDoesNotRegisterWhenAgentIsBankrupt(t *testing.T) {
+	c := &scriptedClient{loginErrs: []error{&apiErrStub{status: 403, code: "agent_bankrupt"}}}
+
+	a := NewAuthManager("bot_bankrupt", "pw", models.RoleTrader, "")
+	err := a.PerformAuth(context.Background(), c, true)
+
+	if !errors.Is(err, ErrAgentBankrupt) {
+		t.Fatalf("got %v, want ErrAgentBankrupt", err)
+	}
+	if c.registers != 0 {
+		t.Fatalf("got %d registros, want 0: un quebrado no se re-registra", c.registers)
+	}
+}
+
+// Un fallo transitorio (5xx, timeout, red) tampoco justifica registrar: la
+// cuenta puede existir perfectamente y el 409 resultante ocultaría el problema.
+func TestPerformAuthDoesNotRegisterOnTransientLoginFailure(t *testing.T) {
+	c := &scriptedClient{loginErrs: []error{&apiErrStub{status: 503, code: "service_unavailable"}}}
+
+	a := NewAuthManager("bot_flaky", "pw", models.RoleTrader, "")
+	err := a.PerformAuth(context.Background(), c, true)
+
+	if err == nil {
+		t.Fatal("PerformAuth devolvió nil con el login caído")
+	}
+	if errors.Is(err, ErrAgentBankrupt) {
+		t.Fatalf("got ErrAgentBankrupt para un 503: %v", err)
+	}
+	if c.registers != 0 {
+		t.Fatalf("got %d registros, want 0: un 503 es transitorio", c.registers)
+	}
+}
+
+// El caso legítimo: 401 invalid_credentials es el único fallo compatible con
+// "la cuenta todavía no existe" (el backend responde igual para usuario
+// inexistente y contraseña mala, a propósito).
+func TestPerformAuthRegistersOnInvalidCredentials(t *testing.T) {
+	c := &scriptedClient{loginErrs: []error{&apiErrStub{status: 401, code: "invalid_credentials"}}}
+
+	a := NewAuthManager("bot_new", "pw", models.RoleTrader, "")
+	if err := a.PerformAuth(context.Background(), c, true); err != nil {
+		t.Fatalf("PerformAuth: %v", err)
+	}
+	if c.registers != 1 {
+		t.Fatalf("got %d registros, want 1", c.registers)
+	}
+	if got := a.GetAgentID(); got != "agent-reg-1" {
+		t.Fatalf("agentID %q, want agent-reg-1", got)
+	}
+}
+
+// Carrera: otro runner creó la cuenta entre nuestro login y nuestro register.
+// El 409 no es terminal, se resuelve reintentando el login.
+func TestPerformAuthRetriesLoginWhenUsernameTaken(t *testing.T) {
+	c := &scriptedClient{
+		loginErrs:   []error{&apiErrStub{status: 401, code: "invalid_credentials"}, nil},
+		registerErr: &apiErrStub{status: 409, code: "username_taken"},
+	}
+
+	a := NewAuthManager("bot_race", "pw", models.RoleTrader, "")
+	if err := a.PerformAuth(context.Background(), c, true); err != nil {
+		t.Fatalf("PerformAuth: %v", err)
+	}
+	if c.logins != 2 {
+		t.Fatalf("got %d logins, want 2 (el 409 debe reintentar el login)", c.logins)
+	}
+	if got := a.GetAgentID(); got != "agent-snap-1" {
+		t.Fatalf("agentID %q, want agent-snap-1 (vino del snapshot del 2º login)", got)
+	}
+}
+
+// Y si tras el 409 el login sigue fallando por quiebra, la señal terminal debe
+// llegar igual: es el escenario del runner que reintenta una cuenta muerta.
+func TestPerformAuthSurfacesBankruptcyAfterUsernameTaken(t *testing.T) {
+	c := &scriptedClient{
+		loginErrs: []error{
+			&apiErrStub{status: 401, code: "invalid_credentials"},
+			&apiErrStub{status: 403, code: "agent_bankrupt"},
+		},
+		registerErr: &apiErrStub{status: 409, code: "username_taken"},
+	}
+
+	a := NewAuthManager("bot_dead", "pw", models.RoleTrader, "")
+	err := a.PerformAuth(context.Background(), c, true)
+
+	if !errors.Is(err, ErrAgentBankrupt) {
+		t.Fatalf("got %v, want ErrAgentBankrupt", err)
 	}
 }

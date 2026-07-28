@@ -43,8 +43,13 @@ run-swarm: build-bots
 	ulimit -n 65535	
 	cd bots-v1 && ./bots-v1-runner -config config.yaml -jitter 900 -no-persist -quiet
 
+# Reset total: destruye contenedores Y volúmenes. Como las cuentas de los bots
+# desaparecen con la base de datos, hay que borrar también el registro de
+# quebrados (ADR-026): sus usernames son deterministas y volverían a ser
+# registrables, pero el runner los seguiría omitiendo.
 clean-docker:
 	docker compose -f infra/docker-compose.yml down --volumes --remove-orphans
+	rm -f bots-v1/.bots-v1-bankrupt.list bots-hidro/.bots-hidro-bankrupt.list
 
 run-swarm-rpi: build-bots
 	ulimit -n 65535	

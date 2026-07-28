@@ -375,6 +375,45 @@ El `[RESUMEN]` de `-quiet` incluye el contador `Quebrados`.
 `bots-ciudad` no se ve afectado: el rol `city` está exento de quiebra, así que
 el endpoint le responde siempre `role_exempt` y la señal nunca se cierra.
 
+### 4.7 La quiebra sobrevive al reinicio del runner
+
+La retirada de §4.6 solo cubre al bot que está **corriendo** cuando se confirma
+la quiebra. Faltaban dos huecos, y los dos se manifestaban igual: una tromba de
+`auto-registration failed: API error (status 409) ... username_taken` en el log.
+
+- El servidor puede quebrar a un bot **mientras duerme** entre turnos de
+  rotación: `checkAndApply` se dispara al expirar una orden o completar un
+  proceso, sin que el engine esté conectado para recibir el `bankruptcy_notice`.
+- La lista de quebrados vivía solo en la memoria del runner, así que **cada
+  reinicio** devolvía a la rotación todas las cuentas muertas de la corrida
+  anterior (el enjambre además arranca con `-no-persist`, sin sesión que
+  reutilizar).
+
+En ambos casos el bot volvía a arrancar, su login devolvía 403 `agent_bankrupt`
+—lo hace para siempre— y `PerformAuth` **auto-registraba ante cualquier fallo de
+login**, convirtiendo la causa real en un 409 que la ocultaba. Dos cambios:
+
+1. **El auto-registro depende del motivo** (`go-sdk/sdk/auth/auth.go`). Solo un
+   **401 `invalid_credentials`** es compatible con "la cuenta todavía no
+   existe" — el backend responde lo mismo para usuario inexistente y contraseña
+   mala, a propósito, para no delatar por timing. Un **403 `agent_bankrupt`**
+   devuelve `auth.ErrAgentBankrupt` (terminal: el engine cierra `Bankrupt()` y
+   el runner retira al bot) y un fallo transitorio (5xx, timeout, red) se
+   propaga tal cual, para que lo reintente el runner. Si aun así el registro
+   choca con un 409 —carrera con otro runner que acaba de crear la cuenta— se
+   reintenta el login una vez en vez de dar el arranque por perdido.
+2. **El registro de quebrados se persiste** (`botkit.BankruptStore`): un fichero
+   append-only con un username por línea, `./.bots-v1-bankrupt.list` y
+   `./.bots-hidro-bankrupt.list` por defecto (`-bankrupt-file`, `""` lo
+   desactiva). Se carga al arrancar y esos bots **no llegan a crear engine**.
+   No depende de `-no-persist`: ese flag evita los 10.000 ficheros de sesión del
+   enjambre, y este es un fichero de unas pocas líneas.
+
+El fichero solo es válido mientras la base de datos lo sea: los usernames son
+deterministas (UUID v5 desde `--runner-id`), así que tras un reset los agentes
+vuelven a ser registrables y omitirlos sería un error. Por eso `make
+clean-docker` borra los dos ficheros.
+
 ---
 
 ## 5. Estrategias por rol

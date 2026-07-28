@@ -32,6 +32,33 @@ type LoginHelper interface {
 	GetAgentSnapshot(ctx context.Context, eventsLimit int) (*models.AgentSnapshot, error)
 }
 
+// ErrAgentBankrupt: el servidor rechazó el login con 403 agent_bankrupt
+// (ADR-026). Es TERMINAL — un agente quebrado no vuelve a operar ni a
+// loguearse jamás—, así que el runner debe retirar al bot en vez de
+// reintentarlo. Se envuelve con %w: comprobar con errors.Is.
+var ErrAgentBankrupt = errors.New("agent is bankrupt")
+
+// Códigos de sub-error del backend (Problem+JSON, RFC 7807) que este package
+// necesita distinguir. Duplican las constantes de sdk/client a propósito: el
+// package auth no importa client (client no lo importa a él, pero es el que
+// consume su TokenProvider, y el ciclo sería fácil de introducir).
+const (
+	codeAgentBankrupt      = "agent_bankrupt"      // 403, terminal
+	codeInvalidCredentials = "invalid_credentials" // 401
+	codeUsernameTaken      = "username_taken"      // 409
+)
+
+// codedError lo cumple *client.APIError sin necesidad de importarlo.
+type codedError interface {
+	HasCode(code string) bool
+}
+
+// hasCode indica si el error es un Problem+JSON del backend con ese sub-código.
+func hasCode(err error, code string) bool {
+	var ce codedError
+	return errors.As(err, &ce) && ce.HasCode(code)
+}
+
 type SessionData struct {
 	Username         string           `json:"username"`
 	Password         string           `json:"password"`
@@ -205,6 +232,13 @@ func (a *AuthManager) storeTokensLocked(accessToken, refreshToken string, access
 }
 
 // PerformAuth handles the authentication flow: loading from disk, attempting refresh, login or register.
+//
+// El auto-registro está condicionado al MOTIVO del fallo de login. Registrar
+// ante cualquier error convertía dos situaciones muy distintas en el mismo
+// 409 username_taken —que además enmascaraba la causa real—: un agente en
+// quiebra (403 agent_bankrupt, terminal: la cuenta existe y ya no se puede
+// loguear) y un fallo transitorio del servidor (503, timeout). Solo un 401
+// invalid_credentials es compatible con "la cuenta todavía no existe".
 func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoRegister bool) error {
 	a.Lock()
 	defer a.Unlock()
@@ -230,47 +264,73 @@ func (a *AuthManager) PerformAuth(ctx context.Context, client LoginHelper, autoR
 
 	tokens, err := client.Login(ctx, loginReq)
 	if err == nil {
-		a.storeTokensLocked(tokens.AccessToken, tokens.RefreshToken, tokens.AccessExpiresAt, tokens.RefreshExpiresAt)
-
-		// Need to get agent snapshot to obtain agent ID and role
-		// temporarily unlock to make the API call because client calls will trigger GetAccessToken which needs the read/write lock.
-		// Wait, if we are in PerformAuth, c.do(...) will call GetAccessToken, but since we have a.accessToken populated, it will work.
-		// However, to avoid deadlock since c.do() will call GetAccessToken which calls a.Lock(), we MUST unlock here before making the API call!
-		a.Unlock()
-		snapshot, err := client.GetAgentSnapshot(ctx, 1)
-		a.Lock()
-
-		if err != nil {
-			return fmt.Errorf("failed to retrieve agent snapshot after login: %w", err)
-		}
-
-		a.agentID = snapshot.Agent.AgentID
-		a.role = snapshot.Agent.Role
-		_ = a.saveSessionLocked()
-		return nil
+		return a.finishLoginLocked(ctx, client, tokens)
 	}
 
-	// 3. Login failed; check if we should auto-register
-	if autoRegister {
-		regReq := models.RegisterAgentRequest{
-			Username: a.username,
-			Password: a.password,
-			Role:     a.role,
-		}
-		a.Unlock()
-		regResp, err := client.Register(ctx, regReq)
-		a.Lock()
-		if err != nil {
-			return fmt.Errorf("auto-registration failed: %w", err)
-		}
+	// 3. El login falló: decidir según el motivo.
+	if hasCode(err, codeAgentBankrupt) {
+		return fmt.Errorf("%w: %v", ErrAgentBankrupt, err)
+	}
+	if !autoRegister || !hasCode(err, codeInvalidCredentials) {
+		// Sin auto-registro, o fallo no atribuible a una cuenta inexistente
+		// (5xx, timeout, red): es transitorio y el reintento es del runner.
+		return fmt.Errorf("login failed: %w", err)
+	}
 
+	// 4. 401 con auto-registro: la cuenta probablemente no existe todavía.
+	regReq := models.RegisterAgentRequest{
+		Username: a.username,
+		Password: a.password,
+		Role:     a.role,
+	}
+	a.Unlock()
+	regResp, regErr := client.Register(ctx, regReq)
+	a.Lock()
+	if regErr == nil {
 		a.agentID = regResp.Agent.Agent.AgentID
 		a.role = regResp.Agent.Agent.Role
 		a.storeTokensLocked(regResp.AccessToken, regResp.RefreshToken, regResp.AccessExpiresAt, regResp.RefreshExpiresAt)
 		return nil
 	}
+	if !hasCode(regErr, codeUsernameTaken) {
+		return fmt.Errorf("auto-registration failed: %w", regErr)
+	}
 
-	return fmt.Errorf("authentication failed: %w", err)
+	// 5. 409 pese al 401 del login: carrera con otro runner (o con otra
+	// goroutine de este mismo proceso) que acaba de crear la cuenta entre
+	// nuestro login y nuestro register. Reintentar el login una vez.
+	a.Unlock()
+	tokens, err = client.Login(ctx, loginReq)
+	a.Lock()
+	if err == nil {
+		return a.finishLoginLocked(ctx, client, tokens)
+	}
+	if hasCode(err, codeAgentBankrupt) {
+		return fmt.Errorf("%w: %v", ErrAgentBankrupt, err)
+	}
+	return fmt.Errorf("username %q ya está registrado y el login sigue fallando: %w", a.username, err)
+}
+
+// finishLoginLocked guarda el par de tokens de un login correcto y completa la
+// sesión con el snapshot (agent ID + rol). El caller debe tener el write lock.
+func (a *AuthManager) finishLoginLocked(ctx context.Context, client LoginHelper, tokens *models.TokenPair) error {
+	a.storeTokensLocked(tokens.AccessToken, tokens.RefreshToken, tokens.AccessExpiresAt, tokens.RefreshExpiresAt)
+
+	// GetAgentSnapshot es una llamada autenticada: el cliente pasará por
+	// GetAccessToken, que toma el mismo write lock. Hay que soltarlo aquí o
+	// el deadlock es seguro.
+	a.Unlock()
+	snapshot, err := client.GetAgentSnapshot(ctx, 1)
+	a.Lock()
+
+	if err != nil {
+		return fmt.Errorf("failed to retrieve agent snapshot after login: %w", err)
+	}
+
+	a.agentID = snapshot.Agent.AgentID
+	a.role = snapshot.Agent.Role
+	_ = a.saveSessionLocked()
+	return nil
 }
 
 func resolveSQLitePath(persistPath string) string {

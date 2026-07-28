@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lokiteitor/market-simulator/sdk/auth"
+	"github.com/lokiteitor/market-simulator/sdk/botkit"
 	"github.com/lokiteitor/market-simulator/sdk/engine"
 	"github.com/lokiteitor/market-simulator/sdk/logging"
 	"github.com/lokiteitor/market-simulator/sdk/models"
@@ -67,6 +69,12 @@ type GlobalConfig struct {
 // reinicios para reutilizar la cadena de refresh tokens (de un solo uso).
 const sessionsDir = "sessions"
 
+// defaultBankruptFile: registro en disco de las centrales que el servidor
+// confirmó en quiebra (ADR-026). Sin él, cada reinicio del runner reintentaría
+// cuentas muertas cuyo login devuelve 403 agent_bankrupt para siempre. Ver
+// botkit.BankruptStore.
+const defaultBankruptFile = "./.bots-hidro-bankrupt.list"
+
 // namespaceHidro: espacio de nombres PROPIO para los UUID v5 de las cuentas.
 // Distinto del de bots-v1 a propósito: con el mismo namespace, un
 // `bots-hidro -runner-id X` y un `bots-v1 -runner-id X` podrían derivar el mismo
@@ -87,6 +95,7 @@ func main() {
 	jitterSec := flag.Int("jitter", 0, "jitter máximo de arranque en segundos, para repartir la carga de conexión")
 	runnerID := flag.String("runner-id", "default", "identificador de esta máquina; deriva los usernames (UUID v5)")
 	noPersist := flag.Bool("no-persist", false, "no persistir sesiones en disco (todo en RAM)")
+	bankruptFile := flag.String("bankrupt-file", defaultBankruptFile, "fichero donde se anotan las centrales quebradas para no reintentarlas tras un reinicio (ADR-026); \"\" lo desactiva")
 	quiet := flag.Bool("quiet", false, "solo resumen periódico y logs de warn/error")
 	flag.Parse()
 
@@ -131,7 +140,33 @@ func main() {
 		}
 	}
 
-	log.Printf("bots-hidro: lanzando %d centrales hidroeléctricas (runner %q)", scale, runnerVal)
+	// Centrales retiradas por quiebra confirmada en corridas anteriores
+	// (ADR-026): su login devuelve 403 agent_bankrupt para siempre, así que se
+	// descartan antes de crear engines en vez de reintentarlas a cada arranque.
+	// No depende de -no-persist (ese flag evita los ficheros de sesión por bot;
+	// este es UNO de unas pocas líneas). Para desactivarlo: -bankrupt-file "".
+	bankruptPath := *bankruptFile
+	bankruptStore, err := botkit.NewBankruptStore(bankruptPath)
+	if err != nil {
+		log.Printf("aviso: no se pudo cargar el registro de quebradas (%v); se arranca con la lista vacía", err)
+	}
+	usernames := make([]string, 0, scale)
+	for i := 1; i <= scale; i++ {
+		username := uuid.NewSHA1(namespaceHidro, []byte(fmt.Sprintf("%s-hidro-%d", runnerVal, i))).String()
+		if bankruptStore.Has(username) {
+			continue
+		}
+		usernames = append(usernames, username)
+	}
+	if omitidas := scale - len(usernames); omitidas > 0 {
+		log.Printf("quebradas en corridas anteriores: %d (%s); omitidas de esta corrida: %d", bankruptStore.Total(), bankruptPath, omitidas)
+	}
+	if len(usernames) == 0 {
+		log.Fatalf("todas las centrales están en quiebra (%s): usa otro -runner-id o borra ese fichero si has reseteado la base de datos", bankruptPath)
+	}
+	vivas := len(usernames)
+
+	log.Printf("bots-hidro: lanzando %d centrales hidroeléctricas (runner %q)", vivas, runnerVal)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -140,12 +175,29 @@ func main() {
 
 	var wg sync.WaitGroup
 	var enginesMu sync.Mutex
-	engines := make([]*engine.Engine, 0, scale)
+	engines := make([]*engine.Engine, 0, vivas)
 
 	// Centrales retiradas por quiebra confirmada (ADR-026). No se reintentan: el
-	// login de un agente quebrado devuelve 403 agent_bankrupt.
+	// login de un agente quebrado devuelve 403 agent_bankrupt. El contador es de
+	// ESTA corrida; la baja se persiste para las siguientes.
 	var quiebraMu sync.Mutex
 	quebradas := 0
+
+	onQuiebra := func(username string) {
+		if _, err := bankruptStore.Add(username); err != nil {
+			log.Printf("[%s] no se pudo persistir la quiebra: %v", username, err)
+		}
+		quiebraMu.Lock()
+		quebradas++
+		n := quebradas
+		quiebraMu.Unlock()
+		// log.Printf (no logInfo) para que la baja se vea también en -quiet.
+		log.Printf("[%s] quiebra confirmada por el servidor: central retirada (%d/%d)", username, n, vivas)
+		if n >= vivas {
+			log.Println("Todas las centrales están en quiebra. Terminando.")
+			cancel()
+		}
+	}
 
 	if quietMode {
 		go func() {
@@ -157,19 +209,18 @@ func main() {
 					return
 				case <-ticker.C:
 					enginesMu.Lock()
-					vivas := len(engines)
+					iniciadas := len(engines)
 					enginesMu.Unlock()
 					quiebraMu.Lock()
 					rotas := quebradas
 					quiebraMu.Unlock()
-					log.Printf("[RESUMEN] Centrales iniciadas: %d / %d | Quebradas: %d", vivas, scale, rotas)
+					log.Printf("[RESUMEN] Centrales iniciadas: %d / %d | Quebradas: %d", iniciadas, vivas, rotas)
 				}
 			}
 		}()
 	}
 
-	for i := 1; i <= scale; i++ {
-		username := uuid.NewSHA1(namespaceHidro, []byte(fmt.Sprintf("%s-hidro-%d", runnerVal, i))).String()
+	for i, username := range usernames {
 		eng := createEngine(username, cfg, *noPersist)
 
 		enginesMu.Lock()
@@ -189,11 +240,16 @@ func main() {
 				}
 			}
 
-			logInfo("[%s] arrancando central (%d/%d)...", username, idx, scale)
+			logInfo("[%s] arrancando central (%d/%d)...", username, idx, vivas)
 			if err := e.Start(ctx); err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				switch {
+				case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 					logInfo("[%s] arranque abortado por el apagado", username)
-				} else {
+				case errors.Is(err, auth.ErrAgentBankrupt):
+					// El servidor la quebró mientras el runner estaba parado:
+					// es una baja, no un fallo de arranque.
+					onQuiebra(username)
+				default:
 					// Aquí cae también el catálogo sin receta renovable: la
 					// estrategia aborta Initialize a propósito.
 					log.Printf("[%s] no arrancó: %v", username, err)
@@ -207,19 +263,10 @@ func main() {
 			select {
 			case <-e.Bankrupt():
 				e.Stop()
-				quiebraMu.Lock()
-				quebradas++
-				n := quebradas
-				quiebraMu.Unlock()
-				// log.Printf (no logInfo) para que la baja se vea también en -quiet.
-				log.Printf("[%s] quiebra confirmada por el servidor: central retirada (%d/%d)", username, n, scale)
-				if n >= scale {
-					log.Println("Todas las centrales están en quiebra. Terminando.")
-					cancel()
-				}
+				onQuiebra(username)
 			case <-ctx.Done():
 			}
-		}(eng, username, i)
+		}(eng, username, i+1)
 	}
 
 	sigChan := make(chan os.Signal, 1)

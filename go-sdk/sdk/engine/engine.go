@@ -180,6 +180,13 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.Lock()
 		e.running = false
 		e.Unlock()
+		// 403 agent_bankrupt en el login (ADR-026): la cuenta está muerta para
+		// siempre. Se señala como quiebra para que el runner retire al bot en
+		// vez de reintentar el arranque en cada turno de rotación.
+		if errors.Is(err, auth.ErrAgentBankrupt) {
+			e.logger.Warn("login rejected: agent is bankrupt", "username", e.config.Bot.Username)
+			e.markBankrupt()
+		}
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lokiteitor/market-simulator/sdk/auth"
+	"github.com/lokiteitor/market-simulator/sdk/botkit"
 	"github.com/lokiteitor/market-simulator/sdk/engine"
 	"github.com/lokiteitor/market-simulator/sdk/logging"
 	"github.com/lokiteitor/market-simulator/sdk/models"
@@ -22,6 +24,10 @@ import (
 )
 
 var quietMode bool
+
+// defaultBankruptFile: registro en disco de los bots que el servidor confirmó
+// en quiebra (ADR-026). Ver botkit.BankruptStore para el porqué.
+const defaultBankruptFile = "./.bots-v1-bankrupt.list"
 
 func logInfo(format string, v ...interface{}) {
 	if !quietMode {
@@ -67,6 +73,7 @@ func main() {
 	activeDurationFlag := flag.String("active-duration", "", "duration a bot remains active before sleeping (e.g. 10m, 600s)")
 	runnerID := flag.String("runner-id", "default", "unique identifier for this runner/machine to ensure deterministic and unique UUIDs")
 	noPersist := flag.Bool("no-persist", false, "disable disk persistence (sqlite and json) and keep sessions 100% in RAM")
+	bankruptFile := flag.String("bankrupt-file", defaultBankruptFile, "file where confirmed-bankrupt bots are recorded so they are not retried across restarts (ADR-026); \"\" disables it")
 	quiet := flag.Bool("quiet", false, "only print a periodic summary of active bots and warn/error logs, silences individual bot lifecycle logs")
 	flag.Parse()
 
@@ -160,6 +167,35 @@ func main() {
 		}
 	}
 
+	// Bots retirados por quiebra confirmada en corridas anteriores (ADR-026).
+	// Su login devuelve 403 agent_bankrupt para siempre, así que reintentarlos
+	// solo genera ruido y carga: se sacan de la lista antes de crear engines.
+	//
+	// A propósito NO depende de -no-persist: ese flag evita los 10.000 ficheros
+	// de sesión del enjambre, y este es UN fichero de unas pocas líneas. Es
+	// justo en el enjambre (que además pierde las sesiones en cada reinicio)
+	// donde más falta hace. Para desactivarlo: -bankrupt-file "".
+	bankruptPath := *bankruptFile
+	bankruptStore, err := botkit.NewBankruptStore(bankruptPath)
+	if err != nil {
+		log.Printf("Aviso: no se pudo cargar el registro de quebrados (%v). Se arranca con la lista vacía.", err)
+	}
+	if n := bankruptStore.Total(); n > 0 {
+		live := botsToRun[:0]
+		for _, botCfg := range botsToRun {
+			if bankruptStore.Has(botCfg.Username) {
+				continue
+			}
+			live = append(live, botCfg)
+		}
+		omitted := len(botsToRun) - len(live)
+		botsToRun = live
+		log.Printf("Quebrados en corridas anteriores: %d (%s). Omitidos de esta corrida: %d.", n, bankruptPath, omitted)
+	}
+	if len(botsToRun) == 0 {
+		log.Fatalf("Todos los bots están en quiebra (%s). Usa otro -runner-id o borra ese fichero si has reseteado la base de datos.", bankruptPath)
+	}
+
 	log.Printf("Starting simulation with %d registered bots...", len(botsToRun))
 
 	// Determine maxActive and activeDuration
@@ -203,7 +239,7 @@ func main() {
 			cancel()
 		}()
 
-		runWithRotation(ctx, botsToRun, globalCfg, maxActive, activeDuration)
+		runWithRotation(ctx, botsToRun, globalCfg, maxActive, activeDuration, bankruptStore)
 		log.Println("Rotation simulation finished. Exit.")
 		return
 	}
@@ -214,7 +250,8 @@ func main() {
 	var enginesMu sync.Mutex
 
 	// Bots retirados por quiebra confirmada (ADR-026). No se reintentan: el
-	// login de un quebrado devuelve 403 agent_bankrupt.
+	// login de un quebrado devuelve 403 agent_bankrupt. La baja se persiste
+	// para que el próximo arranque tampoco los intente.
 	var bankruptMu sync.Mutex
 	var bankruptCount int
 
@@ -229,6 +266,10 @@ func main() {
 		bankruptCount++
 		n := bankruptCount
 		bankruptMu.Unlock()
+
+		if _, err := bankruptStore.Add(username); err != nil {
+			log.Printf("[%s] No se pudo persistir la quiebra: %v", username, err)
+		}
 
 		// log.Printf (no logInfo) para que la baja se vea también en -quiet.
 		log.Printf("[%s] Quiebra confirmada por el servidor: bot retirado (%d/%d)", username, n, total)
@@ -288,9 +329,13 @@ func main() {
 			logInfo("[%s] Launching bot (%d/%d)...", username, botIdx+1, len(botsToRun))
 			if err := e.Start(ctx); err != nil {
 				// El shutdown puede cancelar el contexto con el arranque en vuelo.
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				switch {
+				case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 					logInfo("[%s] Start aborted by shutdown", username)
-				} else {
+				case errors.Is(err, auth.ErrAgentBankrupt):
+					// El login lo rechazó por quiebra: es una baja, no un fallo.
+					onBankrupt(username)
+				default:
 					log.Printf("[%s] Bot failed to start: %v", username, err)
 				}
 				return
@@ -390,6 +435,7 @@ func runWithRotation(
 	globalCfg GlobalConfig,
 	maxActive int,
 	activeDuration time.Duration,
+	bankruptStore *botkit.BankruptStore,
 ) {
 	totalBots := len(bots)
 	log.Printf("Starting rotation: total bots = %d, max active = %d, active duration = %v", totalBots, maxActive, activeDuration)
@@ -404,26 +450,30 @@ func runWithRotation(
 	var wg sync.WaitGroup
 
 	// Bots retirados por quiebra (ADR-026): salen de la rotación para siempre,
-	// porque el login de un quebrado devuelve 403 agent_bankrupt.
-	bankruptBots := make(map[string]struct{})
+	// porque el login de un quebrado devuelve 403 agent_bankrupt. El store lo
+	// persiste en disco, así que "para siempre" sobrevive al reinicio del
+	// runner (los ya quebrados ni siquiera llegaron a esta lista: main los
+	// filtró antes de crear engines).
+	//
+	// Los contadores son de ESTA corrida (el store acumula también las
+	// anteriores), para que el "n/totalBots" de los logs siga cuadrando.
 	var bankruptMu sync.Mutex
+	bankruptRun := 0
 
-	isBankrupt := func(username string) bool {
-		bankruptMu.Lock()
-		defer bankruptMu.Unlock()
-		_, ok := bankruptBots[username]
-		return ok
-	}
+	isBankrupt := bankruptStore.Has
 	markBankrupt := func(username string) int {
+		if _, err := bankruptStore.Add(username); err != nil {
+			log.Printf("[%s] No se pudo persistir la quiebra: %v", username, err)
+		}
 		bankruptMu.Lock()
 		defer bankruptMu.Unlock()
-		bankruptBots[username] = struct{}{}
-		return len(bankruptBots)
+		bankruptRun++
+		return bankruptRun
 	}
 	bankruptTotal := func() int {
 		bankruptMu.Lock()
 		defer bankruptMu.Unlock()
-		return len(bankruptBots)
+		return bankruptRun
 	}
 
 	if quietMode {
@@ -482,9 +532,17 @@ func runWithRotation(
 		if err := eng.Start(botCtx); err != nil {
 			// El fin del turno o el shutdown pueden cancelar el contexto
 			// con el arranque (auth/catálogo/snapshot) en vuelo.
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			switch {
+			case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 				logInfo("[%s] Start aborted by shutdown or end of active period", botCfg.Username)
-			} else {
+			case errors.Is(err, auth.ErrAgentBankrupt):
+				// El servidor lo quebró mientras dormía entre turnos (la
+				// expiración de una orden o el fin de un proceso disparan
+				// checkAndApply sin el bot conectado): es una baja, no un
+				// fallo de arranque. Sale de la rotación para siempre.
+				n := markBankrupt(botCfg.Username)
+				log.Printf("[%s] Quiebra confirmada en el login: fuera de la rotación (%d/%d)", botCfg.Username, n, totalBots)
+			default:
 				log.Printf("[%s] Failed to start: %v", botCfg.Username, err)
 			}
 			return
