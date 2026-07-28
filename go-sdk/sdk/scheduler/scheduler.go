@@ -41,6 +41,18 @@ func (s *Scheduler) SchedulePeriodic(interval time.Duration, job Job) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+
+		// Primer disparo inmediato: time.Ticker no emite hasta cumplir el
+		// primer intervalo completo, y un bot rotativo puede vivir menos que
+		// eso (p.ej. deposit_refresh_seconds > active_duration), con lo que
+		// el job no llegaría a correr nunca en toda la vida del bot.
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+			job(s.ctx)
+		}
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 

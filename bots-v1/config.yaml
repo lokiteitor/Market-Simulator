@@ -32,9 +32,14 @@ deposit_refresh_seconds: 300
 # Configuración de rotación de bots para simular actividad humana:
 # - max_active: cantidad máxima de bots activos concurrentemente (0 para sin límite, ejecuta todos)
 # - active_duration: cuánto tiempo juega cada bot antes de dormir y rotar (ej. "10m", "600s", "1h")
+#   Debe ser >= el TTL máximo de órdenes (600s, botkit.TTLJitter): con turnos más
+#   cortos los bids de insumos expiran mientras el bot duerme su ciclo de rotación
+#   y el enjambre degenera a producir solo las recetas sin insumos (agua).
+#   Alargarla NO sube la concurrencia (la fija max_active); REDUCE los logins/min
+#   (= max_active/active_duration, argon2id cada uno con -no-persist).
 # - scale: cantidad de bots programáticos a generar (0 para usar la lista manual de bots)
 max_active: 500
-active_duration: "1m"
+active_duration: "10m"
 scale: 50000
 
 # Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.

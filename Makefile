@@ -53,12 +53,15 @@ clean-docker:
 
 run-swarm-rpi: build-bots
 	ulimit -n 65535	
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 50000 -jitter 900 -max-active 1500 -active-duration 4m -no-persist -quiet
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 50000 -jitter 900 -max-active 1500 -active-duration 10m -no-persist -quiet
 
 run-swarm-lite: build-bots
 	ulimit -n 65535	
-	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900 -max-active 1500 -active-duration 4m -no-persist -quiet
+	cd bots-v1 && ./bots-v1-runner -config config.yaml -scale 10000 -jitter 900 -max-active 1500 -active-duration 10m -no-persist -quiet
 
+# A propósito NO borra .bots-*-bankrupt.list: la quiebra vive en la DB del
+# servidor (ADR-026, el login rechaza quebrados) y borrar la lista con la DB
+# viva solo quema logins en cuentas irrecuperables. Solo la resetea clean-docker.
 clean-sessions:
 	rm -rf bots-v1/sessions
 	rm -rf bots-hidro/sessions
