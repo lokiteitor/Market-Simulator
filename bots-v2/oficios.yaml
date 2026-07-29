@@ -70,7 +70,7 @@ oficios:
     peso: 45
     max_nivel: 4
     # Absorbe el binario bots-hidro: es la generadora MARGINAL por construcción
-    # (~44 ¢/kWh contra los ~27 de la térmica de carbón), así que apagarla con
+    # (~32 ¢/kWh contra los ~27 de la térmica de carbón), así que apagarla con
     # el criterio genérico —parar si alguien vende bajo coste+margen— la apaga
     # casi siempre. Y cuando los yacimientos de carbón y gas se agoten
     # (ADR-023) es la única generación que queda en pie.

@@ -499,10 +499,10 @@ catálogo.
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
-| `generacion_hidro` | Generación hidroeléctrica | `electricidad` | 30000 | 3600 | 2 | 13200 | 45% | `agua`×60000 |
-| `central_termica_carbon` | Central térmica de carbón | `electricidad` | 60000 | 3600 | 2 | 16200 | 56% | `carbon`×40000, `agua`×10000 |
-| `central_termica_gas` | Central térmica de gas | `electricidad` | 60000 | 3600 | 2 | 18400 | 61% | `gas_natural`×20000, `agua`×10000 |
-| `generacion_nuclear` | Central nuclear | `electricidad` | 60000 | 5400 | 2 | 16880 | 36% | `uranio`×400, `agua`×20000 |
+| `generacion_hidro` | Generación hidroeléctrica | `electricidad` | 15000 | 900 | 2 | 4800 | 63% | `agua`×30000 |
+| `central_termica_carbon` | Central térmica de carbón | `electricidad` | 30000 | 1800 | 2 | 8100 | 56% | `carbon`×20000, `agua`×5000 |
+| `central_termica_gas` | Central térmica de gas | `electricidad` | 30000 | 1800 | 2 | 9200 | 61% | `gas_natural`×10000, `agua`×5000 |
+| `generacion_nuclear` | Central nuclear | `electricidad` | 15000 | 1350 | 2 | 4220 | 36% | `uranio`×100, `agua`×5000 |
 
 ### 5.13 `aserradero` — Aserradero y papelera
 

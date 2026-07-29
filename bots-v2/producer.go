@@ -420,7 +420,7 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			//
 			// El suelo depende del modo de apagado del oficio. Con
 			// `coste_variable` no se le suma el margen: la generadora marginal
-			// (la hidro, ~44 ¢/kWh contra un fair anclado en los ~27 de la
+			// (la hidro, ~32 ¢/kWh contra un fair anclado en los ~27 de la
 			// térmica de carbón) se apagaría casi siempre con el criterio
 			// genérico, y entonces las 95 recetas industriales que consumen
 			// electricidad se quedan sin insumo el día que el carbón se agote.

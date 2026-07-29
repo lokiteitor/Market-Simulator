@@ -12,7 +12,7 @@ recetas industriales y creó el tipo de instalación `generacion` con tres recet
 
 | Receta | Insumos | Coste |
 | ------ | ------- | ----- |
-| `generacion_hidro` | solo `agua` | ~44 ¢/kWh |
+| `generacion_hidro` | solo `agua` | ~32 ¢/kWh |
 | `central_termica_carbon` | `carbon` + `agua` | ~27 ¢/kWh |
 | `central_termica_gas` | `gas_natural` + `agua` | ~31 ¢/kWh |
 

@@ -613,6 +613,7 @@ Aplicados a este sistema en particular:
 | ADR-028 | 2026-07-29 | Aceptado | Cierre de las industrias sin salida: las 30 cadenas que la poda de ADR-027 dejó sin ruta a consumo final se cierran con la **vivienda** como sumidero de la construcción, tres industrias nuevas (`carpinteria`, `carniceria`, `textil`), recategorización de los bienes que ya eran de uso final (aceite, bebidas, gasolina, diésel) y una nuclear para el uranio. Catálogo: 150 productos, 154 recetas, 20 tipos; cero oficios `sin_demanda`. Nuevo test `toda receta llega a consumo final`. |
 | ADR-029 | 2026-07-29 | Aceptado | **Demanda urbana endógena**: la población de las ciudades pasa de constante del seed a variable de estado —todas nacen con `CITY_INITIAL_POPULATION`, crecen absorbiendo `vivienda` (4 hab/unidad) y decaen si no la reponen, con suelo en la inicial—, y lo que compran se **destruye** en un `city-consumption-sweeper` proporcionalmente a su tamaño. Añade `product.urban_role` + `reference_cost_cents`, `agent.population`/`last_consumption_at`/`consumed_pop_seconds`, `GET /agents/me/city-needs` y los eventos `city_consumed` / `city_population_changed`. Matiza ADR-020. |
 | ADR-024 | 2026-07-21 | Aceptado | Fase de energía v1: `electricidad` como producto intermedio consumido por toda la industria (113 recetas), generada por el tipo `generacion` (hidro desde agua + térmicas de carbón/gas finitos). Sin consumo urbano y sin entrar en las extractivas (aciclicidad estricta intacta); se podan los 7 bienes de infraestructura eléctrica del catálogo. Ejecuta la fase pospuesta en ADR-022(c). |
+| ADR-030 | 2026-07-29 | Aceptado | **Reescalado de las 4 recetas de generación**: se dividen insumos, output y duración manteniendo el **coste unitario exacto** (el ancla de la electricidad sigue en 27 ¢/kWh ⇒ cero propagación a las 110 recetas industriales), y se recorta además la duración de la hidro para bajar su prima sobre el ancla del 63% al 18,5%. Motivo: ninguna de las 4 cabía en un turno de rotación de `bots-v2` (720-1080 s reales contra 510 s de ventana útil) y una ejecución de hidro exigía 1,67 lotes enteros del pozo de agua más grande. Recalibra los parámetros de ADR-024(b) y ADR-028(d). |
 
 ### 12.3 Detalle de ADRs clave
 
@@ -789,7 +790,7 @@ Aplicados a este sistema en particular:
 - *Contexto:* ADR-022(c) dejó el combustible y la electricidad fuera del catálogo para no cerrar ciclos en el grafo (un pozo que consumiera diésel impediría el arranque desde inventario cero), con el compromiso de introducirlos después "con una fuente renovable como raíz alternativa". Además, el catálogo vendía la infraestructura eléctrica como bienes de consumo final (`central_electrica`, `panel_solar`, `turbina_eolica`, …): productos que las ciudades compraban pero que no generaban nada, un vestigio de antes de que existiera la economía de instalaciones (ADR-021).
 - *Decisión:*
   (a) **`electricidad` es un producto `intermediate` normal** (kWh; centésimas como todo lo demás): fluye por el libro de órdenes, lotes FIFO y matching sin ningún cambio de motor. Se modela **almacenable** (abstracción red/batería): la alternativa —lotes perecederos— exigiría caducidad de inventario, un sweeper nuevo y valoración temporal en los bots, y el mercado ya castiga el sobrestock vía precio.
-  (b) **Tres recetas de generación bajo el tipo nuevo `generacion`** (mismos parámetros de instalación que `refineria`): `generacion_hidro` (600 L agua → 300 kWh, ~44 ¢/kWh), `central_termica_carbon` (400 kg carbón + 100 L agua → 600 kWh, ~27 ¢/kWh) y `central_termica_gas` (200 m³ gas + 100 L agua → 600 kWh, ~31 ¢/kWh). La renovable prometida es la **hidroeléctrica**, no una solar "de la nada": cuelga del agua y preserva la raíz única de ADR-022. Las térmicas queman recursos **finitos** (ADR-023): al agotarse los yacimientos su coste sube solo y la hidro pasa a marginal — la transición energética emerge del rendimiento decreciente, sin lógica de precios.
+  (b) **Tres recetas de generación bajo el tipo nuevo `generacion`** (mismos parámetros de instalación que `refineria`): `generacion_hidro` (600 L agua → 300 kWh, ~44 ¢/kWh), `central_termica_carbon` (400 kg carbón + 100 L agua → 600 kWh, ~27 ¢/kWh) y `central_termica_gas` (200 m³ gas + 100 L agua → 600 kWh, ~31 ¢/kWh). **Cifras reescaladas por ADR-030** (mitad de escala, coste unitario preservado salvo la hidro, que baja a ~32 ¢/kWh); el orden de mérito y la lógica de esta decisión no cambian. La renovable prometida es la **hidroeléctrica**, no una solar "de la nada": cuelga del agua y preserva la raíz única de ADR-022. Las térmicas queman recursos **finitos** (ADR-023): al agotarse los yacimientos su coste sube solo y la hidro pasa a marginal — la transición energética emerge del rendimiento decreciente, sin lógica de precios.
   (c) **Frontera acíclica estricta (v1).** La electricidad es insumo de las **113 recetas de los 9 tipos industriales** (15-20% del coste de ejecución en metalurgia/materiales/refinería, 8-12% en el resto), pero **no** de las extractivas ni del agua: si la mina de carbón consumiera electricidad y la térmica quemara carbón, ciclo. Por lo mismo la generación no quema diésel (ciclaría con la refinería, que ahora consume electricidad). Permitir electricidad en las extractivas exigiría sustituir el test de aciclicidad por un chequeo de factibilidad AND-OR ("existe un orden de producción desde inventario cero"): esa es la v2, y un test nuevo en `catalog-graph.test.ts` protege la frontera mientras tanto.
   (d) **Sin consumo urbano.** Las ciudades no compran electricidad (habría exigido un producto `final_consumption` aparte, porque un final no puede ser insumo); toda la demanda es industrial.
   (e) **Poda de la infraestructura eléctrica-como-producto:** fuera 7 productos (`central_electrica`, `transformador_electrico`, `generador_industrial`, `panel_solar`, `turbina_eolica` y, en cascada, `turbina` y `transformador`, que se quedaban sin consumidor) con sus 7 recetas. Lo que esos bienes representaban ahora se modela como la instalación `generacion`. Catálogo resultante: **149 productos, 152 recetas, 17 tipos**.
@@ -865,7 +866,7 @@ Aplicados a este sistema en particular:
   (a) **La vivienda es el sumidero de la construcción.** Tipo nuevo `constructora` con una sola receta, `constr_vivienda`, que consume hormigón, ladrillos, madera tratada, ventanas, puertas, tubería de inox y cableado. Es un **bien transportable** que compra la ciudad —no un edificio que se «posee»—, así que no reabre el problema que ADR-027 cerró, y queda como gancho declarado para la futura mecánica de economía urbana. Se retira lo que no entra en una vivienda: el `asfalto` (vial) y su receta; la `piedra` se recoloca como **grava del hormigón**.
   (b) **Tres industrias nuevas para las cadenas huérfanas**: `carpinteria` (mueble, parquet), `carniceria` (despiece de bovino/cerdo/pollo → embutidos, jamón, pollo envasado) y `textil` (que absorbe hilado y tejido de `agroindustria` y añade lana → hilo → ropa y calzado). `textiles` deja de ser consumo final para poder ser la tela.
   (c) **Recategorización de lo que ya era de uso final**: `aceite_vegetal`, `bebidas`, `gasolina` y `diesel` pasan a `final_consumption`. Es gratis en recetas y **blinda la frontera de ADR-024 por construcción**: un final no puede volver a ser insumo, así que ninguna térmica podrá quemar diésel. El `queroseno` se retira (sin aviación civil no tiene destino).
-  (d) **Uranio y plata.** `generacion_nuclear` (uranio + agua → electricidad) amplía la lista blanca de la frontera a `{agua, carbón, gas natural, uranio}`; se calibra en ~28 ¢/kWh, **por encima** de la térmica de carbón (~27), para no hundir el precio base de la electricidad de las 110 recetas industriales. La `plata` entra como contactos en `ensamble_circuito` —revive la minería sin añadir ningún producto final— y estrena `fab_joyeria`. El inoxidable sale por `tuberia_inox` (fontanería de la vivienda), `fab_menaje` y los electrodomésticos.
+  (d) **Uranio y plata.** `generacion_nuclear` (uranio + agua → electricidad) amplía la lista blanca de la frontera a `{agua, carbón, gas natural, uranio}`; se calibra en ~28 ¢/kWh, **por encima** de la térmica de carbón (~27), para no hundir el precio base de la electricidad de las 110 recetas industriales (reescalada a ¼ por ADR-030, mismo coste unitario). La `plata` entra como contactos en `ensamble_circuito` —revive la minería sin añadir ningún producto final— y estrena `fab_joyeria`. El inoxidable sale por `tuberia_inox` (fontanería de la vivienda), `fab_menaje` y los electrodomésticos.
 - *Guardarraíl:* test nuevo **`toda receta llega a consumo final`** en `catalog-graph.test.ts`. Es la contrapartida del test de huérfanos: ese mira hacia atrás (¿alguien lo produce?), este hacia adelante (¿alguien lo compra?). El equivalente vivía solo en `bots-v2/oficios_test.go` y a nivel de *oficio*, así que bastaba con que **una** receta del oficio tuviera demanda para que las demás pasaran desapercibidas.
 - *Consecuencias:*
   - (+) Cero callejones sin salida y **cero oficios `sin_demanda`**: los 11 recuperan peso y aparecen 7 oficios nuevos (63 → 70). Catálogo: **150 productos, 154 recetas, 20 tipos**.
@@ -900,6 +901,53 @@ Aplicados a este sistema en particular:
   - (−) El invariante monetario NO cubre esto (no se toca dinero), así que un error de contabilidad de unidades no lo delata `market_conservation_delta_cents`: la vigilancia recae en `city_consumption_units_total` contra `production_units_total` y en `city_need_unmet_units_total`.
   - (−) Se renombra `population_weight` en el contrato de `/admin/*` y en el frontend, y se destruye inventario **sin trazabilidad por lote**: las tres tablas `*_lot_consumption` exigen FK a trade/proceso/conversión, así que el consumo urbano solo deja el evento agregado `city_consumed`. Es una omisión deliberada: esas unidades salen del sistema y su coste no se necesita aguas abajo.
   - (−) Una ciudad pequeña solo demanda los bienes baratos de la cesta; los caros llegan al ritmo del acumulador (un `automovil` tarda ~1.000 pasadas en pedir su primera centésima con 1000 habitantes). Es la progresión buscada, pero significa que las ramas caras dependen de que las ciudades **crezcan**.
+
+**ADR-030 — Reescalado de las 4 recetas de generación (recalibra ADR-024(b) y ADR-028(d))**
+
+- *Contexto:* la generación eléctrica no arrancaba. El diagnóstico sobre una corrida viva descartó las
+  causas económicas que se sospechaban (el agente con `generacion` tenía 1,2 M ¢ de capital libre y sí
+  había comprado su instalación) y dejó dos defectos de **escala**, no de precio:
+  - **Ninguna de las 4 recetas cabía en un turno de rotación de `bots-v2`.** Con `active_duration: 10m`
+    y los 90 s de guarda de `cerrandoTurno()`, la ventana útil para arrancar es de ~510 s, contra 720 s
+    reales de la hidro y las térmicas (3600 s sim / `SIM_TIME_FACTOR`) y 1080 s de la nuclear. El proceso
+    terminaba siempre con el bot desconectado: sus asks expiraban (TTL 600 s) y el kWh no se listaba
+    hasta el turno siguiente.
+  - **Granularidad del insumo.** Una ejecución de `generacion_hidro` exigía 600 L de agua de golpe, es
+    decir **1,67 lotes enteros** de `pozo_agua_profundo` (360 L). Con `bufferExecs ∈ [3,6]` el arranque
+    pedía 5-10 lotes completos del pozo más grande antes de la primera turbina.
+- *Decisión:* **dividir la escala de las 4 recetas manteniendo el coste unitario exacto** (insumos,
+  output y duración se escalan juntos, así que el cociente no se mueve ni un céntimo), y recortar
+  además la duración de la hidro para estrechar su prima:
+
+  | receta | escala | out (kWh) | dur real | insumo/ejec | ¢/kWh |
+  | --- | --- | --- | --- | --- | --- |
+  | `central_termica_carbon` | ½ | 300 | 360 s | 200 kg carbón + 50 L | **27,00** (ancla) |
+  | `generacion_nuclear` | ¼ | 150 | 270 s | 1 kg uranio + 50 L | **28,13** |
+  | `central_termica_gas` | ½ | 300 | 360 s | 100 m³ gas + 50 L | **30,67** |
+  | `generacion_hidro` | ½ + ½ dur | 150 | 180 s | 300 L agua | **32,00** (era 44,00) |
+
+- *Por qué el coste unitario se preserva a propósito:* `product.reference_cost_cents` es, por
+  construcción de `seed/catalog-costs.ts`, el **mínimo** sobre las recetas que producen el output. El
+  ancla de la `electricidad` la fija la térmica de carbón, así que dejarla en 27,00 exactos significa
+  **cero propagación** a las 110 recetas industriales que consumen electricidad (y a los `prices:`
+  generados de los 4 binarios de bots, que no cambian). La única receta cuyo coste se mueve es la hidro,
+  y puede hacerlo sin ripple precisamente porque no es el mínimo.
+- *Consecuencias (+):* las 4 ejecuciones caben con holgura en un turno de v2, así que el output se lista
+  estando el bot conectado; la hidro necesita 300 L en vez de 600 para arrancar, la mitad de profundidad
+  de libro; el **orden de mérito se conserva intacto** (carbón < nuclear < gas < hidro), que es lo que
+  ADR-024 pedía para que la transición energética emerja del agotamiento de los yacimientos; y la prima
+  de la hidro sobre el ancla baja del 63% al 18,5%, dentro de la banda `[0,4×; 2,5×]` del fair de los
+  bots con margen para que un drift de precio modesto la vuelva rentable.
+- *Consecuencias (−):* para el mismo kWh se arrancan **2-4× más transformaciones** (más `POST
+  /transformations`, más filas en `transformation_process` y más lotes FIFO). La generación es ~7% de la
+  flota, así que el coste marginal es acotado, pero es el precio de la granularidad fina. Y la hidro pasa
+  a ser la receta **más rápida** de la generación (180 s contra 360 de las térmicas), lo cual es apto
+  narrativamente —una central hidro rampa en segundos y una térmica en horas— pero invierte la intuición
+  de "renovable = lenta".
+- *Lo que este ADR NO arregla:* la receta más barata de **cualquier** producto tiene margen exactamente
+  0 contra su coste de referencia, porque el ancla ES su coste. Eso es estructural y común a los 150
+  productos; el mecanismo que lo resuelve es el descubrimiento de precio al alza (el suelo de venta es
+  `coste × (1+minMargin)` y el gate produce igual cuando nadie más tiene ask), no la calibración.
 
 ---
 

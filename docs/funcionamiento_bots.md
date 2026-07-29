@@ -111,7 +111,7 @@ con el tipo `generacion` **entero** —la hidro y las dos térmicas— y las tre
 disputan el nivel de la instalación, que es un presupuesto de concurrencia compartido
 (ADR-021). `prioridadRenovablePrimero` empuja la hidro delante mientras solo hay una línea,
 pero a partir del nivel 2 las líneas nuevas se van a las térmicas: son ~1,6× más baratas por
-kWh (27 y 31 ¢ contra los ~44 de la hidro) y eso es lo racional para un generalista. **La
+kWh (27 y 31 ¢ contra los ~32 de la hidro, ADR-030) y eso es lo racional para un generalista. **La
 capacidad renovable acaba siendo un residuo del arranque, no una decisión.** Importa por
 ADR-023: carbón y gas salen de yacimientos finitos, y el día que se agoten la hidro es la
 única generación que queda en pie — si nadie construyó centrales hidráulicas, las 110 recetas

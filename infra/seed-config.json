@@ -2015,13 +2015,13 @@
       "name": "Generación hidroeléctrica",
       "output": "electricidad",
       "installation_type": "generacion",
-      "output_qty_cent": 30000,
-      "duration_sim_seconds": 3600,
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 900,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
         {
           "product": "agua",
-          "qty_cent": 60000
+          "qty_cent": 30000
         }
       ]
     },
@@ -2030,17 +2030,17 @@
       "name": "Central térmica de carbón",
       "output": "electricidad",
       "installation_type": "generacion",
-      "output_qty_cent": 60000,
-      "duration_sim_seconds": 3600,
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
         {
           "product": "carbon",
-          "qty_cent": 40000
+          "qty_cent": 20000
         },
         {
           "product": "agua",
-          "qty_cent": 10000
+          "qty_cent": 5000
         }
       ]
     },
@@ -2049,17 +2049,17 @@
       "name": "Central térmica de gas",
       "output": "electricidad",
       "installation_type": "generacion",
-      "output_qty_cent": 60000,
-      "duration_sim_seconds": 3600,
+      "output_qty_cent": 30000,
+      "duration_sim_seconds": 1800,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
         {
           "product": "gas_natural",
-          "qty_cent": 20000
+          "qty_cent": 10000
         },
         {
           "product": "agua",
-          "qty_cent": 10000
+          "qty_cent": 5000
         }
       ]
     },
@@ -4210,17 +4210,17 @@
       "name": "Central nuclear",
       "output": "electricidad",
       "installation_type": "generacion",
-      "output_qty_cent": 60000,
-      "duration_sim_seconds": 5400,
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 1350,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
         {
           "product": "uranio",
-          "qty_cent": 400
+          "qty_cent": 100
         },
         {
           "product": "agua",
-          "qty_cent": 20000
+          "qty_cent": 5000
         }
       ]
     },

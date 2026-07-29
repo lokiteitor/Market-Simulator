@@ -23,7 +23,7 @@ import (
 // una; `prioridadRenovablePrimero` empuja la hidro delante, pero en cuanto el
 // bot escala a nivel 2-3 las térmicas ocupan las líneas nuevas, que es lo
 // razonable para un generalista: son más baratas por kWh (27 y 31 ¢ contra los
-// ~44 de la hidro). El resultado es que la capacidad renovable del mundo es un
+// ~32 de la hidro). El resultado es que la capacidad renovable del mundo es un
 // residuo del arranque, no una decisión.
 //
 // Este bot invierte esa relación: el 100% de su nivel es hidro, así que el
@@ -266,7 +266,7 @@ func (v valoracion) costeEjecucion() int64 { return v.inputsCost + v.wage }
 // genera decide si turbinar. Es el punto donde este bot se separa del productor
 // genérico, que para en cuanto alguien vende por debajo de coste+margen.
 //
-// La hidro es la generadora marginal por construcción: cuesta ~44 ¢/kWh contra
+// La hidro es la generadora marginal por construcción: cuesta ~32 ¢/kWh contra
 // los ~27 de la térmica de carbón, así que el criterio genérico la apaga
 // siempre que haya una térmica ofertando —o sea, casi siempre— y el parque
 // renovable no se construye nunca. Aquí el gate se relaja en un solo sentido: si
@@ -569,7 +569,7 @@ func (s *HidroStrategy) venderProduccion(
 // quedó con stock sobrecosteado y prefiere venderlo despacio a descansar en un
 // ask que nadie cruzará. Para esta central esa premisa es falsa. Su coste está
 // por encima del fair de la electricidad SIEMPRE y por construcción —el fair
-// está anclado al coste de la térmica de carbón, ~27 ¢/kWh contra los ~44 de la
+// está anclado al coste de la térmica de carbón, ~27 ¢/kWh contra los ~32 de la
 // hidro—, así que el modo liquidación no sería un episodio: sería vender a
 // pérdida cada tick hasta quebrar.
 //
