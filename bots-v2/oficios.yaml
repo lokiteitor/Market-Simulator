@@ -58,7 +58,7 @@ oficios:
     tipos: [pozo_agua]
     recetas: [pozo_agua_profundo, pozo_somero]
     capa: 0
-    peso: 90 # el agua la consumen 39 recetas y solo estas dos la producen
+    peso: 90 # el agua la consumen 43 recetas y solo estas dos la producen
     max_nivel: 5
 
   - key: hidroelectrico
@@ -277,16 +277,6 @@ oficios:
     # comprador en el catálogo.
     sin_demanda: true
 
-  - key: lubricantes
-    nombre: Lubricantes
-    rol: transformer
-    tipos: [refineria]
-    recetas: [refino_lubricantes, produccion_lubricante_ind]
-    capa: 2
-    peso: 0
-    max_nivel: 2
-    sin_demanda: true # el lubricante industrial no entra en ninguna receta
-
   # === Capa 3: agro, madera y componentes básicos ==========================
   - key: cerealista
     nombre: Cerealista
@@ -310,9 +300,20 @@ oficios:
     nombre: Horticultura
     rol: transformer
     tipos: [campo]
-    recetas: [cultivo_tomate, cosecha_frutas, cosecha_verduras]
+    recetas: [cultivo_tomate, cultivo_lechuga, cultivo_zanahoria, cultivo_cebolla]
     capa: 3
-    peso: 20 # frutas y verduras van directas a las ciudades
+    # Lechuga, zanahoria y cebolla son consumo final: las compran las ciudades
+    # directamente. El tomate no, pero alimenta la salsería y el enlatado.
+    peso: 20
+    max_nivel: 3
+
+  - key: fruticultor
+    nombre: Fruticultura
+    rol: transformer
+    tipos: [campo]
+    recetas: [cultivo_manzana, cultivo_naranja, cultivo_platano]
+    capa: 3
+    peso: 18 # fruta fresca: va directa a las ciudades, sin transformar
     max_nivel: 3
 
   - key: cultivo_industrial
@@ -350,19 +351,6 @@ oficios:
     capa: 3
     peso: 15
     max_nivel: 3
-
-  - key: papelero
-    nombre: Celulosa y papel
-    rol: transformer
-    tipos: [aserradero]
-    recetas: [produccion_celulosa, produccion_papel, produccion_carton]
-    capa: 3
-    peso: 0
-    max_nivel: 2
-    # La rama entera es un callejón sin salida: celulosa→papel→cartón, y el
-    # cartón no lo consume ninguna receta ni es consumo final. El consumo
-    # interno del propio oficio no cuenta como demanda.
-    sin_demanda: true
 
   - key: textil
     nombre: Hilado y textil
@@ -413,7 +401,7 @@ oficios:
     nombre: Carpintería metálica
     rol: transformer
     tipos: [componentes]
-    recetas: [ensamble_puerta, ensamble_ventana, ensamble_panel_pref]
+    recetas: [ensamble_puerta, ensamble_ventana]
     capa: 3
     peso: 12
     max_nivel: 3
@@ -452,7 +440,9 @@ oficios:
     tipos: [agroindustria]
     recetas: [prensado_aceite, salseria, enlatado_conservas]
     capa: 4
-    peso: 12
+    # Dos de sus tres recetas venden a las ciudades (salsa y conservas); solo el
+    # aceite vegetal sigue sin comprador.
+    peso: 16
     max_nivel: 3
 
   - key: optoelectronico
@@ -561,8 +551,12 @@ oficios:
     tipos: [granja]
     recetas: [cria_bovino, cria_cerdos, cria_pollos]
     capa: 5
-    peso: 18
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # Cerdos y pollos no los compra nadie, y el bovino solo lo compra
+    # `procesado_carne` — cuya carne procesada tampoco compra nadie. La cadena
+    # cárnica entera no llega a ningún consumo final.
+    sin_demanda: true
 
   - key: ganadero_lana
     nombre: Ganadería ovina
@@ -615,9 +609,21 @@ oficios:
     nombre: Industria láctea
     rol: transformer
     tipos: [agroindustria]
-    recetas: [planta_lactea, queseria, elab_mantequilla, elab_yogur]
+    recetas: [queseria, elab_mantequilla, elab_yogur]
     capa: 6
     peso: 20
+    max_nivel: 3
+
+  # Se parte en dos oficios porque las seis recetas lácteas no caben en el
+  # presupuesto de concurrencia de una instalación de nivel 3 (ADR-021): un solo
+  # oficio con seis produciría tres al azar y dejaría las otras sin surtir.
+  - key: lacteo_fresco
+    nombre: Lácteos frescos
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [pasteurizado_leche, elab_crema, elab_helado]
+    capa: 6
+    peso: 18
     max_nivel: 3
 
   - key: carnico

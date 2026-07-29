@@ -116,17 +116,35 @@ tipos" (o sea, el comportamiento de v1) y lo avisa por log en cada bot.
 ## Hallazgo del catálogo
 
 Los tests (`oficios_test.go`) comprobaron algo que no es de los bots sino del catálogo:
-**7 oficios no tienen demanda externa ninguna** — nadie compra su producto, ni como
-insumo de otra receta ni como consumo final. Son `refinador_combustibles` (diésel,
-gasolina, queroseno), `lubricantes`, `papelero` (celulosa→papel→cartón, la rama entera),
-`ceramista` (ladrillos, asfalto), `bebidas`, `carnico` y `ganadero_lana`. En total 21 de
-los 149 productos.
+había **30 de las 152 recetas que no llegaban a ningún consumo final** siguiendo el grafo
+hacia adelante. Como las ciudades son la única demanda final y solo compran
+`final_consumption` (ADR-025), esas recetas no se pueden vender.
 
-En algunos casos es deliberado —ADR-022 pospone el combustible en las extractivas para no
-cerrar ciclos en el grafo—, pero en otros parece un hueco del catálogo. Aquí van con
-`sin_demanda: true` y peso 0: reciben solo la cobertura mínima, porque su único destino
-garantizado es la quiebra. El test falla si alguien añade una receta que sí los consuma
-(hay que devolverles el peso) o si un oficio con peso se queda sin demanda.
+El test es **transitivo** a propósito: preguntar solo "¿lo compra alguien?" da falsos
+vivos (al ganado bovino lo compra `procesado_carne`, cuya carne procesada no compra nadie).
+
+**Poda aplicada** (v3.2 del catálogo). Se eliminaron las ramas de lubricantes y de
+celulosa→papel→cartón, y los tres genéricos sin salida (`frutas`, `verduras`, `lacteos`)
+se desglosaron en productos concretos de consumo final: manzana, naranja, plátano,
+lechuga, zanahoria, cebolla, leche pasteurizada, crema y helado. `conservas` pasó a
+consumo final y su receta ahora enlata tomate y sal. Quedan **20 recetas muertas** y
+**6 oficios** marcados `sin_demanda: true` con peso 0 —reciben solo la cobertura mínima,
+porque su único destino garantizado es la quiebra—:
+
+| Oficio                   | Recetas                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `refinador_combustibles` | `refino_diesel`, `refino_gasolina`, `refino_queroseno` |
+| `ceramista`              | `coccion_ladrillos`, `produccion_asfalto`              |
+| `ganadero_carne`         | `cria_bovino`, `cria_cerdos`, `cria_pollos`            |
+| `carnico`                | `procesado_carne`                                      |
+| `bebidas`                | `embotellado_bebidas`                                  |
+| `ganadero_lana`          | `esquila`                                              |
+
+El resto son recetas muertas dentro de oficios vivos (`fundicion_inox`, `mineria_uranio`,
+`mineria_plata`, `mineria_niquel`, `cultivo_cafe`, `produccion_resinas`, `prensado_aceite`,
+`cantera_piedra`, `extraccion_arcilla`): el oficio se sostiene con sus otras recetas y el
+orden por margen las deja al final. Los combustibles son deliberados — ADR-022 pospone el
+combustible en las extractivas para no cerrar ciclos en el grafo.
 
 ## Archivos
 

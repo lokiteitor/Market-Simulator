@@ -114,7 +114,7 @@ pero a partir del nivel 2 las líneas nuevas se van a las térmicas: son ~1,6× 
 kWh (27 y 31 ¢ contra los ~44 de la hidro) y eso es lo racional para un generalista. **La
 capacidad renovable acaba siendo un residuo del arranque, no una decisión.** Importa por
 ADR-023: carbón y gas salen de yacimientos finitos, y el día que se agoten la hidro es la
-única generación que queda en pie — si nadie construyó centrales hidráulicas, las 113 recetas
+única generación que queda en pie — si nadie construyó centrales hidráulicas, las 109 recetas
 industriales que consumen electricidad se paran de golpe.
 
 Las tres diferencias de comportamiento frente al `producer.go` genérico:
@@ -488,7 +488,7 @@ la cadena entera sin que ningún bot intente abarcar los 152 procesos.
 | Estrategia | Tipos | Por qué |
 |------------|-------|---------|
 | `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 36 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
-| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 113 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. **Prioriza la hidro** (ver abajo). |
+| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 109 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. **Prioriza la hidro** (ver abajo). |
 | `farmer` | `campo`, `granja`, `bosque` | Cultivo, ganadería y tala; consumen agua, semillas, fertilizante y piensos. |
 | `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
 | `transformer` | los 9 industriales | De la agroindustria a la constructora. |
@@ -750,16 +750,28 @@ misma economía sin robarle las cuentas, que es la forma de comparar las dos flo
 que no conviene es lanzarlo junto a `bots-hidro`, porque el oficio `hidroelectrico` ya
 cubre ese papel.
 
-### 11.5 Hallazgo: productos sin ningún comprador
+### 11.5 Hallazgo: recetas que no llegan a ningún consumo final
 
-Los tests de cobertura destaparon que **21 de los 149 productos no los compra nadie** —ni
-son insumo de otra receta ni son `final_consumption`—, y agrupan 7 oficios enteros:
-`refinador_combustibles` (diésel, gasolina, queroseno), `lubricantes`, `papelero`
-(celulosa→papel→cartón, la rama completa), `ceramista` (ladrillos, asfalto), `bebidas`,
-`carnico` y `ganadero_lana`.
+Los tests de cobertura destaparon que **30 de las 152 recetas no llegaban a ningún consumo
+final** siguiendo el grafo hacia adelante. Como las ciudades son la única demanda final y
+solo compran `final_consumption` (ADR-025), no hay forma de venderlas.
 
-Parte es deliberado —ADR-022 pospone el combustible en las extractivas para no cerrar
-ciclos en el grafo—, pero el resto parece un hueco del catálogo, no de los bots. En
-`oficios.yaml` van marcados `sin_demanda: true` con peso 0 (reciben solo la cobertura
-mínima: su único destino garantizado es la quiebra) y un test falla si la afirmación deja
-de ser cierta en cualquiera de los dos sentidos.
+El test es **transitivo** a propósito. Preguntar solo "¿lo compra alguien?" da falsos
+vivos: al ganado bovino lo compra `procesado_carne`, así que parecía tener demanda, pero
+la carne procesada no la compra nadie y la cadena cárnica entera solo puede quemar capital.
+
+**Poda aplicada** (catálogo v3.2). Se eliminaron las ramas de lubricantes
+(`refino_lubricantes`, `produccion_lubricante_ind`) y de papel (`produccion_celulosa`,
+`produccion_papel`, `produccion_carton`), más `ensamble_panel_pref`; y los tres genéricos
+sin salida —`frutas`, `verduras` y `lacteos`— se desglosaron en nueve productos concretos
+de consumo final (manzana, naranja, plátano, lechuga, zanahoria, cebolla, leche
+pasteurizada, crema y helado). `conservas` pasó a consumo final y su receta ahora enlata
+tomate y sal. El catálogo mantiene 152 recetas y 149 productos, y el consumo final sube de
+38 a 48 productos.
+
+Quedan **20 recetas muertas** y **6 oficios** marcados `sin_demanda: true` con peso 0
+—`refinador_combustibles`, `ceramista`, `ganadero_carne`, `carnico`, `bebidas` y
+`ganadero_lana`—, que reciben solo la cobertura mínima. Los combustibles son deliberados
+(ADR-022 pospone el combustible en las extractivas para no cerrar ciclos en el grafo); el
+resto sigue siendo un hueco del catálogo, no de los bots. El test falla si la marca deja de
+ser cierta en cualquiera de los dos sentidos.

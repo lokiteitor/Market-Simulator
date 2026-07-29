@@ -115,24 +115,48 @@ func TestOficiosDeclaranElTipoDeSusRecetas(t *testing.T) {
 	}
 }
 
-// Un oficio marcado `sin_demanda` afirma algo comprobable: que NADIE DE FUERA
-// compraría nunca nada de lo que produce.
+// productosUtiles: los que llegan a ALGÚN consumo final, siguiendo el grafo
+// hacia adelante. Un producto es útil si es `final_consumption` o si es insumo
+// de una receta cuyo output es útil.
 //
-// "De fuera" es la parte importante. Un oficio puede consumir sus propios
-// productos intermedios —el papelero hace celulosa para hacer papel y papel
-// para hacer cartón— y eso NO es demanda: si el último eslabón de esa cadena no
-// lo compra nadie, el oficio entero solo puede quemar capital. Contar el consumo
-// interno como demanda dejaba pasar exactamente ese caso.
+// La transitividad es el punto. Preguntar solo "¿lo compra alguien?" da falsos
+// vivos: el ganado bovino lo compra `procesado_carne`, así que parece tener
+// demanda — pero la carne procesada no la compra nadie, con lo que la cadena
+// entera solo puede quemar capital. Las ciudades son la ÚNICA demanda final
+// (ADR-025) y solo compran `final_consumption`, así que llegar hasta ahí es
+// literalmente la definición de "esto se puede vender".
+func productosUtiles(seed seedConfig) map[string]bool {
+	util := make(map[string]bool)
+	for _, p := range seed.Products {
+		if p.Category == "final_consumption" {
+			util[p.Key] = true
+		}
+	}
+	for cambio := true; cambio; {
+		cambio = false
+		for _, r := range seed.Recipes {
+			if !util[r.Output] {
+				continue
+			}
+			for _, in := range r.Inputs {
+				if !util[in.Product] {
+					util[in.Product] = true
+					cambio = true
+				}
+			}
+		}
+	}
+	return util
+}
+
+// Un oficio marcado `sin_demanda` afirma algo comprobable: que NINGUNO de sus
+// outputs llega jamás a un consumo final, ni directamente ni a través de otras
+// recetas. Si es cierto, el oficio solo puede quemar capital hasta quebrar.
 func TestSinDemandaEsCierto(t *testing.T) {
 	seed := cargarSeed(t)
 	cat := cargarCatalogo(t)
 
-	final := make(map[string]bool)
-	for _, p := range seed.Products {
-		if p.Category == "final_consumption" {
-			final[p.Key] = true
-		}
-	}
+	util := productosUtiles(seed)
 	outputDe := make(map[string]string, len(seed.Recipes))
 	for _, r := range seed.Recipes {
 		outputDe[r.Key] = r.Output
@@ -142,25 +166,9 @@ func TestSinDemandaEsCierto(t *testing.T) {
 		if len(of.Recetas) == 0 {
 			continue
 		}
-		propias := make(map[string]bool, len(of.Recetas))
-		for _, rk := range of.Recetas {
-			propias[rk] = true
-		}
-		// Lo que consumen las recetas de OTROS oficios.
-		consumidoFuera := make(map[string]bool)
-		for _, r := range seed.Recipes {
-			if propias[r.Key] {
-				continue
-			}
-			for _, in := range r.Inputs {
-				consumidoFuera[in.Product] = true
-			}
-		}
-
 		algunoConDemanda := false
 		for _, rk := range of.Recetas {
-			out := outputDe[rk]
-			if consumidoFuera[out] || final[out] {
+			if util[outputDe[rk]] {
 				algunoConDemanda = true
 				break
 			}

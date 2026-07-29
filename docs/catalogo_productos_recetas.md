@@ -2,7 +2,7 @@
 
 > **Proyecto:** Market-Simulator (Simulación de Mercado)
 >
-> **Versión:** 3.1 — fase de energía v1 (149 productos / 152 recetas)
+> **Versión:** 3.2 — poda de ramas sin demanda (149 productos / 152 recetas)
 >
 > **Estado:** Referencia canónica del catálogo **actual** de
 > `infra/seed-config.json` + reglas para ampliarlo.
@@ -13,6 +13,9 @@
 > dejó de crear bienes de la nada y ahora consume agua, semillas, fertilizante y
 > piensos como todo el mundo. La v3.1 (ADR-024) introdujo la `electricidad` como
 > insumo de toda la industria y podó la infraestructura eléctrica-como-producto.
+> La v3.2 podó las ramas que no llegaban a ningún consumo final (lubricantes y
+> celulosa→papel→cartón) y desglosó tres genéricos sin salida (`frutas`,
+> `verduras`, `lacteos`) en productos concretos que las ciudades sí compran.
 > Las tablas §3-§5 se generan del `seed-config.json`
 > real con `backend/src/scripts/generate-catalog-artifacts.ts`.
 
@@ -20,7 +23,7 @@
 
 ## 1. Resumen del catálogo actual
 
-- **149 productos**: 34 `raw_primary`, 77 `intermediate`, 38 `final_consumption`.
+- **149 productos**: 32 `raw_primary`, 69 `intermediate`, 48 `final_consumption`.
 - **152 recetas**; todo producto tiene al menos una receta que lo produce; solo
   el `agua` tiene dos (pozo profundo y pozo somero) y la `electricidad` tres
   (hidro y térmicas de carbón y gas, ADR-024).
@@ -42,7 +45,7 @@ catálogo:
   electricidad → industria.
 - **La electricidad (ADR-024) solo fluye hacia la industria**: la generan el
   tipo `generacion` (hidro desde agua; térmicas de carbón y gas, ambos finitos)
-  y la consumen las 113 recetas industriales al 8-20% de su coste. **No** entra
+  y la consumen las 109 recetas industriales al 8-20% de su coste. **No** entra
   en las extractivas ni la generación quema derivados (diésel): cerraría ciclos.
   Las ciudades tampoco la compran (es `intermediate`, no `final_consumption`).
 - **Los pozos de petróleo y gas no pueden consumir derivados del petróleo**: se
@@ -137,21 +140,21 @@ Los 17 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022)
 
 | key | Nombre | Recetas | Precio base (¢) | Growth (bps) | Nivel máx |
 | --- | ------ | ------- | --------------- | ------------ | --------- |
-| `campo` | Campo agrícola | 11 | 15000 | 17000 | 10 |
+| `campo` | Campo agrícola | 15 | 15000 | 17000 | 10 |
 | `granja` | Granja ganadera | 5 | 18000 | 17000 | 10 |
 | `mina` | Mina | 10 | 30000 | 17000 | 10 |
 | `cantera` | Cantera | 5 | 15000 | 17000 | 10 |
 | `pozo` | Pozo de extracción | 2 | 30000 | 17000 | 10 |
 | `bosque` | Bosque maderero | 1 | 15000 | 17000 | 10 |
 | `pozo_agua` | Pozo de agua | 2 | 12000 | 17000 | 10 |
-| `agroindustria` | Agroindustria alimentaria | 18 | 40000 | 17000 | 10 |
+| `agroindustria` | Agroindustria alimentaria | 20 | 40000 | 17000 | 10 |
 | `metalurgia` | Industria metalúrgica | 12 | 45000 | 17000 | 10 |
 | `materiales` | Fábrica de materiales de construcción | 7 | 40000 | 17000 | 10 |
-| `refineria` | Refinería petroquímica | 12 | 50000 | 17000 | 10 |
+| `refineria` | Refinería petroquímica | 10 | 50000 | 17000 | 10 |
 | `generacion` | Generación eléctrica | 3 | 50000 | 17000 | 10 |
-| `aserradero` | Aserradero y papelera | 6 | 38000 | 17000 | 10 |
+| `aserradero` | Aserradero y papelera | 3 | 38000 | 17000 | 10 |
 | `electronica` | Planta de electrónica | 8 | 80000 | 17000 | 10 |
-| `componentes` | Fábrica de componentes mecánicos | 20 | 70000 | 17000 | 10 |
+| `componentes` | Fábrica de componentes mecánicos | 19 | 70000 | 17000 | 10 |
 | `ensamblaje` | Planta de ensamblaje final | 16 | 90000 | 17000 | 10 |
 | `construccion` | Constructora de infraestructura | 14 | 90000 | 17000 | 10 |
 
@@ -191,8 +194,6 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `cana_azucar` | Caña de azúcar | kg | 17 | — |
 | `cafe` | Café | kg | 52 | — |
 | `cacao` | Cacao | kg | 52 | — |
-| `frutas` | Frutas | kg | 19 | — |
-| `verduras` | Verduras | kg | 19 | — |
 | `ganado_bovino` | Ganado bovino | unidad | 2056 | — |
 | `cerdos` | Cerdos | unidad | 1028 | — |
 | `pollos` | Pollos | unidad | 103 | — |
@@ -220,18 +221,13 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `productos_quimicos` | Productos químicos | litro | 75 | — |
 | `silicio` | Silicio | kg | 162 | — |
 | `tablas` | Tablas | kg | 64 | — |
-| `celulosa` | Celulosa | kg | 64 | — |
-| `papel` | Papel | kg | 105 | — |
-| `carton` | Cartón | kg | 153 | — |
 | `azucar` | Azúcar | kg | 87 | — |
 | `aceite_vegetal` | Aceite vegetal | litro | 115 | — |
 | `carne_procesada` | Carne procesada | kg | 94 | — |
-| `lacteos` | Lácteos | kg | 102 | — |
 | `gasolina` | Gasolina | litro | 114 | — |
 | `diesel` | Diésel | litro | 114 | — |
 | `electricidad` | Electricidad | kWh | 27 | — |
 | `queroseno` | Queroseno | litro | 142 | — |
-| `lubricantes` | Lubricantes | litro | 189 | — |
 | `viga_acero` | Vigas de acero | kg | 132 | — |
 | `lamina_acero` | Láminas de acero | kg | 132 | — |
 | `tubo_acero` | Tubos de acero | kg | 140 | — |
@@ -245,10 +241,8 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `polimeros` | Polímeros | kg | 174 | — |
 | `resinas` | Resinas | kg | 157 | — |
 | `fibra_sintetica` | Fibra sintética | kg | 180 | — |
-| `lubricante_industrial` | Lubricante industrial | litro | 301 | — |
 | `madera_tratada` | Madera tratada | kg | 123 | — |
 | `contrachapado` | Contrachapado | kg | 131 | — |
-| `conservas` | Conservas | kg | 47 | — |
 | `piensos` | Piensos | kg | 47 | — |
 | `bebidas` | Bebidas | litro | 51 | — |
 | `chasis` | Chasis | unidad | 38514 | — |
@@ -268,7 +262,6 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `pantalla` | Pantallas | unidad | 46352 | — |
 | `ventana` | Ventanas | unidad | 17368 | — |
 | `puerta_industrial` | Puertas industriales | unidad | 14264 | — |
-| `panel_prefabricado` | Panel prefabricado | unidad | 19674 | — |
 | `tuberia` | Tuberías | kg | 242 | — |
 | `asiento` | Asientos | unidad | 25371 | — |
 | `panel_interior` | Paneles interiores | unidad | 19704 | — |
@@ -288,6 +281,7 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `tortilla` | Tortilla | kg | 94 | — |
 | `queso` | Queso fresco | kg | 2365 | — |
 | `salsa` | Salsa de tomate | litro | 111 | — |
+| `conservas` | Conservas | kg | 41 | — |
 | `camion_carga` | Camión de carga | unidad | 669723 | — |
 | `camion_cisterna` | Camión cisterna | unidad | 634291 | — |
 | `camion_refrigerado` | Camión refrigerado | unidad | 636739 | — |
@@ -322,6 +316,15 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `yogur` | Yogur | litro | 100 | — |
 | `chocolate` | Chocolate | kg | 182 | — |
 | `textiles` | Textiles | kg | 118 | — |
+| `manzana` | Manzana | kg | 19 | — |
+| `naranja` | Naranja | kg | 19 | — |
+| `platano` | Plátano | kg | 19 | — |
+| `lechuga` | Lechuga | kg | 19 | — |
+| `zanahoria` | Zanahoria | kg | 19 | — |
+| `cebolla` | Cebolla | kg | 19 | — |
+| `leche_pasteurizada` | Leche pasteurizada | litro | 100 | — |
+| `crema` | Crema | litro | 100 | — |
+| `helado` | Helado | litro | 117 | — |
 
 ## 5. Recetas actuales (agrupadas por tipo de instalación)
 
@@ -343,9 +346,13 @@ catálogo.
 | `cultivo_cana` | Cultivo de caña de azúcar | `cana_azucar` | 60000 | 7200 | 1 | 10390 | 31% | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
 | `cultivo_cafe` | Cultivo de café | `cafe` | 20000 | 7200 | 1 | 10390 | 31% | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
 | `cultivo_cacao` | Cultivo de cacao | `cacao` | 20000 | 7200 | 1 | 10390 | 31% | `agua`×15000, `semillas`×2000, `fertilizantes`×1500 |
-| `cosecha_frutas` | Cosecha de frutas | `frutas` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
-| `cosecha_verduras` | Cosecha de verduras | `verduras` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
 | `vivero_semillas` | Vivero de semillas | `semillas` | 5000 | 900 | 1 | 1300 | 31% | `agua`×4000 |
+| `cultivo_manzana` | Cultivo de manzana | `manzana` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_naranja` | Cultivo de naranja | `naranja` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_platano` | Cultivo de plátano | `platano` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_lechuga` | Cultivo de lechuga | `lechuga` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_zanahoria` | Cultivo de zanahoria | `zanahoria` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
+| `cultivo_cebolla` | Cultivo de cebolla | `cebolla` | 40000 | 5400 | 1 | 7748 | 30% | `agua`×11000, `semillas`×1500, `fertilizantes`×1100 |
 
 ### 5.2 `granja` — Granja ganadera
 
@@ -412,7 +419,6 @@ catálogo.
 | `tortilleria` | Tortillería | `tortilla` | 9500 | 1800 | 2 | 8891 | 60% | `masa`×10000, `electricidad`×3300 |
 | `queseria` | Quesería | `queso` | 1000 | 5400 | 3 | 23649 | 31% | `leche`×10000, `electricidad`×8700 |
 | `salseria` | Salsería | `salsa` | 8000 | 2700 | 2 | 8891 | 39% | `tomate`×10000, `electricidad`×3300 |
-| `planta_lactea` | Planta láctea | `lacteos` | 30000 | 3600 | 2 | 30651 | 77% | `leche`×40000, `electricidad`×11300 |
 | `elab_mantequilla` | Elaboración de mantequilla | `mantequilla` | 8000 | 3600 | 2 | 30651 | 77% | `leche`×40000, `electricidad`×11300 |
 | `elab_yogur` | Elaboración de yogur | `yogur` | 25000 | 3600 | 2 | 24984 | 71% | `leche`×30000, `electricidad`×9200 |
 | `elab_chocolate` | Elaboración de chocolate | `chocolate` | 20000 | 5400 | 3 | 36318 | 55% | `cacao`×15000, `azucar`×10000, `electricidad`×13400 |
@@ -421,9 +427,12 @@ catálogo.
 | `procesado_carne` | Procesado de carne | `carne_procesada` | 25000 | 3600 | 3 | 23402 | 54% | `ganado_bovino`×500, `electricidad`×8600 |
 | `produccion_piensos` | Producción de piensos | `piensos` | 35000 | 3600 | 2 | 16420 | 56% | `maiz`×20000, `soya`×20000, `electricidad`×6000 |
 | `embotellado_bebidas` | Embotellado de bebidas | `bebidas` | 35000 | 3600 | 2 | 17982 | 60% | `agua`×3000, `azucar`×10000, `electricidad`×6600 |
-| `enlatado_conservas` | Enlatado de conservas | `conservas` | 35000 | 3600 | 2 | 16447 | 56% | `frutas`×20000, `verduras`×20000, `electricidad`×6100 |
+| `enlatado_conservas` | Enlatado de conservas de tomate | `conservas` | 35000 | 3600 | 2 | 14437 | 50% | `tomate`×20000, `sal`×3000, `electricidad`×6100 |
 | `hilado_fibra` | Hilado de fibra sintética | `fibra_sintetica` | 16000 | 3600 | 2 | 28862 | 75% | `plastico`×20000, `electricidad`×10600 |
 | `elab_textiles` | Elaboración de textiles | `textiles` | 15000 | 5400 | 2 | 17755 | 39% | `algodon`×20000, `electricidad`×6500 |
+| `pasteurizado_leche` | Pasteurizado de leche | `leche_pasteurizada` | 25000 | 3600 | 2 | 24984 | 71% | `leche`×30000, `electricidad`×9200 |
+| `elab_crema` | Elaboración de crema | `crema` | 25000 | 3600 | 2 | 24984 | 71% | `leche`×30000, `electricidad`×9200 |
+| `elab_helado` | Elaboración de helado | `helado` | 25000 | 3600 | 2 | 29334 | 75% | `leche`×30000, `azucar`×5000, `electricidad`×9200 |
 
 ### 5.9 `metalurgia` — Industria metalúrgica
 
@@ -461,8 +470,6 @@ catálogo.
 | `refino_diesel` | Refino de diésel | `diesel` | 25000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
 | `refino_gasolina` | Refino de gasolina | `gasolina` | 25000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
 | `refino_queroseno` | Refino de queroseno | `queroseno` | 20000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
-| `refino_lubricantes` | Refino de lubricantes | `lubricantes` | 15000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
-| `produccion_lubricante_ind` | Producción de lubricante industrial | `lubricante_industrial` | 18000 | 3600 | 2 | 54126 | 87% | `lubricantes`×20000, `electricidad`×33800 |
 | `sintesis_caucho` | Síntesis de caucho | `caucho_sintetico` | 25000 | 3600 | 2 | 23442 | 69% | `petroleo`×30000, `electricidad`×14600 |
 | `sintesis_plastico` | Síntesis de plástico | `plastico` | 25000 | 3600 | 2 | 23442 | 69% | `petroleo`×30000, `electricidad`×14600 |
 | `sintesis_quimicos` | Síntesis de productos químicos | `productos_quimicos` | 30000 | 3600 | 2 | 22530 | 68% | `petroleo`×25000, `sal`×10000, `electricidad`×14000 |
@@ -486,9 +493,6 @@ catálogo.
 | `aserrado` | Aserradero | `tablas` | 30000 | 3600 | 2 | 19090 | 62% | `troncos`×40000, `electricidad`×7000 |
 | `tratado_madera` | Tratado de madera | `madera_tratada` | 18000 | 3600 | 2 | 22187 | 68% | `tablas`×20000, `electricidad`×8100 |
 | `produccion_contrachapado` | Producción de contrachapado | `contrachapado` | 17000 | 3600 | 2 | 22187 | 68% | `tablas`×20000, `electricidad`×8100 |
-| `produccion_celulosa` | Producción de celulosa | `celulosa` | 30000 | 3600 | 2 | 19090 | 62% | `troncos`×40000, `electricidad`×7000 |
-| `produccion_papel` | Producción de papel | `papel` | 28000 | 3600 | 2 | 29316 | 75% | `celulosa`×30000, `electricidad`×10800 |
-| `produccion_carton` | Producción de cartón | `carton` | 28000 | 3600 | 2 | 42939 | 83% | `papel`×30000, `electricidad`×15700 |
 
 ### 5.14 `electronica` — Planta de electrónica
 
@@ -522,7 +526,6 @@ catálogo.
 | `ensamble_tuberia` | Fabricación de tuberías | `tuberia` | 8000 | 3600 | 2 | 19397 | 63% | `tubo_acero`×6000, `plastico`×2000, `electricidad`×7100 |
 | `ensamble_asiento` | Fabricación de asientos | `asiento` | 100 | 5400 | 3 | 25371 | 36% | `fibra_sintetica`×3000, `acero`×2000, `electricidad`×9300 |
 | `ensamble_panel_int` | Fabricación de paneles interiores | `panel_interior` | 100 | 5400 | 2 | 19704 | 45% | `polimeros`×4000, `electricidad`×7200 |
-| `ensamble_panel_pref` | Fabricación de panel prefabricado | `panel_prefabricado` | 100 | 3600 | 2 | 19674 | 63% | `hormigon`×15000, `viga_acero`×4000, `electricidad`×7200 |
 | `ensamble_puerta` | Fabricación de puertas industriales | `puerta_industrial` | 100 | 3600 | 2 | 14264 | 50% | `acero`×6000, `plastico`×2000, `electricidad`×5200 |
 | `ensamble_ventana` | Fabricación de ventanas | `ventana` | 100 | 3600 | 2 | 17368 | 59% | `cristal_plano`×4000, `perfil_aluminio`×2000, `electricidad`×6400 |
 | `ensamble_aislamiento` | Producción de aislamiento térmico | `aislamiento_termico` | 10000 | 3600 | 2 | 27627 | 74% | `polimeros`×5000, `fibra_sintetica`×5000, `electricidad`×10100 |

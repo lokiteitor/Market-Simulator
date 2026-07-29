@@ -227,18 +227,6 @@
       "category": "raw_primary"
     },
     {
-      "key": "frutas",
-      "name": "Frutas",
-      "unit": "kg",
-      "category": "raw_primary"
-    },
-    {
-      "key": "verduras",
-      "name": "Verduras",
-      "unit": "kg",
-      "category": "raw_primary"
-    },
-    {
       "key": "ganado_bovino",
       "name": "Ganado bovino",
       "unit": "unidad",
@@ -353,24 +341,6 @@
       "category": "intermediate"
     },
     {
-      "key": "celulosa",
-      "name": "Celulosa",
-      "unit": "kg",
-      "category": "intermediate"
-    },
-    {
-      "key": "papel",
-      "name": "Papel",
-      "unit": "kg",
-      "category": "intermediate"
-    },
-    {
-      "key": "carton",
-      "name": "Cartón",
-      "unit": "kg",
-      "category": "intermediate"
-    },
-    {
       "key": "azucar",
       "name": "Azúcar",
       "unit": "kg",
@@ -385,12 +355,6 @@
     {
       "key": "carne_procesada",
       "name": "Carne procesada",
-      "unit": "kg",
-      "category": "intermediate"
-    },
-    {
-      "key": "lacteos",
-      "name": "Lácteos",
       "unit": "kg",
       "category": "intermediate"
     },
@@ -415,12 +379,6 @@
     {
       "key": "queroseno",
       "name": "Queroseno",
-      "unit": "litro",
-      "category": "intermediate"
-    },
-    {
-      "key": "lubricantes",
-      "name": "Lubricantes",
       "unit": "litro",
       "category": "intermediate"
     },
@@ -503,12 +461,6 @@
       "category": "intermediate"
     },
     {
-      "key": "lubricante_industrial",
-      "name": "Lubricante industrial",
-      "unit": "litro",
-      "category": "intermediate"
-    },
-    {
       "key": "madera_tratada",
       "name": "Madera tratada",
       "unit": "kg",
@@ -524,7 +476,7 @@
       "key": "conservas",
       "name": "Conservas",
       "unit": "kg",
-      "category": "intermediate"
+      "category": "final_consumption"
     },
     {
       "key": "piensos",
@@ -637,12 +589,6 @@
     {
       "key": "puerta_industrial",
       "name": "Puertas industriales",
-      "unit": "unidad",
-      "category": "intermediate"
-    },
-    {
-      "key": "panel_prefabricado",
-      "name": "Panel prefabricado",
       "unit": "unidad",
       "category": "intermediate"
     },
@@ -908,6 +854,60 @@
       "key": "textiles",
       "name": "Textiles",
       "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "manzana",
+      "name": "Manzana",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "naranja",
+      "name": "Naranja",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "platano",
+      "name": "Plátano",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "lechuga",
+      "name": "Lechuga",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "zanahoria",
+      "name": "Zanahoria",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "cebolla",
+      "name": "Cebolla",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "leche_pasteurizada",
+      "name": "Leche pasteurizada",
+      "unit": "litro",
+      "category": "final_consumption"
+    },
+    {
+      "key": "crema",
+      "name": "Crema",
+      "unit": "litro",
+      "category": "final_consumption"
+    },
+    {
+      "key": "helado",
+      "name": "Helado",
+      "unit": "litro",
       "category": "final_consumption"
     }
   ],
@@ -1539,52 +1539,6 @@
       ]
     },
     {
-      "key": "cosecha_frutas",
-      "name": "Cosecha de frutas",
-      "output": "frutas",
-      "installation_type": "campo",
-      "output_qty_cent": 40000,
-      "duration_sim_seconds": 5400,
-      "wage_rate_cents_per_sec": 1,
-      "inputs": [
-        {
-          "product": "agua",
-          "qty_cent": 11000
-        },
-        {
-          "product": "semillas",
-          "qty_cent": 1500
-        },
-        {
-          "product": "fertilizantes",
-          "qty_cent": 1100
-        }
-      ]
-    },
-    {
-      "key": "cosecha_verduras",
-      "name": "Cosecha de verduras",
-      "output": "verduras",
-      "installation_type": "campo",
-      "output_qty_cent": 40000,
-      "duration_sim_seconds": 5400,
-      "wage_rate_cents_per_sec": 1,
-      "inputs": [
-        {
-          "product": "agua",
-          "qty_cent": 11000
-        },
-        {
-          "product": "semillas",
-          "qty_cent": 1500
-        },
-        {
-          "product": "fertilizantes",
-          "qty_cent": 1100
-        }
-      ]
-    },
-    {
       "key": "cria_bovino",
       "name": "Cría de ganado bovino",
       "output": "ganado_bovino",
@@ -1974,63 +1928,6 @@
       ]
     },
     {
-      "key": "produccion_celulosa",
-      "name": "Producción de celulosa",
-      "output": "celulosa",
-      "installation_type": "aserradero",
-      "output_qty_cent": 30000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "troncos",
-          "qty_cent": 40000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 7000
-        }
-      ]
-    },
-    {
-      "key": "produccion_papel",
-      "name": "Producción de papel",
-      "output": "papel",
-      "installation_type": "aserradero",
-      "output_qty_cent": 28000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "celulosa",
-          "qty_cent": 30000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 10800
-        }
-      ]
-    },
-    {
-      "key": "produccion_carton",
-      "name": "Producción de cartón",
-      "output": "carton",
-      "installation_type": "aserradero",
-      "output_qty_cent": 28000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "papel",
-          "qty_cent": 30000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 15700
-        }
-      ]
-    },
-    {
       "key": "refino_azucar",
       "name": "Refino de azúcar",
       "output": "azucar",
@@ -2088,25 +1985,6 @@
       ]
     },
     {
-      "key": "planta_lactea",
-      "name": "Planta láctea",
-      "output": "lacteos",
-      "installation_type": "agroindustria",
-      "output_qty_cent": 30000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "leche",
-          "qty_cent": 40000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 11300
-        }
-      ]
-    },
-    {
       "key": "refino_gasolina",
       "name": "Refino de gasolina",
       "output": "gasolina",
@@ -2150,25 +2028,6 @@
       "output": "queroseno",
       "installation_type": "refineria",
       "output_qty_cent": 20000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "petroleo",
-          "qty_cent": 40000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 17700
-        }
-      ]
-    },
-    {
-      "key": "refino_lubricantes",
-      "name": "Refino de lubricantes",
-      "output": "lubricantes",
-      "installation_type": "refineria",
-      "output_qty_cent": 15000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
@@ -2483,25 +2342,6 @@
       ]
     },
     {
-      "key": "produccion_lubricante_ind",
-      "name": "Producción de lubricante industrial",
-      "output": "lubricante_industrial",
-      "installation_type": "refineria",
-      "output_qty_cent": 18000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "lubricantes",
-          "qty_cent": 20000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 33800
-        }
-      ]
-    },
-    {
       "key": "tratado_madera",
       "name": "Tratado de madera",
       "output": "madera_tratada",
@@ -2541,7 +2381,7 @@
     },
     {
       "key": "enlatado_conservas",
-      "name": "Enlatado de conservas",
+      "name": "Enlatado de conservas de tomate",
       "output": "conservas",
       "installation_type": "agroindustria",
       "output_qty_cent": 35000,
@@ -2549,12 +2389,12 @@
       "wage_rate_cents_per_sec": 2,
       "inputs": [
         {
-          "product": "frutas",
+          "product": "tomate",
           "qty_cent": 20000
         },
         {
-          "product": "verduras",
-          "qty_cent": 20000
+          "product": "sal",
+          "qty_cent": 3000
         },
         {
           "product": "electricidad",
@@ -2992,29 +2832,6 @@
         {
           "product": "electricidad",
           "qty_cent": 5200
-        }
-      ]
-    },
-    {
-      "key": "ensamble_panel_pref",
-      "name": "Fabricación de panel prefabricado",
-      "output": "panel_prefabricado",
-      "installation_type": "componentes",
-      "output_qty_cent": 100,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "hormigon",
-          "qty_cent": 15000
-        },
-        {
-          "product": "viga_acero",
-          "qty_cent": 4000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 7200
         }
       ]
     },
@@ -4289,6 +4106,205 @@
           "qty_cent": 6500
         }
       ]
+    },
+    {
+      "key": "cultivo_manzana",
+      "name": "Cultivo de manzana",
+      "output": "manzana",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "cultivo_naranja",
+      "name": "Cultivo de naranja",
+      "output": "naranja",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "cultivo_platano",
+      "name": "Cultivo de plátano",
+      "output": "platano",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "cultivo_lechuga",
+      "name": "Cultivo de lechuga",
+      "output": "lechuga",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "cultivo_zanahoria",
+      "name": "Cultivo de zanahoria",
+      "output": "zanahoria",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "cultivo_cebolla",
+      "name": "Cultivo de cebolla",
+      "output": "cebolla",
+      "installation_type": "campo",
+      "output_qty_cent": 40000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 1,
+      "inputs": [
+        {
+          "product": "agua",
+          "qty_cent": 11000
+        },
+        {
+          "product": "semillas",
+          "qty_cent": 1500
+        },
+        {
+          "product": "fertilizantes",
+          "qty_cent": 1100
+        }
+      ]
+    },
+    {
+      "key": "pasteurizado_leche",
+      "name": "Pasteurizado de leche",
+      "output": "leche_pasteurizada",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9200
+        }
+      ]
+    },
+    {
+      "key": "elab_crema",
+      "name": "Elaboración de crema",
+      "output": "crema",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 30000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9200
+        }
+      ]
+    },
+    {
+      "key": "elab_helado",
+      "name": "Elaboración de helado",
+      "output": "helado",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 25000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "leche",
+          "qty_cent": 30000
+        },
+        {
+          "product": "azucar",
+          "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9200
+        }
+      ]
     }
   ],
   "installation_types": [
@@ -4309,9 +4325,13 @@
         "cultivo_cana",
         "cultivo_cafe",
         "cultivo_cacao",
-        "cosecha_frutas",
-        "cosecha_verduras",
-        "vivero_semillas"
+        "vivero_semillas",
+        "cultivo_manzana",
+        "cultivo_naranja",
+        "cultivo_platano",
+        "cultivo_lechuga",
+        "cultivo_zanahoria",
+        "cultivo_cebolla"
       ]
     },
     {
@@ -4420,7 +4440,6 @@
         "tortilleria",
         "queseria",
         "salseria",
-        "planta_lactea",
         "elab_mantequilla",
         "elab_yogur",
         "elab_chocolate",
@@ -4431,7 +4450,10 @@
         "embotellado_bebidas",
         "enlatado_conservas",
         "hilado_fibra",
-        "elab_textiles"
+        "elab_textiles",
+        "pasteurizado_leche",
+        "elab_crema",
+        "elab_helado"
       ]
     },
     {
@@ -4487,8 +4509,6 @@
         "refino_diesel",
         "refino_gasolina",
         "refino_queroseno",
-        "refino_lubricantes",
-        "produccion_lubricante_ind",
         "sintesis_caucho",
         "sintesis_plastico",
         "sintesis_quimicos",
@@ -4523,10 +4543,7 @@
       "recipes": [
         "aserrado",
         "tratado_madera",
-        "produccion_contrachapado",
-        "produccion_celulosa",
-        "produccion_papel",
-        "produccion_carton"
+        "produccion_contrachapado"
       ]
     },
     {
@@ -4572,7 +4589,6 @@
         "ensamble_tuberia",
         "ensamble_asiento",
         "ensamble_panel_int",
-        "ensamble_panel_pref",
         "ensamble_puerta",
         "ensamble_ventana",
         "ensamble_aislamiento",

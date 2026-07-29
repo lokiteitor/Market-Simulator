@@ -96,8 +96,6 @@ prices:
   cana_azucar: 17
   cafe: 52
   cacao: 52
-  frutas: 19
-  verduras: 19
   ganado_bovino: 2056
   cerdos: 1028
   pollos: 103
@@ -121,18 +119,13 @@ prices:
   productos_quimicos: 75
   silicio: 162
   tablas: 64
-  celulosa: 64
-  papel: 105
-  carton: 153
   azucar: 87
   aceite_vegetal: 115
   carne_procesada: 94
-  lacteos: 102
   gasolina: 114
   diesel: 114
   electricidad: 27
   queroseno: 142
-  lubricantes: 189
   viga_acero: 132
   lamina_acero: 132
   tubo_acero: 140
@@ -146,10 +139,8 @@ prices:
   polimeros: 174
   resinas: 157
   fibra_sintetica: 180
-  lubricante_industrial: 301
   madera_tratada: 123
   contrachapado: 131
-  conservas: 47
   piensos: 47
   bebidas: 51
   chasis: 38514
@@ -169,7 +160,6 @@ prices:
   pantalla: 46352
   ventana: 17368
   puerta_industrial: 14264
-  panel_prefabricado: 19674
   tuberia: 242
   asiento: 25371
   panel_interior: 19704
@@ -185,6 +175,7 @@ prices:
   tortilla: 94
   queso: 2365
   salsa: 111
+  conservas: 41
   camion_carga: 669723
   camion_cisterna: 634291
   camion_refrigerado: 636739
@@ -219,6 +210,15 @@ prices:
   yogur: 100
   chocolate: 182
   textiles: 118
+  manzana: 19
+  naranja: 19
+  platano: 19
+  lechuga: 19
+  zanahoria: 19
+  cebolla: 19
+  leche_pasteurizada: 100
+  crema: 100
+  helado: 117
 
 # NOTA (ADR-021): los agentes NACEN SIN instalaciones. Cada estrategia compra y
 # mejora instalaciones por TIPO (campo, mina, metalurgia, …) con su capital, y
