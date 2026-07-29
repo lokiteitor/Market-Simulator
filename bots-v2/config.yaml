@@ -38,7 +38,7 @@ deposit_refresh_seconds: 300
 #   Alargarla NO sube la concurrencia (la fija max_active); REDUCE los logins/min
 #   (= max_active/active_duration, argon2id cada uno con -no-persist).
 # - scale: cantidad de bots programáticos a generar (0 para usar la lista manual de bots)
-max_active: 500
+max_active: 1000
 active_duration: "10m"
 scale: 0   # 0 = usar la lista manual `bots:` de abajo; el enjambre se pide con -scale N
 
