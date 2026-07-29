@@ -117,7 +117,7 @@ func main() {
 
 	if scaleVal > 0 {
 		log.Printf("Scale mode active. Generating %d bots programmatically for runner '%s'...", scaleVal, runnerVal)
-		// Especialidades productoras (ADR-022): reparten los 17 tipos de
+		// Especialidades productoras (ADR-022): reparten los 16 tipos de
 		// instalación entre bots. El aguador está primero porque el agua es la
 		// raíz de la cadena: sin él no arranca nada; el energético (ADR-024)
 		// va justo después porque la industria entera consume electricidad.

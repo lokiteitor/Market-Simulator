@@ -422,7 +422,7 @@ func (s *ProducerStrategy) Tick(ctx *strategy.Context) []actions.Action {
 			// `coste_variable` no se le suma el margen: la generadora marginal
 			// (la hidro, ~44 ¢/kWh contra un fair anclado en los ~27 de la
 			// térmica de carbón) se apagaría casi siempre con el criterio
-			// genérico, y entonces las 113 recetas industriales que consumen
+			// genérico, y entonces las 95 recetas industriales que consumen
 			// electricidad se quedan sin insumo el día que el carbón se agote.
 			floor := float64(inputsCost + wage)
 			if s.oficio.Apagado != apagadoCosteVariable {

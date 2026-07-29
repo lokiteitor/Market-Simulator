@@ -66,9 +66,9 @@ graph LR
 | Archivo | Responsabilidad |
 |---------|-----------------|
 | `main.go` | CLI: parsea flags, lee `config.yaml`, genera bots (modo YAML o modo enjambre) y los lanza en goroutines. Cierre limpio en `SIGINT/SIGTERM`. |
-| `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 149 productos** (ancla de todas las heurísticas). |
+| `config.yaml` | Servidor, `sim_time_factor`, parámetros de MarketView y **precios base de los 135 productos** (ancla de todas las heurísticas). |
 | `producer.go` | Estrategia productora ÚNICA: gate de margen, reposición de insumos, compra de instalaciones y venta con suelo de coste. |
-| `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `energetico`, `farmer`, `miner`, `transformer` (los cinco conjuntos particionan los 17 tipos). |
+| `specialties.go` | Reparto del catálogo por TIPO de instalación: `aguador`, `energetico`, `farmer`, `miner`, `transformer` (los cinco conjuntos particionan los 16 tipos). |
 | `trader.go` | Estrategia market maker. |
 | `bank.go` | Cache de la ventanilla del banco (`GET /bank`) y arbitraje de oro (`goldArbActions`). |
 | `botkit_aliases.go` | Shim: re-exporta con los nombres locales los helpers que ahora viven en `go-sdk/sdk/botkit` (ver abajo). Al tocar un helper, editarlo en `botkit`, no aquí. |
@@ -114,7 +114,7 @@ pero a partir del nivel 2 las líneas nuevas se van a las térmicas: son ~1,6× 
 kWh (27 y 31 ¢ contra los ~44 de la hidro) y eso es lo racional para un generalista. **La
 capacidad renovable acaba siendo un residuo del arranque, no una decisión.** Importa por
 ADR-023: carbón y gas salen de yacimientos finitos, y el día que se agoten la hidro es la
-única generación que queda en pie — si nadie construyó centrales hidráulicas, las 109 recetas
+única generación que queda en pie — si nadie construyó centrales hidráulicas, las 95 recetas
 industriales que consumen electricidad se paran de golpe.
 
 Las tres diferencias de comportamiento frente al `producer.go` genérico:
@@ -482,16 +482,16 @@ Estrategia productora única (ADR-022): cubre desde el pozo de agua hasta la con
 
 Con un único rol productivo, lo que reparte el catálogo entre bots ya no es el rol sino el
 **tipo de instalación** que cada uno está dispuesto a comprar. Los cinco conjuntos particionan
-los 17 tipos del seed-config: juntos lo cubren todo y no se solapan, así que el enjambre cubre
-la cadena entera sin que ningún bot intente abarcar los 152 procesos.
+los 16 tipos del seed-config: juntos lo cubren todo y no se solapan, así que el enjambre cubre
+la cadena entera sin que ningún bot intente abarcar los 138 procesos.
 
 | Estrategia | Tipos | Por qué |
 |------------|-------|---------|
-| `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 36 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
-| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 109 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. **Prioriza la hidro** (ver abajo). |
+| `aguador` | `pozo_agua` | El agua es la RAÍZ: la consumen 43 recetas y solo dos la producen. Si nadie bombea, la economía se para en el primer eslabón. Sube hasta `maxDesiredLevel` 5 (el resto, 3). |
+| `energetico` | `generacion` | La electricidad (ADR-024) es insumo de las 95 recetas industriales y solo `generacion` la produce. Mismo razonamiento que el aguador un eslabón más arriba. Sube hasta `maxDesiredLevel` 4. **Prioriza la hidro** (ver abajo). |
 | `farmer` | `campo`, `granja`, `bosque` | Cultivo, ganadería y tala; consumen agua, semillas, fertilizante y piensos. |
 | `miner` | `mina`, `cantera`, `pozo` | Metales, materiales básicos, petróleo y gas; consumen agua. |
-| `transformer` | los 9 industriales | De la agroindustria a la constructora. |
+| `transformer` | los 8 industriales | De la agroindustria al ensamblaje final. |
 
 En modo enjambre el round-robin reparte las seis estrategias a partes iguales, así que ~1/6 de
 la flota se dedica al agua y otro tanto a la generación eléctrica.
@@ -616,7 +616,7 @@ market:                     # parámetros de MarketView
   rest_budget_per_tick: 4
   recent_window_seconds: 600
 
-prices:                     # precio base (centavos/unidad) de los 149 productos
+prices:                     # precio base (centavos/unidad) de los 135 productos
   trigo: 120
   oro: 720
   # ...
@@ -700,8 +700,8 @@ el modelo y se resolvió duplicando un binario.
 
 ### 11.2 El oficio
 
-Un conjunto de **recetas concretas**, escrito a mano en `bots-v2/oficios.yaml` (66
-oficios, 152 recetas, sin solapes) y nombrado por `recipe.key` — la clave estable del
+Un conjunto de **recetas concretas**, escrito a mano en `bots-v2/oficios.yaml` (63
+oficios, 138 recetas, sin solapes) y nombrado por `recipe.key` — la clave estable del
 catálogo que ADR-027 añadió como espejo de `product.key`. Sin ella el cliente no puede
 nombrar una receta (`recipe_id` se regenera en cada seed, `name` es texto de display), y
 por eso `prioridadRenovablePrimero` tenía que distinguir la hidro por la presencia de
@@ -769,9 +769,23 @@ pasteurizada, crema y helado). `conservas` pasó a consumo final y su receta aho
 tomate y sal. El catálogo mantiene 152 recetas y 149 productos, y el consumo final sube de
 38 a 48 productos.
 
-Quedan **20 recetas muertas** y **6 oficios** marcados `sin_demanda: true` con peso 0
-—`refinador_combustibles`, `ceramista`, `ganadero_carne`, `carnico`, `bebidas` y
-`ganadero_lana`—, que reciben solo la cobertura mínima. Los combustibles son deliberados
+**Retirada de la construcción** (catálogo v3.3). Los 14 «productos» del tipo `construccion`
+—plantas industriales, refinerías, astilleros, puertos, edificios, almacenes— eran
+**edificios**, no bienes que se fabriquen, se guarden en un almacén FIFO y se transporten al
+mercado: obligaban a las ciudades a comprar aeropuertos. Se eliminaron junto con sus 14
+recetas `constr_*` y el tipo de instalación entero (17 → 16). El catálogo baja a 138 recetas
+y 135 productos, y el consumo final de 48 a 34.
+
+La poda tiene una cascada, porque la construcción era el único destino de tres ramas: el
+cemento (`caliza` → `cemento` → `hormigon`), la madera (`troncos` → `tablas` →
+`madera_tratada` / `contrachapado`) y la carpintería metálica (`ventana`,
+`puerta_industrial`). Esas recetas **siguen en el catálogo** —se decidió no encadenar la
+poda— y lo que se marcó es el oficio.
+
+Quedan **30 recetas muertas** y **11 oficios** marcados `sin_demanda: true` con peso 0
+—`refinador_combustibles`, `ceramista`, `ganadero_carne`, `carnico`, `bebidas`,
+`ganadero_lana`, y desde v3.3 `cantero`, `maderero`, `cementero`, `aserrador` y
+`cerrajero`—, que reciben solo la cobertura mínima. Los combustibles son deliberados
 (ADR-022 pospone el combustible en las extractivas para no cerrar ciclos en el grafo); el
 resto sigue siendo un hueco del catálogo, no de los bots. El test falla si la marca deja de
 ser cierta en cualquiera de los dos sentidos.

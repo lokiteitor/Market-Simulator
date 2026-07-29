@@ -86,7 +86,7 @@ oficios:
     tipos: [generacion]
     recetas: [central_termica_carbon, central_termica_gas]
     capa: 2
-    peso: 45 # la electricidad es insumo de las 113 recetas industriales
+    peso: 45 # la electricidad es insumo de las 95 recetas industriales
     max_nivel: 4
 
   # === Capa 1: extractivas =================================================
@@ -132,8 +132,11 @@ oficios:
     tipos: [cantera]
     recetas: [cantera_caliza, cantera_piedra]
     capa: 1
-    peso: 20
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # La piedra ya solo iba al asfalto (invendible) y la caliza al cemento, que
+    # se quedó sin salida al retirarse la construcción del catálogo.
+    sin_demanda: true
 
   - key: arenero
     nombre: Extracción de áridos y sal
@@ -168,8 +171,11 @@ oficios:
     tipos: [bosque]
     recetas: [tala]
     capa: 2
-    peso: 15
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # Los troncos solo los serraba el aserradero, y toda la madera transformada
+    # colgaba de la construcción.
+    sin_demanda: true
 
   # === Capa 2: primera transformación ======================================
   - key: siderurgico
@@ -205,8 +211,10 @@ oficios:
     tipos: [materiales]
     recetas: [produccion_cemento, mezcla_hormigon]
     capa: 2
-    peso: 25 # el hormigón lo consumen 10 recetas de construcción
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # El hormigón lo consumían las 10 recetas de construcción y nada más.
+    sin_demanda: true
 
   - key: vidriero
     nombre: Vidrio y cristal
@@ -349,8 +357,10 @@ oficios:
     tipos: [aserradero]
     recetas: [aserrado, tratado_madera, produccion_contrachapado]
     capa: 3
-    peso: 15
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # Madera tratada y contrachapado solo entraban en edificios y naves.
+    sin_demanda: true
 
   - key: textil
     nombre: Hilado y textil
@@ -403,8 +413,10 @@ oficios:
     tipos: [componentes]
     recetas: [ensamble_puerta, ensamble_ventana]
     capa: 3
-    peso: 12
-    max_nivel: 3
+    peso: 0
+    max_nivel: 2
+    # Puertas y ventanas no las montaba nadie salvo la construcción.
+    sin_demanda: true
 
   # === Capa 4: industria intermedia ========================================
   - key: piensos
@@ -499,23 +511,6 @@ oficios:
     peso: 12
     max_nivel: 2
 
-  - key: constructor_industrial
-    nombre: Construcción industrial
-    rol: transformer
-    tipos: [construccion]
-    recetas:
-      [
-        constr_planta_industrial,
-        constr_planta_ensamblaje,
-        constr_planta_quimica,
-        constr_refineria,
-        constr_fabrica_ligera,
-        constr_fabrica_aeronaves,
-      ]
-    capa: 4
-    peso: 15
-    max_nivel: 2
-
   # === Capa 5-6: consumo final e industria pesada ==========================
   - key: panadero
     nombre: Panadería
@@ -584,25 +579,6 @@ oficios:
     recetas: [fab_computadora, fab_telefono, fab_televisor]
     capa: 5
     peso: 18
-    max_nivel: 2
-
-  - key: constructor_civil
-    nombre: Construcción civil
-    rol: transformer
-    tipos: [construccion]
-    recetas: [constr_edificio_res, constr_edificio_com, constr_almacen]
-    capa: 5
-    peso: 18
-    max_nivel: 2
-
-  - key: constructor_transporte
-    nombre: Infraestructura de transporte
-    rol: transformer
-    tipos: [construccion]
-    recetas:
-      [constr_puerto, constr_aeropuerto, constr_estacion, constr_terminal, constr_astillero]
-    capa: 5
-    peso: 12
     max_nivel: 2
 
   - key: lacteo

@@ -8,7 +8,7 @@ import (
 
 // El catálogo de oficios está escrito A MANO, así que lo que impide que se
 // quede atrás cuando alguien toca `infra/seed-config.json` es este test: las
-// 152 recetas tienen que tener oficio, exactamente uno, y del tipo correcto.
+// Las 138 recetas tienen que tener oficio, exactamente uno, y del tipo correcto.
 //
 // Es el mismo papel que `catalog-artifacts.test.ts` hace en el backend con los
 // precios base de los bots.

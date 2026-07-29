@@ -186,16 +186,6 @@ prices:
   barco_carga: 777729
   barco_petrolero: 947568
   avion_carga: 876629
-  planta_industrial: 146075
-  refineria: 735020
-  planta_ensamblaje: 637081
-  astillero: 468498
-  fabrica_aeronaves: 525063
-  planta_quimica: 691231
-  estacion_carga: 89910
-  terminal_ferroviaria: 581674
-  puerto_comercial: 245075
-  aeropuerto_carga: 864346
   automovil: 573644
   refrigerador: 119788
   lavadora: 313152
@@ -204,10 +194,6 @@ prices:
   telefono: 177068
   excavadora: 507955
   grua: 257993
-  edificio_residencial: 204848
-  edificio_comercial: 290549
-  fabrica_urbana_ligera: 327914
-  almacen_logistico: 128976
   mantequilla: 383
   yogur: 100
   chocolate: 182

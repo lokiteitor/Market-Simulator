@@ -2,7 +2,7 @@
 
 > **Proyecto:** Market-Simulator (Simulación de Mercado)
 >
-> **Versión:** 3.2 — poda de ramas sin demanda (149 productos / 152 recetas)
+> **Versión:** 3.3 — retirada de la construcción (135 productos / 138 recetas)
 >
 > **Estado:** Referencia canónica del catálogo **actual** de
 > `infra/seed-config.json` + reglas para ampliarlo.
@@ -16,6 +16,10 @@
 > La v3.2 podó las ramas que no llegaban a ningún consumo final (lubricantes y
 > celulosa→papel→cartón) y desglosó tres genéricos sin salida (`frutas`,
 > `verduras`, `lacteos`) en productos concretos que las ciudades sí compran.
+> La v3.3 retiró la **construcción**: los 14 «productos» del tipo `construccion`
+> (plantas, edificios, puertos, astilleros…) eran edificios, no bienes que se
+> fabrican, se guardan en un almacén FIFO y se transportan al mercado. Con ellos
+> se fue su tipo de instalación entero.
 > Las tablas §3-§5 se generan del `seed-config.json`
 > real con `backend/src/scripts/generate-catalog-artifacts.ts`.
 
@@ -23,18 +27,18 @@
 
 ## 1. Resumen del catálogo actual
 
-- **149 productos**: 32 `raw_primary`, 69 `intermediate`, 48 `final_consumption`.
-- **152 recetas**; todo producto tiene al menos una receta que lo produce; solo
+- **135 productos**: 32 `raw_primary`, 69 `intermediate`, 34 `final_consumption`.
+- **138 recetas**; todo producto tiene al menos una receta que lo produce; solo
   el `agua` tiene dos (pozo profundo y pozo somero) y la `electricidad` tres
   (hidro y térmicas de carbón y gas, ADR-024).
-- **17 tipos de instalación** (ADR-021), todos del rol `transformer`, el único
+- **16 tipos de instalación** (ADR-021), todos del rol `transformer`, el único
   rol productivo (ADR-022).
 
 La cadena es un **grafo conexo y acíclico con una sola raíz**: lo único que nace
 de la nada es el `agua`, que se extrae de pozos. A partir de ahí todo consume
 algo — la minería y las canteras consumen agua, los cultivos agua + semillas +
 fertilizante, la ganadería agua + piensos — y sigue hasta materiales básicos,
-componentes y productos finales (vehículos, edificios, electrónica, alimentos).
+componentes y productos finales (vehículos, electrónica, alimentos, textil).
 
 Consecuencias de tener una sola raíz, que conviene tener presentes al tocar el
 catálogo:
@@ -45,7 +49,7 @@ catálogo:
   electricidad → industria.
 - **La electricidad (ADR-024) solo fluye hacia la industria**: la generan el
   tipo `generacion` (hidro desde agua; térmicas de carbón y gas, ambos finitos)
-  y la consumen las 109 recetas industriales al 8-20% de su coste. **No** entra
+  y la consumen las 95 recetas industriales al 8-20% de su coste. **No** entra
   en las extractivas ni la generación quema derivados (diésel): cerraría ciclos.
   Las ciudades tampoco la compran (es `intermediate`, no `final_consumption`).
 - **Los pozos de petróleo y gas no pueden consumir derivados del petróleo**: se
@@ -97,7 +101,7 @@ El esquema real vive en `specs/schema.sql` (espejo en
 
 1. Una receta produce **exactamente un** producto; los subproductos se modelan
    como recetas paralelas que consumen la misma materia prima (p. ej.
-   `planta_lactea`, `elab_mantequilla` y `elab_yogur` consumen `leche`).
+   `pasteurizado_leche`, `elab_mantequilla` y `elab_yogur` consumen `leche`).
 2. Los insumos no se repiten dentro de una receta.
 3. `qty_cent` está en centésimas de la unidad (`10000` = 100 kg/L; bienes
    discretos en `unidad` con 1 pieza = `100`).
@@ -136,7 +140,7 @@ acreditado al banco central vía `fee_ledger`.
 
 ## 3. Tipos de instalación actuales
 
-Los 17 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022).
+Los 16 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022).
 
 | key | Nombre | Recetas | Precio base (¢) | Growth (bps) | Nivel máx |
 | --- | ------ | ------- | --------------- | ------------ | --------- |
@@ -156,11 +160,10 @@ Los 17 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022)
 | `electronica` | Planta de electrónica | 8 | 80000 | 17000 | 10 |
 | `componentes` | Fábrica de componentes mecánicos | 19 | 70000 | 17000 | 10 |
 | `ensamblaje` | Planta de ensamblaje final | 16 | 90000 | 17000 | 10 |
-| `construccion` | Constructora de infraestructura | 14 | 90000 | 17000 | 10 |
 
 ## 4. Productos actuales
 
-Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, cuyo rendimiento decae al vaciarse). (149 productos, 15 con yacimiento más el oro, que lo recibe del patrón oro.)
+Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, cuyo rendimiento decae al vaciarse). (135 productos, 15 con yacimiento más el oro, que lo recibe del patrón oro.)
 
 ### 4.1 `raw_primary` — Recursos naturales extraídos
 
@@ -290,16 +293,6 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `barco_carga` | Barco de carga | unidad | 777729 | — |
 | `barco_petrolero` | Barco petrolero | unidad | 947568 | — |
 | `avion_carga` | Avión de carga | unidad | 876629 | — |
-| `planta_industrial` | Planta industrial genérica | unidad | 146075 | — |
-| `refineria` | Refinería de petróleo | unidad | 735020 | — |
-| `planta_ensamblaje` | Planta de ensamblaje automotriz | unidad | 637081 | — |
-| `astillero` | Astillero | unidad | 468498 | — |
-| `fabrica_aeronaves` | Fábrica de aeronaves | unidad | 525063 | — |
-| `planta_quimica` | Planta química | unidad | 691231 | — |
-| `estacion_carga` | Estación de carga | unidad | 89910 | — |
-| `terminal_ferroviaria` | Terminal ferroviaria | unidad | 581674 | — |
-| `puerto_comercial` | Puerto comercial | unidad | 245075 | — |
-| `aeropuerto_carga` | Aeropuerto de carga | unidad | 864346 | — |
 | `automovil` | Automóvil | unidad | 573644 | — |
 | `refrigerador` | Refrigerador | unidad | 119788 | — |
 | `lavadora` | Lavadora | unidad | 313152 | — |
@@ -308,10 +301,6 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `telefono` | Teléfono | unidad | 177068 | — |
 | `excavadora` | Excavadora | unidad | 507955 | — |
 | `grua` | Grúa | unidad | 257993 | — |
-| `edificio_residencial` | Edificio residencial | unidad | 204848 | — |
-| `edificio_comercial` | Edificio comercial | unidad | 290549 | — |
-| `fabrica_urbana_ligera` | Fábrica urbana ligera | unidad | 327914 | — |
-| `almacen_logistico` | Almacén logístico | unidad | 128976 | — |
 | `mantequilla` | Mantequilla | kg | 383 | — |
 | `yogur` | Yogur | litro | 100 | — |
 | `chocolate` | Chocolate | kg | 182 | — |
@@ -552,25 +541,6 @@ catálogo.
 | `fab_televisor` | Fabricación de televisor | `televisor` | 100 | 7200 | 3 | 100614 | 79% | `pantalla`×100, `circuito_impreso`×100, `plastico`×2000, `electricidad`×37000 |
 | `fab_vagon` | Fabricación de vagón de carga | `vagon_carga` | 100 | 10800 | 3 | 158880 | 80% | `viga_acero`×15000, `rodamientos`×800, `perfil_metalico`×8000, `electricidad`×58400 |
 
-### 5.17 `construccion` — Constructora de infraestructura
-
-| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
-| ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
-| `constr_aeropuerto` | Construcción de aeropuerto de carga | `aeropuerto_carga` | 100 | 14400 | 3 | 864346 | 95% | `hormigon`×50000, `acero`×30000, `sistema_control`×300, `cableado`×8000, `electricidad`×318000 |
-| `constr_almacen` | Construcción de almacén logístico | `almacen_logistico` | 100 | 14400 | 3 | 128976 | 67% | `hormigon`×40000, `acero`×25000, `cableado`×5000, `puerta_industrial`×200, `electricidad`×47400 |
-| `constr_astillero` | Construcción de astillero | `astillero` | 100 | 18000 | 3 | 468498 | 88% | `acero`×40000, `sistema_hidraulico`×200, `sistema_control`×100, `electricidad`×172400 |
-| `constr_edificio_com` | Construcción de edificio comercial | `edificio_comercial` | 100 | 14400 | 3 | 290549 | 85% | `hormigon`×60000, `acero`×25000, `ventana`×800, `puerta_industrial`×300, `electricidad`×106900 |
-| `constr_edificio_res` | Construcción de edificio residencial | `edificio_residencial` | 100 | 14400 | 3 | 204848 | 79% | `hormigon`×60000, `acero`×20000, `ventana`×500, `cableado`×5000, `madera_tratada`×5000, `electricidad`×75400 |
-| `constr_estacion` | Construcción de estación de carga | `estacion_carga` | 100 | 14400 | 3 | 89910 | 52% | `acero`×20000, `hormigon`×30000, `cableado`×5000, `electricidad`×33000 |
-| `constr_fabrica_aeronaves` | Construcción de fábrica de aeronaves | `fabrica_aeronaves` | 100 | 18000 | 3 | 525063 | 90% | `aluminio`×30000, `microchip`×500, `motor_aeronautico`×100, `rodamientos`×400, `electricidad`×193200 |
-| `constr_fabrica_ligera` | Construcción de fábrica urbana ligera | `fabrica_urbana_ligera` | 100 | 14400 | 3 | 327914 | 87% | `acero`×20000, `hormigon`×30000, `sistema_control`×100, `contrachapado`×3000, `electricidad`×120600 |
-| `constr_planta_ensamblaje` | Construcción de planta de ensamblaje | `planta_ensamblaje` | 100 | 18000 | 3 | 637081 | 92% | `acero`×30000, `sistema_control`×200, `rodamientos`×400, `hormigon`×30000, `electricidad`×234300 |
-| `constr_planta_industrial` | Construcción de planta industrial | `planta_industrial` | 100 | 18000 | 3 | 146075 | 63% | `acero`×30000, `hormigon`×40000, `vidrio`×10000, `rodamientos`×400, `electricidad`×53700 |
-| `constr_planta_quimica` | Construcción de planta química | `planta_quimica` | 100 | 18000 | 3 | 691231 | 92% | `acero`×30000, `tubo_acero`×15000, `bomba_industrial`×300, `sistema_control`×200, `electricidad`×254300 |
-| `constr_puerto` | Construcción de puerto comercial | `puerto_comercial` | 100 | 14400 | 3 | 245075 | 82% | `hormigon`×50000, `acero`×30000, `sistema_hidraulico`×200, `cableado`×8000, `electricidad`×90100 |
-| `constr_refineria` | Construcción de refinería | `refineria` | 100 | 18000 | 3 | 735020 | 93% | `acero`×40000, `tubo_acero`×20000, `sistema_control`×200, `bomba_industrial`×400, `electricidad`×270400 |
-| `constr_terminal` | Construcción de terminal ferroviaria | `terminal_ferroviaria` | 100 | 14400 | 3 | 581674 | 93% | `acero`×25000, `sistema_control`×200, `cableado`×5000, `electricidad`×214000 |
-
 ---
 
 ## 6. Guía de parámetros numéricos (para ampliar el catálogo)
@@ -605,7 +575,7 @@ Rangos observados en el catálogo actual; mantenerlos al añadir recetas.
   para recursos geológicos (`mina`, `cantera`, `pozo`) y con **una sola receta**
   que los produzca — con dos, la conversión de `DEPOSIT_MIN/MAX_EXECUTIONS` a
   centésimas sería ambigua y `parseSeedConfig` lo rechaza. **Nunca** marcar el
-  `agua` (raíz del grafo: la consumen 36 recetas, agotarla apaga la economía) ni
+  `agua` (raíz del grafo: la consumen 43 recetas, agotarla apaga la economía) ni
   el `oro` (su yacimiento sale de `GOLD_DEPOSIT_*`). El conjunto exacto lo fija
   `catalog-graph.test.ts`, para que ampliarlo sea una decisión y no un descuido.
 - **Coherencia económica**: el coste acumulado (insumos + salario) debe crecer a

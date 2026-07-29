@@ -239,7 +239,7 @@ CREATE TABLE installation_type (
 
 - `role` restringe qué rol de agente puede comprar el tipo (`installation_role_mismatch` si no coincide).
 - Precio de subir del nivel `k` al `k+1`: `floor(base_price_cents × (growth_bps/10000)^k)`; tope en `max_level` (`installation_max_level`).
-- El mapeo tipo→recetas vive en el seed y se valida (cobertura total de las 152 recetas, sin solapes).
+- El mapeo tipo→recetas vive en el seed y se valida (cobertura total de las 138 recetas, sin solapes).
 
 ---
 

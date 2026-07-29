@@ -97,7 +97,7 @@ func CargarOficios(path string) (*CatalogoOficios, error) {
 // Validar comprueba lo que se puede comprobar sin catálogo del servidor: keys
 // únicas, recetas no repetidas entre oficios y coherencia de los enums.
 //
-// La cobertura de las 152 recetas NO se valida aquí (el binario no lee
+// La cobertura de las 138 recetas NO se valida aquí (el binario no lee
 // seed-config.json): la vigila `oficios_test.go`, que sí lo hace.
 func (c *CatalogoOficios) Validar() error {
 	if len(c.Oficios) == 0 {
