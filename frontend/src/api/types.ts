@@ -73,6 +73,13 @@ export interface RegisterAgentResponse extends TokenPair {
 
 export type ProductCategory = "raw_primary" | "intermediate" | "final_consumption";
 
+/**
+ * Papel de un producto de consumo final en la economía urbana (ADR-029):
+ * `basket` = las ciudades lo consumen y lo destruyen cada periodo;
+ * `housing` = lo absorben para crecer en población.
+ */
+export type UrbanRole = "basket" | "housing";
+
 export interface Product {
   product_id: string;
   /** Identificador estable del catálogo (ej. `trigo`), constante entre seeds. */
@@ -81,6 +88,13 @@ export interface Product {
   /** Unidad de medida del producto (ej. `kg`, `litro`, `cabezas`). */
   unit: string;
   category: ProductCategory;
+  /**
+   * Coste propagado por el grafo de recetas: referencia de VALOR del producto,
+   * no un precio de mercado (ese sale del libro).
+   */
+  reference_cost_cents: number;
+  /** null en materias primas e intermedios. */
+  urban_role: UrbanRole | null;
   created_at: string;
 }
 
@@ -268,6 +282,12 @@ export interface SelfState {
   agent: AgentPublic;
   capital_available_cents: number;
   capital_reserved_cents: number;
+  /**
+   * Habitantes de la ciudad (ADR-029); null en el resto de roles. Escala tanto
+   * el ingreso recurrente que recibe como las necesidades que el servidor le
+   * consume. No está en `AgentPublic` porque no es información pública.
+   */
+  population: number | null;
   inventory: InventoryPosition[];
   /** Órdenes en estado `active` o `partial`. */
   active_orders: Order[];
@@ -413,7 +433,9 @@ export type EventType =
   | "money_issued"
   | "deposit_depleted"
   | "city_income_distributed"
-  | "installation_purchased";
+  | "installation_purchased"
+  | "city_consumed"
+  | "city_population_changed";
 
 /** Schema `Event` del openapi (renombrado para no chocar con DOM `Event`). */
 export interface EventEntry {
@@ -462,7 +484,11 @@ export type NotificationType =
   /** Personal: compra/mejora de instalación (payload = InstallationStatus + amount_charged_cents). */
   | "installation_purchased"
   /** Broadcast: un yacimiento llegó a 0 (payload = { product_id, qty_initial_cent, process_id }). */
-  | "deposit_depleted";
+  | "deposit_depleted"
+  /** Personal (solo rol city): cesta consumida y DESTRUIDA (payload = { consumed[], unmet[] }). */
+  | "city_consumed"
+  /** Personal (solo rol city): población tras vivienda absorbida y/o decaimiento. */
+  | "city_population_changed";
 
 export interface Notification {
   type: NotificationType;
@@ -506,16 +532,20 @@ export interface AdminAgentItem {
   capital_available_cents: number;
   capital_reserved_cents: number;
   registered_at: string;
-  /** Peso de reparto del ingreso urbano (ADR-020); null en roles no-city. */
-  population_weight: number | null;
+  /**
+   * Habitantes (ADR-029): peso del reparto del ingreso urbano y multiplicador de
+   * las necesidades de consumo. null en roles no-city.
+   */
+  population: number | null;
 }
 
-/** GET /admin/cities — panel de ciudades e ingreso circular (ADR-020/025). */
+/** GET /admin/cities — panel de ciudades e ingreso circular (ADR-020/025/029). */
 export interface AdminCityItem {
   agent_id: string;
   username: string;
   status: AgentStatus;
-  population_weight: number;
+  /** Habitantes: crece absorbiendo vivienda, decae si no la repone (ADR-029). */
+  population: number;
   capital_available_cents: number;
   capital_reserved_cents: number;
 }
@@ -523,7 +553,7 @@ export interface AdminCityItem {
 export interface AdminCities {
   cities: AdminCityItem[];
   city_count: number;
-  total_population_weight: number;
+  total_population: number;
   /** Ingreso aún no repartido (income_ledger sin materializar). */
   pending_income_cents: number;
   pending_income_by_source: {

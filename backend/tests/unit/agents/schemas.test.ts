@@ -85,6 +85,8 @@ describe("Schemas de respuesta (shapes del openapi)", () => {
       agent: agentPublic,
       capital_available_cents: 100000,
       capital_reserved_cents: 0,
+      // null: el snapshot de un `transformer` no lleva población (ADR-029).
+      population: null,
       inventory: [{ product_id: UUID, qty_available_cent: 150, qty_reserved_cent: 0 }],
       active_orders: [
         {

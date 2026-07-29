@@ -226,6 +226,11 @@ const INVALIDATIONS: Record<NotificationType, readonly QueryDomain[]> = {
   // "market" acotado al product_id del payload: el agotamiento cambia la
   // economía del producto (precios/plan de los que lo miran en /market).
   deposit_depleted: ["deposits", "market", "history"],
+  // El consumo urbano DESTRUYE inventario de la ciudad (ADR-029): cambia su
+  // snapshot. No lleva product_id en la raíz del payload (es una lista), así que
+  // no se acota por producto.
+  city_consumed: ["self", "history"],
+  city_population_changed: ["self", "history"],
 };
 
 /** Dominio → queryKey; `deposits` vive bajo el prefijo del catálogo. */

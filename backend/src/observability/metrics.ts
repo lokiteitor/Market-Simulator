@@ -179,3 +179,51 @@ export const cityIncomePayoutsTotal = new Counter({
   help: "Acreditaciones individuales a ciudades hechas por el city-income-sweeper",
   registers: [register],
 });
+
+/**
+ * Unidades destruidas por el consumo urbano (ADR-029), por producto. Es el
+ * CIERRE del balance de la cadena: `production_units_total` de un producto de
+ * consumo final solo cuadra contra la suma de `inputs_consumed_units_total`
+ * (cero para los finales) y este contador. Si crece la producción y esto no, las
+ * ciudades están acumulando en vez de consumir.
+ *
+ * No lleva label de ciudad a propósito: 50 ciudades × 48 productos serían 2.400
+ * series por un desglose que no se usa para decidir nada.
+ */
+export const cityConsumptionUnitsTotal = new Counter({
+  name: "city_consumption_units_total",
+  help: "Unidades destruidas por el consumo urbano, por producto",
+  labelNames: ["product", "product_id"] as const,
+  registers: [register],
+});
+
+/**
+ * Necesidad urbana NO cubierta por falta de stock, por producto (ADR-029). Es el
+ * termómetro de calibración de CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR:
+ * creciendo sin parar ⇒ el presupuesto per cápita excede lo que la economía
+ * produce (o falta oferta de ese eslabón); plano ⇒ calibrado.
+ */
+export const cityNeedUnmetUnitsTotal = new Counter({
+  name: "city_need_unmet_units_total",
+  help: "Unidades de necesidad urbana no cubiertas por falta de stock, por producto",
+  labelNames: ["product", "product_id"] as const,
+  registers: [register],
+});
+
+/** Habitantes ganados por vivienda absorbida (ADR-029). */
+export const cityHabitantsGainedTotal = new Counter({
+  name: "city_habitants_gained_total",
+  help: "Habitantes ganados por las ciudades al absorber vivienda",
+  registers: [register],
+});
+
+/**
+ * Habitantes perdidos por decaimiento (ADR-029). Contra el contador de ganados
+ * da el balance demográfico: si perdidos > ganados de forma sostenida, la
+ * construcción no da abasto y la demanda final se está encogiendo hacia el suelo.
+ */
+export const cityHabitantsLostTotal = new Counter({
+  name: "city_habitants_lost_total",
+  help: "Habitantes perdidos por las ciudades por decaimiento de población",
+  registers: [register],
+});

@@ -116,6 +116,17 @@ export interface InventoryService {
     qtyCent: number,
   ): Promise<LotConsumption[]>;
 
+  /**
+   * Consume HASTA qty del pool disponible en orden FIFO, best-effort: nunca
+   * lanza por insuficiencia (consumo urbano, ADR-029).
+   */
+  consumeAvailableFifoUpTo(
+    tx: Tx,
+    agentId: string,
+    productId: string,
+    qtyCent: number,
+  ): Promise<LotConsumption[]>;
+
   /** Posición agregada por producto del agente. */
   getPositions(
     tx: Tx,

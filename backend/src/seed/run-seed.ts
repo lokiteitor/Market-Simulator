@@ -35,6 +35,7 @@ import { depositRepository } from "../repositories/deposit-repository";
 import { installationRepository } from "../repositories/installation-repository";
 import { inventoryRepository } from "../repositories/inventory-repository";
 import { buildAgentPlan } from "./agent-plan";
+import { catalogCosts } from "./catalog-costs";
 import { parseCitiesConfig } from "./cities";
 import { buildCityPlan } from "./city-plan";
 import { buildDepositPlan } from "./deposit-plan";
@@ -112,13 +113,14 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
   );
 
   // Ciudades-consumidor: lista canónica (fuente única compartida con
-  // bots-ciudad). Capital semilla ∝ population_weight. Credenciales con
-  // CITY_SEED_PASSWORD para que los bots hagan login (login-only).
+  // bots-ciudad). Población y capital semilla IGUALES para todas (ADR-029).
+  // Credenciales con CITY_SEED_PASSWORD para que los bots hagan login (login-only).
   const citiesConfigPath = resolve(process.cwd(), config.cities.configPath);
   const citiesRaw = await readFile(citiesConfigPath, "utf8");
   const citiesCfg = parseCitiesConfig(citiesRaw);
   const cityPlan = buildCityPlan(citiesCfg, {
-    capitalCentsPerWeight: config.cities.seedCapitalCentsPerWeight,
+    initialPopulation: config.cityConsumption.initialPopulation,
+    capitalCents: config.cities.seedCapitalCents,
   });
   const cityPlanWithHashes = await Promise.all(
     cityPlan.map(async (entry) => ({
@@ -134,6 +136,12 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     }
 
     // --- Productos -----------------------------------------------------------
+    // `reference_cost_cents` es el coste propagado por el grafo de recetas: el
+    // MISMO número que los precios base de los bots (de ahí que se calcule con
+    // `catalogCosts`, la función que usa el generador de artefactos). El consumo
+    // urbano lo necesita en la DB para repartir el presupuesto per cápita en
+    // dinero sin leer el seed-config en runtime.
+    const costs = catalogCosts(cfg);
     const productIdByKey = new Map<string, string>();
     for (const p of cfg.products) {
       const { productId } = await catalogRepository.insertProduct(tx, {
@@ -141,6 +149,10 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
         name: p.name,
         unit: p.unit,
         category: p.category,
+        referenceCostCents: costs.unitPriceCents(p.key),
+        // Default implícito: todo consumo final sin marca es cesta (ADR-029).
+        urbanRole:
+          p.category === "final_consumption" ? (p.urban ?? "basket") : null,
       });
       productIdByKey.set(p.key, productId);
     }
@@ -240,9 +252,12 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     }
 
     // --- Ciudades-consumidor (demanda urbana sembrada) -----------------------
-    // Rol `city`: CON credenciales (login de bots-ciudad), capital ∝ población,
-    // sin capacidades. Participan del mercado (SEEDABLE_MARKET_ROLES), así que
-    // su capital cuenta en la masa monetaria inicial que respalda el oro.
+    // Rol `city`: CON credenciales (login de bots-ciudad), sin capacidades, y
+    // todas IDÉNTICAS al nacer (ADR-029): misma población y mismo capital.
+    // Participan del mercado (SEEDABLE_MARKET_ROLES), así que su capital cuenta
+    // en la masa monetaria inicial que respalda el oro.
+    // `lastConsumptionAt = now` para que la primera pasada del sweeper mida un
+    // Δt real y no el hueco desde el epoch.
     let totalCityCapitalCents = 0;
     let citiesSeeded = 0;
     for (const entry of cityPlanWithHashes) {
@@ -250,7 +265,9 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
         username: entry.username,
         role: "city",
         seedCapitalCents: entry.capitalCents,
-        populationWeight: entry.populationWeight,
+        population: entry.population,
+        lastConsumptionAt: new Date(),
+        consumedPopSeconds: 0,
       });
       await authRepository.insertCredentials(tx, {
         agentId,

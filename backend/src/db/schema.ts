@@ -104,7 +104,18 @@ export const eventType = pgEnum("event_type", [
   "deposit_depleted", // un resource_deposit llegó a 0 (yacimiento agotado)
   "city_income_distributed", // el sweeper repartió el income_ledger entre ciudades
   "installation_purchased", // un agente compró o mejoró una instalación
+  "city_consumed", // una ciudad consumió (destruyó) su cesta urbana
+  "city_population_changed", // la población de una ciudad cambió (vivienda / decaimiento)
 ]);
+
+// Papel de un producto en la economía urbana (ADR-029). Solo lo llevan los
+// `final_consumption`; NULL en materias primas e intermedios.
+//   basket  → la cesta que las ciudades consumen y DESTRUYEN cada periodo, en
+//             cantidad proporcional a su población.
+//   housing → bien de inversión: la ciudad lo absorbe (se destruye el lote) y
+//             cada unidad suma CITY_HABITANTS_PER_HOUSING habitantes.
+// Sacarlo a columna evita hardcodear la key 'vivienda' en el dominio.
+export const urbanRole = pgEnum("urban_role", ["basket", "housing"]);
 
 // Dirección de una conversión de ventanilla, desde la perspectiva del agente:
 // buy_gold = compra oro al banco (paga window_ask, el dinero se DESTRUYE);
@@ -118,17 +129,39 @@ export const conversionDirection = pgEnum("conversion_direction", [
 // 1. CATÁLOGO
 // =============================================================================
 
-export const product = pgTable("product", {
-  productId: uuid("product_id").primaryKey().default(sql`uuidv7()`),
-  // Identificador estable del catálogo (seed-config `key`, ej. 'trigo').
-  key: text("key").notNull().unique(),
-  name: text("name").notNull().unique(),
-  unit: text("unit").notNull(),
-  category: productCategory("category").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const product = pgTable(
+  "product",
+  {
+    productId: uuid("product_id").primaryKey().default(sql`uuidv7()`),
+    // Identificador estable del catálogo (seed-config `key`, ej. 'trigo').
+    key: text("key").notNull().unique(),
+    name: text("name").notNull().unique(),
+    unit: text("unit").notNull(),
+    category: productCategory("category").notNull(),
+    // Coste propagado por el grafo de recetas (`catalogCosts`, el mismo número
+    // que los precios base de los bots). NO es un precio de mercado: es la
+    // referencia de valor del consumo urbano (ADR-029), que reparte el
+    // presupuesto per cápita entre la cesta en DINERO y no en unidades, para
+    // que un pan y un automóvil pesen lo mismo en gasto.
+    referenceCostCents: bigint("reference_cost_cents", {
+      mode: "number",
+    }).notNull(),
+    // Papel en la economía urbana (ADR-029). NULL salvo en `final_consumption`.
+    urbanRole: urbanRole("urban_role"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_product_urban_role")
+      .on(t.urbanRole)
+      .where(sql`${t.urbanRole} IS NOT NULL`),
+    check("product_reference_cost_cents_check", sql`${t.referenceCostCents} >= 1`),
+    // `product_check`: es el nombre que Postgres auto-genera para el CHECK
+    // anónimo A NIVEL DE TABLA del DDL (no lleva el de la columna).
+    check("product_check", sql`${t.urbanRole} IS NULL OR ${t.category} = 'final_consumption'`),
+  ],
+);
 
 // Tipo de instalación: "lugar" productivo que los agentes COMPRAN y SUBEN DE
 // NIVEL para producir (economía de instalaciones, ADR-021). Agrupa varias
@@ -228,10 +261,24 @@ export const agent = pgTable(
       .notNull()
       .default(0),
     seedCapital: bigint("seed_capital", { mode: "number" }).notNull(),
-    // Peso de población: SOLO lo usan las ciudades (rol `city`). Escala su
-    // capital semilla y su parte del reparto de ingreso recurrente. NULL para
-    // el resto de roles.
-    populationWeight: bigint("population_weight", { mode: "number" }),
+    // Habitantes: SOLO las ciudades (rol `city`); NULL en el resto. MUTABLE
+    // (ADR-029): todas nacen con CITY_INITIAL_POPULATION, crecen absorbiendo
+    // viviendas y decaen si no las reponen, con suelo en la población inicial.
+    // Es el peso del reparto del ingreso recurrente Y el multiplicador de las
+    // necesidades de consumo: crecer da más ingreso pero cuesta más insumos.
+    population: bigint("population", { mode: "number" }),
+    // Instante de la última pasada del city-consumption-sweeper sobre esta
+    // ciudad; base del Δt de consumo y decaimiento (robusto a caídas del
+    // worker, a diferencia de asumir el intervalo del job). NULL fuera de `city`.
+    lastConsumptionAt: timestamp("last_consumption_at", { withTimezone: true }),
+    // HABITANTE-SEGUNDOS simulados acumulados: Σ(población × Δt_sim). Monótono.
+    // Es el reloj del consumo urbano y lo que impide que el residuo del redondeo
+    // se pierda: la necesidad se calcula como DIFERENCIA de dos acumulados
+    // enteros, así que las fracciones se suman entre pasadas. Sin esto, todo bien
+    // que cueste más de unos cientos de céntimos redondearía a 0 en cada pasada y
+    // nunca se demandaría. Se cuenta en habitante-segundos (y no en segundos)
+    // para que un cambio de población no provoque saltos.
+    consumedPopSeconds: bigint("consumed_pop_seconds", { mode: "number" }),
     registeredAt: timestamp("registered_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -243,6 +290,11 @@ export const agent = pgTable(
       .where(sql`${t.status} = 'active'`),
     check("agent_capital_available_check", sql`${t.capitalAvailable} >= 0`),
     check("agent_capital_reserved_check", sql`${t.capitalReserved} >= 0`),
+    check("agent_population_check", sql`${t.population} IS NULL OR ${t.population} >= 0`),
+    check(
+      "agent_consumed_pop_seconds_check",
+      sql`${t.consumedPopSeconds} IS NULL OR ${t.consumedPopSeconds} >= 0`,
+    ),
   ],
 );
 
@@ -675,7 +727,7 @@ export const incomeSource = pgEnum("income_source", ["wage", "tax"]);
 // gemelo de fee_ledger — ADR-019). El hot path INSERTA: el pago de salario
 // (transformation-service) y el split del fee (order-service). Un sweeper del
 // Worker (city-income-sweeper) pliega lo pendiente y lo reparte entre las
-// ciudades activas ponderado por population_weight. Dinero en tránsito (aún no
+// ciudades activas ponderado por su población. Dinero en tránsito (aún no
 // repartido) = SUM(amount_cents) WHERE NOT materialized; cuenta en la
 // conservación monetaria.
 export const incomeLedger = pgTable(

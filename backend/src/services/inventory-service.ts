@@ -140,6 +140,42 @@ async function allocateFifoLocked(
   return split.allocations;
 }
 
+/**
+ * Variante BEST-EFFORT de `allocateFifoLocked`: reparte `min(qtyCent, pool)` en
+ * vez de exigir el total. No lanza nunca por insuficiencia.
+ *
+ * Existe para el consumo urbano (ADR-029): una ciudad consume lo que necesita
+ * *si lo tiene*, y la parte no cubierta es un déficit legítimo del modelo (falta
+ * de oferta), no un error del cliente. Con `consumeAvailableFifo` (todo-o-nada)
+ * el sweeper no consumiría NADA de un producto con stock parcial.
+ */
+async function allocateFifoLockedUpTo(
+  tx: Tx,
+  agentId: string,
+  productId: string,
+  qtyCent: number,
+  pool: LotPool,
+): Promise<LotConsumption[]> {
+  if (qtyCent <= 0) return [];
+  const locked = await inventoryRepository.lockFifoLots(tx, agentId, productId, pool);
+  const fifoInput: FifoLotInput[] = locked.map((l) => ({
+    lotId: l.lotId,
+    qtyCent: pool === "available" ? l.qtyAvailable : l.qtyReserved,
+    unitCostCents: l.unitCostCents,
+  }));
+  const total = fifoInput.reduce((s, l) => s + l.qtyCent, 0);
+  const split = splitFifo(fifoInput, Math.min(qtyCent, total));
+  if (!split.ok) {
+    // Imposible por construcción (se pide como máximo el total del pool ya
+    // bloqueado); si pasa es un bug de `splitFifo`, no un dato del cliente.
+    throw new Error(
+      `allocateFifoLockedUpTo: reparto fallido pidiendo min(${qtyCent}, ${total}) ` +
+        `del producto ${productId}`,
+    );
+  }
+  return split.allocations;
+}
+
 /** Traduce allocations a deltas por lote: resta de `from` y suma a `to` (si hay). */
 function toDeltas(
   allocations: readonly LotConsumption[],
@@ -290,6 +326,34 @@ export const inventoryService: InventoryService = {
     qtyCent: number,
   ): Promise<LotConsumption[]> {
     return moveFifo(tx, agentId, productId, qtyCent, "available", null);
+  },
+
+  /**
+   * Consume del pool disponible HASTA `qtyCent`, FIFO y best-effort: si el
+   * agente tiene menos, consume lo que hay y devuelve ese detalle (posiblemente
+   * vacío) en vez de lanzar. Lo usa el consumo urbano (ADR-029), donde no cubrir
+   * la necesidad es un déficit del modelo y no un error.
+   */
+  async consumeAvailableFifoUpTo(
+    tx: Tx,
+    agentId: string,
+    productId: string,
+    qtyCent: number,
+  ): Promise<LotConsumption[]> {
+    const allocations = await allocateFifoLockedUpTo(
+      tx,
+      agentId,
+      productId,
+      qtyCent,
+      "available",
+    );
+    if (allocations.length > 0) {
+      await inventoryRepository.applyLotDeltas(
+        tx,
+        toDeltas(allocations, "available", null),
+      );
+    }
+    return allocations;
   },
 
   /** Posición agregada por producto (excluye posiciones totalmente en cero). */

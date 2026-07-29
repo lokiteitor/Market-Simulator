@@ -161,6 +161,10 @@ func (m *marketData) BankInfo() (*models.BankInfo, error) {
 	return m.e.client.GetBankInfo(m.runCtx())
 }
 
+func (m *marketData) CityNeeds() (*models.CityNeeds, error) {
+	return m.e.client.GetCityNeeds(m.runCtx())
+}
+
 func (e *Engine) Start(ctx context.Context) error {
 	e.Lock()
 	if e.running {

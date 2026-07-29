@@ -103,6 +103,40 @@ type CityIncome struct {
 
 func (e CityIncome) Occurred() time.Time { return e.ReceivedAt }
 
+// CityConsumed: el city-consumption-sweeper consumio y DESTRUYO parte de la
+// cesta de esta ciudad (ADR-029). Personal. Es la senal de que la despensa se ha
+// vaciado: el bot deberia recalcular que le falta y volver a comprar sin esperar
+// al siguiente snapshot.
+//
+// `Unmet` es la necesidad que NO se pudo cubrir por falta de stock: es el hueco
+// que la ciudad tiene que ir a buscar al mercado.
+type CityConsumed struct {
+	Consumed   []CityConsumedItem `json:"consumed"`
+	Unmet      []CityConsumedItem `json:"unmet"`
+	OccurredAt time.Time          `json:"-"`
+}
+
+// CityConsumedItem es una linea del payload de CityConsumed (por producto).
+type CityConsumedItem struct {
+	ProductID string `json:"product_id"`
+	QtyCent   int64  `json:"qty_cent"`
+}
+
+func (e CityConsumed) Occurred() time.Time { return e.OccurredAt }
+
+// CityPopulationChanged: la poblacion de la ciudad cambio (ADR-029) por vivienda
+// absorbida y/o por decaimiento. Personal. Cambia el tamano de TODAS sus
+// necesidades y de su parte del ingreso recurrente, asi que el bot debe
+// refrescar /agents/me/city-needs al recibirlo.
+type CityPopulationChanged struct {
+	Population      int64     `json:"population"`
+	HabitantsGained int64     `json:"habitants_gained"`
+	HabitantsLost   int64     `json:"habitants_lost"`
+	OccurredAt      time.Time `json:"-"`
+}
+
+func (e CityPopulationChanged) Occurred() time.Time { return e.OccurredAt }
+
 // InstallationPurchased: compra o mejora de instalación propia confirmada
 // (ADR-021). Personal: solo llega al agente que compró. El payload es el
 // estado absoluto de la instalación al commit (camelCase en el wire, a

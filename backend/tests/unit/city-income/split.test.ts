@@ -1,6 +1,7 @@
 /**
  * Tests puros del flujo circular de ingreso de ciudades (sin DB):
- *   - splitIncomeByWeight: reparto ponderado por población.
+ *   - splitIncomeByWeight: reparto ponderado por población (ADR-029: población
+ *     VIVA, la que cada ciudad se ha ganado comprando vivienda).
  *   - splitFeeForCity: split del fee entre banco y ciudades (tasa de consumo).
  *
  * El invariante crítico en ambos es la CONSERVACIÓN EXACTA: lo repartido debe
@@ -20,8 +21,8 @@ const sum = (xs: Array<{ amountCents: number }>): number =>
 describe("splitIncomeByWeight", () => {
   test("reparte proporcional al peso de población", () => {
     const cities: CityWeight[] = [
-      { agentId: "tokyo", populationWeight: 30000 },
-      { agentId: "lima", populationWeight: 10000 },
+      { agentId: "tokyo", population: 30000 },
+      { agentId: "lima", population: 10000 },
     ];
     const out = splitIncomeByWeight(4000, cities);
     const byId = Object.fromEntries(out.map((d) => [d.agentId, d.amountCents]));
@@ -34,9 +35,9 @@ describe("splitIncomeByWeight", () => {
     // 3 ciudades de peso igual y 10 centavos: floor(10/3)=3 cada una = 9,
     // sobra 1 que debe ir a la primera de mayor peso (empate ⇒ la primera).
     const cities: CityWeight[] = [
-      { agentId: "a", populationWeight: 1 },
-      { agentId: "b", populationWeight: 1 },
-      { agentId: "c", populationWeight: 1 },
+      { agentId: "a", population: 1 },
+      { agentId: "b", population: 1 },
+      { agentId: "c", population: 1 },
     ];
     const out = splitIncomeByWeight(10, cities);
     expect(sum(out)).toBe(10);
@@ -46,12 +47,26 @@ describe("splitIncomeByWeight", () => {
     expect(byId["c"]).toBe(3);
   });
 
+  test("arranque de la partida: 50 ciudades iguales reparten sin perder un céntimo", () => {
+    // Caso REAL del primer reparto (ADR-029): todas nacen con la misma
+    // población, así que el reparto degenera en uniforme y todo el residuo del
+    // floor se lo lleva la primera del listado.
+    const cities: CityWeight[] = Array.from({ length: 50 }, (_, i) => ({
+      agentId: `city-${i}`,
+      population: 1000,
+    }));
+    for (const claimed of [1, 49, 50, 51, 123_457]) {
+      const out = splitIncomeByWeight(claimed, cities);
+      expect(sum(out)).toBe(claimed);
+    }
+  });
+
   test("CONSERVACIÓN: se mantiene exacta con pesos dispares y montos primos", () => {
     const cities: CityWeight[] = [
-      { agentId: "tokyo", populationWeight: 37400 },
-      { agentId: "reykjavik", populationWeight: 240 },
-      { agentId: "lima", populationWeight: 11000 },
-      { agentId: "accra", populationWeight: 2500 },
+      { agentId: "tokyo", population: 37400 },
+      { agentId: "reykjavik", population: 240 },
+      { agentId: "lima", population: 11000 },
+      { agentId: "accra", population: 2500 },
     ];
     for (const claimed of [1, 7, 97, 1009, 65537, 1_000_003]) {
       const out = splitIncomeByWeight(claimed, cities);
@@ -61,8 +76,8 @@ describe("splitIncomeByWeight", () => {
 
   test("una ciudad diminuta puede recibir 0 y no aparece en el reparto", () => {
     const cities: CityWeight[] = [
-      { agentId: "tokyo", populationWeight: 1_000_000 },
-      { agentId: "reykjavik", populationWeight: 1 },
+      { agentId: "tokyo", population: 1_000_000 },
+      { agentId: "reykjavik", population: 1 },
     ];
     const out = splitIncomeByWeight(10, cities);
     // floor(10*1/1000001) = 0 ⇒ reykjavik no recibe; el total sigue cuadrando.
@@ -71,11 +86,11 @@ describe("splitIncomeByWeight", () => {
   });
 
   test("casos borde: sin ciudades, monto 0/negativo o pesos nulos ⇒ vacío", () => {
-    const cities: CityWeight[] = [{ agentId: "a", populationWeight: 5 }];
+    const cities: CityWeight[] = [{ agentId: "a", population: 5 }];
     expect(splitIncomeByWeight(100, [])).toEqual([]);
     expect(splitIncomeByWeight(0, cities)).toEqual([]);
     expect(splitIncomeByWeight(-5, cities)).toEqual([]);
-    expect(splitIncomeByWeight(100, [{ agentId: "a", populationWeight: 0 }])).toEqual([]);
+    expect(splitIncomeByWeight(100, [{ agentId: "a", population: 0 }])).toEqual([]);
   });
 });
 

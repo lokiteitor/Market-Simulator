@@ -125,6 +125,8 @@ interface BusinessSnapshot {
   gold: GoldView | null;
   /** Ingreso de ciudades pendiente de repartir, por fuente (`wage` / `tax`). */
   cityIncomePending: Array<{ source: string; cents: number }>;
+  /** Ciudades con su población viva (ADR-029). ~50 filas, una serie por ciudad. */
+  cities: Array<{ username: string; population: number }>;
 }
 
 const CACHE_TTL_MS = 2_000;
@@ -147,6 +149,10 @@ async function fetchSnapshot(): Promise<BusinessSnapshot | null> {
           deposits: await fetchDepositViews(tx),
           gold: await fetchGoldView(tx),
           cityIncomePending: await incomeLedgerRepository.sumUnmaterializedBySource(tx),
+          cities: (await monitoringRepository.listCities(tx)).map((c) => ({
+            username: c.username,
+            population: c.population,
+          })),
         }),
         { isolationLevel: "repeatable read" },
       );
@@ -459,6 +465,38 @@ new Gauge({
     for (const source of ["wage", "tax"]) {
       this.set({ source }, bySource.get(source) ?? 0);
     }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Demanda urbana endógena (ADR-029).
+//
+// La población es ahora una variable de estado, no una constante del seed: es a
+// la vez el peso del reparto del ingreso y el multiplicador de las necesidades.
+// Su trayectoria es LA métrica de si el modelo está en equilibrio.
+// ---------------------------------------------------------------------------
+
+new Gauge({
+  name: "market_city_population",
+  help: "Habitantes por ciudad (crece con la vivienda absorbida, decae si no se repone)",
+  labelNames: ["city"] as const,
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.reset();
+    for (const c of s.cities) this.set({ city: c.username }, c.population);
+  },
+});
+
+new Gauge({
+  name: "market_city_population_total",
+  help: "Σ habitantes de todas las ciudades (tamaño agregado de la demanda final)",
+  registers: [register],
+  async collect() {
+    const s = await fetchSnapshot();
+    if (s === null) return;
+    this.set(s.cities.reduce((sum, c) => sum + c.population, 0));
   },
 });
 

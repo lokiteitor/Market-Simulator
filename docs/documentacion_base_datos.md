@@ -113,6 +113,12 @@ CREATE TYPE product_category AS ENUM (
     'final_consumption'
 );
 
+-- Papel de un producto de consumo final en la economía urbana (ADR-029).
+CREATE TYPE urban_role AS ENUM (
+    'basket',    -- lo consumen y DESTRUYEN las ciudades cada periodo
+    'housing'    -- lo absorben para crecer en población (hay exactamente uno)
+);
+
 -- Tabla
 CREATE TABLE product (
     product_id      UUID                PRIMARY KEY DEFAULT uuidv7(),
@@ -123,7 +129,17 @@ CREATE TABLE product (
     name            TEXT                NOT NULL UNIQUE,
     unit            TEXT                NOT NULL,
     category        product_category    NOT NULL,
-    created_at      TIMESTAMPTZ         NOT NULL DEFAULT now()
+    -- Coste propagado por el grafo de recetas (el mismo número que los precios
+    -- base de los bots). NO es un precio de mercado: es la referencia de VALOR
+    -- que usa el consumo urbano (ADR-029) para repartir el presupuesto per
+    -- cápita de cada ciudad en dinero y no en unidades.
+    reference_cost_cents BIGINT         NOT NULL CHECK (reference_cost_cents >= 1),
+    -- Papel en la economía urbana (ADR-029): 'basket' = las ciudades lo consumen
+    -- y lo DESTRUYEN cada periodo; 'housing' = lo absorben para crecer en
+    -- población (hay exactamente uno). NULL fuera de 'final_consumption'.
+    urban_role      urban_role,
+    created_at      TIMESTAMPTZ         NOT NULL DEFAULT now(),
+    CHECK (urban_role IS NULL OR category = 'final_consumption')
 );
 ```
 
@@ -316,9 +332,20 @@ CREATE TABLE agent (
     capital_available   BIGINT          NOT NULL DEFAULT 0 CHECK (capital_available >= 0),
     capital_reserved    BIGINT          NOT NULL DEFAULT 0 CHECK (capital_reserved >= 0),
     seed_capital        BIGINT          NOT NULL,
-    -- Solo lo usan las ciudades (rol 'city'): escala su capital semilla y su
-    -- parte del reparto de ingreso recurrente. NULL para el resto de roles.
-    population_weight   BIGINT,
+    -- Habitantes: solo las ciudades (rol 'city'); NULL en el resto. MUTABLE
+    -- (ADR-029): todas nacen con CITY_INITIAL_POPULATION, crecen absorbiendo
+    -- vivienda y decaen si no la reponen, con suelo en la población inicial.
+    population          BIGINT          CHECK (population IS NULL OR population >= 0),
+    -- Instante de la última pasada del city-consumption-sweeper: base del Δt de
+    -- consumo y decaimiento (robusto a caídas del worker).
+    last_consumption_at TIMESTAMPTZ,
+    -- HABITANTE-SEGUNDOS simulados acumulados, Σ(población × Δt_sim). Monótono.
+    -- Es el reloj del consumo urbano y lo que impide que el residuo del redondeo
+    -- se pierda: la necesidad de un producto se calcula como DIFERENCIA de dos
+    -- acumulados enteros, así que las fracciones se suman entre pasadas en vez
+    -- de truncarse a 0 en cada una (sin esto, todo bien que cueste más de unos
+    -- cientos de céntimos jamás llegaría a demandarse).
+    consumed_pop_seconds BIGINT         CHECK (consumed_pop_seconds IS NULL OR consumed_pop_seconds >= 0),
     registered_at       TIMESTAMPTZ     NOT NULL DEFAULT now(),
     bankrupt_at         TIMESTAMPTZ
 );
@@ -365,7 +392,9 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 | `capital_available` | `BIGINT`        | Capital líquido disponible, en centavos. Disponible para reservar en órdenes de compra o pagar salarios.                                 |
 | `capital_reserved`  | `BIGINT`        | Capital reservado en órdenes de compra activas, en centavos. Se libera al cancelar/expirar la orden o se descuenta al ejecutarse.        |
 | `seed_capital`      | `BIGINT`        | Capital inicial recibido al registrarse, en centavos. Sirve para analítica histórica.                                                    |
-| `population_weight` | `BIGINT`        | Solo rol `city`: población metropolitana aproximada (miles). Escala el capital semilla (`∝ weight`) y el reparto del ingreso recurrente. `NULL` en el resto de roles. |
+| `population` | `BIGINT`        | Solo rol `city`: **habitantes**, y **MUTABLE** (ADR-029). Todas las ciudades nacen con `CITY_INITIAL_POPULATION`; crecen `CITY_HABITANTS_PER_HOUSING` por unidad de `vivienda` absorbida y decaen `CITY_POPULATION_DECAY_BPS_PER_SIM_DAY` por día simulado, con suelo en la población inicial. Es a la vez el peso del reparto del ingreso recurrente y el multiplicador de las necesidades de consumo: crecer da más ingreso pero cuesta más insumos. `NULL` en el resto de roles. |
+| `last_consumption_at` | `TIMESTAMPTZ` | Solo rol `city`: instante de la última pasada del `city-consumption-sweeper`. Base del Δt (acotado por `CITY_CONSUMPTION_MAX_CATCHUP_SIM_SECONDS`), de modo que una caída del worker no pierde consumo ni lo aplica de golpe. |
+| `consumed_pop_seconds` | `BIGINT` | Solo rol `city`: Σ(población × Δt simulado) acumulado, monótono. Es el reloj del consumo urbano: la necesidad se calcula como DIFERENCIA de dos acumulados enteros, así que el residuo del redondeo se arrastra entre pasadas. Va en habitante-segundos y no en segundos para que un cambio de población solo altere la pendiente y no genere un pico retroactivo. |
 | `registered_at`     | `TIMESTAMPTZ`   | Timestamp de alta del agente.                                                                                                            |
 | `bankrupt_at`       | `TIMESTAMPTZ`   | Timestamp de quiebra, `NULL` si está activo.                                                                                             |
 
@@ -373,7 +402,7 @@ ALTER TABLE agent ADD CONSTRAINT agent_username_unique UNIQUE (username);
 
 - **Invariantes de capital**: `capital_available >= 0` y `capital_reserved >= 0`. La suma de `capital_reserved` debe coincidir con la suma de `qty_pending × limit_price_cents` de las órdenes de compra activas del agente.
 - **Capital semilla en registro dinámico (emisión respaldada)**: el grant objetivo es el promedio actual del capital total de agentes activos (o `DEFAULT_SEED_CAPITAL_CENTS` si no hay ninguno). Con patrón oro activo, ese grant se financia **primero con capital del banco central** (fees reciclados) y el resto se **acuña** (`money_issued`) solo si el oro del banco lo respalda al ratio de cobertura. Si el máximo respaldable queda por debajo del mínimo configurado, el registro falla con `insufficient_gold_backing`. Todo bajo el mutex `gold_standard FOR UPDATE`.
-- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (transformadores: medio-alto —cubren extracción e industria—; traders: alto). Determinístico a partir de la semilla maestra. Las ciudades van por su propio carril (`CITY_SEED_CAPITAL_CENTS_PER_WEIGHT` × `population_weight`).
+- **Capital semilla en setup inicial**: aleatorio dentro de un rango configurable por rol (transformadores: medio-alto —cubren extracción e industria—; traders: alto). Determinístico a partir de la semilla maestra. Las ciudades van por su propio carril y **todas reciben lo mismo** (`CITY_SEED_CAPITAL_CENTS`, ADR-029): su heterogeneidad se la ganan comprando vivienda, no la traen del seed.
 - **Detección de quiebra**: reactiva **o a petición**. La reactiva se evalúa cuando se cancela la última orden, vence la última orden o se completa el último proceso sin recuperar capital; la vía a petición es `POST /agents/me/bankruptcy-check`, que el propio agente invoca cuando se queda sin capital (ADR-026). Ambas exigen lo mismo: capital total = 0, inventario total vendible = 0, sin procesos en curso y sin órdenes activas. Los roles `city` y `admin` están exentos.
 - **Acciones al quebrar**: cancelar órdenes activas, marcar `status='bankrupt'`, registrar `bankrupt_at`, congelar inventario residual, emitir `bankruptcy_notice` y broadcast `agent_bankrupt`.
 
@@ -1160,7 +1189,7 @@ CREATE INDEX idx_fee_ledger_pending ON fee_ledger (fee_id) WHERE NOT materialize
 - **`wage`**: el salario se debita igual del agente que inicia el proceso (primarios y transformadores, mismo `startTransformation`) pero se anota **íntegro** aquí en vez de destruirse.
 - **`tax`**: una fracción (`CITY_FEE_SHARE_BPS`) del fee que los agentes YA pagan por trade se desvía aquí en vez de ir entera al banco (tasa de consumo). Sin cobro extra al agente.
 
-El `city-income-sweeper` del Worker reclama por lotes lo no materializado y lo **reparte entre las ciudades activas ponderado por `agent.population_weight`** (Tokyo recibe ~150× lo de Reikiavik), acreditando su `capital_available` y publicando la notificación WS `city_income` post-commit.
+El `city-income-sweeper` del Worker reclama por lotes lo no materializado y lo **reparte entre las ciudades activas ponderado por `agent.population`**, acreditando su `capital_available` y publicando la notificación WS `city_income` post-commit. Desde ADR-029 ese peso es **vivo**: todas las ciudades arrancan iguales y cobra más la que ha conseguido crecer comprando vivienda.
 
 ```sql
 CREATE TYPE income_source AS ENUM ('wage', 'tax');
@@ -1226,7 +1255,11 @@ CREATE TYPE event_type AS ENUM (
     'snapshot_taken',
     'gold_converted',
     'money_issued',
-    'deposit_depleted'
+    'deposit_depleted',
+    'city_income_distributed',   -- el sweeper repartió income_ledger entre ciudades
+    'installation_purchased',    -- compra o mejora de instalación (ADR-021)
+    'city_consumed',             -- una ciudad consumió (destruyó) su cesta (ADR-029)
+    'city_population_changed'    -- vivienda absorbida y/o decaimiento (ADR-029)
 );
 
 -- Tabla

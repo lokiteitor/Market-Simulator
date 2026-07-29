@@ -161,6 +161,43 @@ export interface CityIncomeDistributedPayload {
   city_count: number;
 }
 
+/**
+ * Una ciudad consumió (DESTRUYÓ) su cesta urbana en una pasada del
+ * city-consumption-sweeper (ADR-029). Evento del agente-ciudad.
+ *
+ * Se guarda agregado, sin detalle por lote: no hay tabla `*_lot_consumption`
+ * para el consumo urbano (las tres existentes exigen FK a trade/proceso/
+ * conversión) y el coste del lote no se necesita aguas abajo, porque estas
+ * unidades no vuelven a venderse: salen del sistema.
+ */
+export interface CityConsumedPayload {
+  agent_id: string;
+  /** Segundos SIMULADOS cubiertos por esta pasada (Δt ya clampeado). */
+  elapsed_sim_seconds: number;
+  /** Unidades (centésimas) efectivamente consumidas, Σ de la cesta. */
+  consumed_qty_cent: number;
+  /** Necesidad no cubierta por falta de stock (centésimas). Déficit del modelo. */
+  unmet_qty_cent: number;
+  /** Nº de productos de la cesta con consumo > 0 en esta pasada. */
+  products_consumed: number;
+}
+
+/**
+ * La población de una ciudad cambió (ADR-029): creció absorbiendo vivienda y/o
+ * decayó por no reponerla. Solo se emite si hubo cambio neto.
+ */
+export interface CityPopulationChangedPayload {
+  agent_id: string;
+  population_before: number;
+  population_after: number;
+  /** Unidades (centésimas) de vivienda absorbidas en esta pasada. */
+  housing_absorbed_qty_cent: number;
+  /** Habitantes ganados por la vivienda absorbida. */
+  habitants_gained: number;
+  /** Habitantes perdidos por decaimiento (ya recortado por el suelo). */
+  habitants_lost: number;
+}
+
 export interface InstallationPurchasedPayload {
   agent_id: string;
   installation_type_id: string;
@@ -188,4 +225,6 @@ export interface EventPayloads {
   deposit_depleted: DepositDepletedPayload;
   city_income_distributed: CityIncomeDistributedPayload;
   installation_purchased: InstallationPurchasedPayload;
+  city_consumed: CityConsumedPayload;
+  city_population_changed: CityPopulationChangedPayload;
 }

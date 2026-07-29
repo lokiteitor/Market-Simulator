@@ -30,8 +30,10 @@ insufficient_capital_backoff_seconds: 120
 # (flock) porque los usernames son literales y dos procesos colisionarían en la
 # sesión (refresh token de un solo uso).
 
-# Lista canónica de ciudades (username + population_weight). MISMA fuente que
-# usa el seed del backend, para no divergir. Ruta relativa al cwd del binario.
+# Lista canónica de ciudades (solo username + display). MISMA fuente que usa el
+# seed del backend, para no divergir. Ruta relativa al cwd del binario. La
+# poblacion NO esta ahi (ADR-029): todas nacen iguales y su tamano lo lleva el
+# servidor, que lo expone en el snapshot (`population`).
 cities_path: "../infra/cities.json"
 
 # Contraseña compartida con la que el backend siembra las credenciales de las
@@ -43,6 +45,20 @@ tick_interval_seconds: 5
 
 # Jitter máximo de arranque (segundos) para no conectar las 50 a la vez.
 startup_jitter_seconds: 20
+
+# --- Demanda urbana endogena (ADR-029) ---
+# Cada cuanto se refresca GET /agents/me/city-needs, la vista AUTORITATIVA de lo
+# que el servidor va a consumir (y destruir) a esta ciudad. La necesidad solo
+# cambia con la poblacion, y el evento city_population_changed ya fuerza un
+# refresco inmediato, asi que este periodo puede ser holgado. 0 = default (30s).
+needs_refresh_seconds: 30
+
+# Cuota del capital que la ciudad reserva para comprar VIVIENDA, su unico bien de
+# inversion: cada unidad suma habitantes y sin reponerla la poblacion decae hasta
+# el suelo. Va en un bolsillo aparte porque una vivienda cuesta ~2.400 panes y
+# jamas ganaria una puja contra la cesta por el presupuesto de un tick.
+# 0 = lo muestrea cada bot en [0.15, 0.35].
+housing_share: 0
 
 # Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.
 market:
@@ -59,10 +75,11 @@ market:
   rest_budget_per_tick: 4
   # Ventana (segundos) para considerar que un producto tiene mercado "vivo".
   recent_window_seconds: 600
-  # Productos de consumo final que cada ciudad mira por tick. Por defecto (0) se
-  # calcula como el 9-24% de la cesta, para que ampliar el catalogo no diluya en
-  # silencio la demanda de cada producto: el reparto es una permutacion uniforme
-  # sobre TODOS los finales. Ponerlo > 0 lo fija a mano.
+  # Ordenes de cesta que cada ciudad coloca por tick. Por defecto (0) se calcula
+  # como el 9-24% de la cesta, para que ampliar el catalogo no diluya en silencio
+  # la demanda de cada producto. Los productos NO se eligen al azar: se atienden
+  # por cobertura ascendente (lo que se va a acabar antes, primero), asi que este
+  # numero es el ancho del racionamiento por tick. Ponerlo > 0 lo fija a mano.
   consumer_per_tick: 0
 
 # Precios base (cents/unidad) para evaluar trades y margenes.

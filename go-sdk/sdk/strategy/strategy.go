@@ -14,6 +14,9 @@ import (
 type ReadOnlyState interface {
 	GetAgentInfo() (id string, username string, role models.AgentRole, status models.AgentStatus)
 	Capital() (available int64, reserved int64)
+	// Population: habitantes de la ciudad (ADR-029); 0 fuera del rol `city`. Es
+	// el multiplicador de todo lo que la ciudad necesita y cobra.
+	Population() int64
 	Inventory() []models.InventoryPosition
 	InventoryForProduct(productID string) models.InventoryPosition
 	ActiveOrders() []models.Order
@@ -59,6 +62,11 @@ type MarketData interface {
 	// en Initialize y cachéese; reservas y contadores sí cambian. Devuelve
 	// error si la corrida no tiene patrón oro sembrado (409 no_gold_standard).
 	BankInfo() (*models.BankInfo, error)
+	// CityNeeds consulta la cesta que el servidor va a consumirle a esta ciudad
+	// en el próximo periodo, con su stock actual (ADR-029). Solo rol `city`: el
+	// resto recibe 403. La necesidad cambia con la población, así que conviene
+	// refrescarla al recibir `city_population_changed` y no en cada tick.
+	CityNeeds() (*models.CityNeeds, error)
 }
 
 type Context struct {

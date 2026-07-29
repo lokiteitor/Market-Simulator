@@ -27,6 +27,8 @@ export const EVENT_TYPE_LABEL: Record<EventType, string> = {
   deposit_depleted: "Yacimiento agotado",
   city_income_distributed: "Ingreso urbano repartido",
   installation_purchased: "Instalación comprada",
+  city_consumed: "Consumo urbano",
+  city_population_changed: "Población de ciudad",
 };
 
 export const EVENT_TYPE_BADGE: Record<EventType, BadgeKind> = {
@@ -45,6 +47,8 @@ export const EVENT_TYPE_BADGE: Record<EventType, BadgeKind> = {
   deposit_depleted: "expired",
   city_income_distributed: "active",
   installation_purchased: "completed",
+  city_consumed: "completed",
+  city_population_changed: "active",
 };
 
 /** Etiqueta con fallback al tipo crudo (por si el API añade tipos nuevos). */

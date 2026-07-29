@@ -18,6 +18,9 @@ type StateManager struct {
 	bankruptAt            *time.Time
 	capitalAvailableCents int64
 	capitalReservedCents  int64
+	// Habitantes de la ciudad (ADR-029); 0 en el resto de roles. MUTABLE: la
+	// mantienen al dia el snapshot y el evento city_population_changed.
+	population int64
 
 	inventory        map[string]models.InventoryPosition
 	activeOrders     map[string]models.Order
@@ -89,6 +92,11 @@ func (s *StateManager) Rebuild(snap *models.AgentSnapshot) {
 	s.bankruptAt = snap.Agent.BankruptAt
 	s.capitalAvailableCents = snap.CapitalAvailableCents
 	s.capitalReservedCents = snap.CapitalReservedCents
+	if snap.Population != nil {
+		s.population = *snap.Population
+	} else {
+		s.population = 0
+	}
 
 	// Clear and refill maps
 	s.inventory = make(map[string]models.InventoryPosition)
@@ -380,6 +388,30 @@ func (s *StateManager) ApplyEvent(ev events.Event) {
 			s.capitalAvailableCents += e.AmountCents
 		}
 
+	case events.CityPopulationChanged:
+		// La poblacion la fija el servidor (absoluta, no delta): es el resultado de
+		// absorber vivienda y aplicar el decaimiento en la misma pasada.
+		s.population = e.Population
+
+	case events.CityConsumed:
+		// El servidor ya DESTRUYO estas unidades: descontarlas del inventario local
+		// para que la estrategia vea el hueco real en este mismo tick y no espere al
+		// siguiente snapshot para darse cuenta de que su despensa esta vacia.
+		for _, item := range e.Consumed {
+			inv, ok := s.inventory[item.ProductID]
+			if !ok {
+				continue
+			}
+			inv.QtyAvailableCent -= item.QtyCent
+			if inv.QtyAvailableCent < 0 {
+				inv.QtyAvailableCent = 0
+			}
+			s.inventory[item.ProductID] = inv
+		}
+		if len(e.Consumed) > 0 {
+			s.inventoryDirty = true
+		}
+
 	case events.InstallationPurchased:
 		// Compra/mejora propia confirmada (ADR-021). El payload es el estado
 		// absoluto de la instalación al commit del servidor (running incluido),
@@ -447,6 +479,13 @@ func (s *StateManager) Capital() (available int64, reserved int64) {
 	s.RLock()
 	defer s.RUnlock()
 	return s.capitalAvailableCents, s.capitalReservedCents
+}
+
+// Population son los habitantes de la ciudad (ADR-029); 0 fuera del rol `city`.
+func (s *StateManager) Population() int64 {
+	s.RLock()
+	defer s.RUnlock()
+	return s.population
 }
 
 func (s *StateManager) Inventory() []models.InventoryPosition {

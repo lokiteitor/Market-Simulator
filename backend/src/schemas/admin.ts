@@ -77,8 +77,12 @@ export const AdminAgentItemSchema = z.object({
   capital_available_cents: z.number().int().min(0),
   capital_reserved_cents: z.number().int().min(0),
   registered_at: z.iso.datetime(),
-  /** Peso de reparto del ingreso urbano (ADR-020); null en roles no-city. */
-  population_weight: z.number().int().min(1).nullable(),
+  /**
+   * Habitantes (ADR-029): peso del reparto del ingreso urbano y multiplicador de
+   * las necesidades de consumo. null en roles no-city. El mínimo es 0 y no 1
+   * porque la población es mutable y puede tocar su suelo.
+   */
+  population: z.number().int().min(0).nullable(),
 });
 
 export const AdminAgentsPageSchema = z.object({
@@ -98,20 +102,20 @@ export const AdminCityItemSchema = z.object({
   agent_id: z.uuid(),
   username: z.string(),
   status: z.string(),
-  population_weight: z.number().int().min(1),
+  population: z.number().int().min(0),
   capital_available_cents: z.number().int().min(0),
   capital_reserved_cents: z.number().int().min(0),
 });
 
 /**
- * Panel de ciudades e ingreso circular (ADR-020/025). El ingreso POR ciudad no
- * se persiste (el sweeper solo deja el evento global), de ahí que solo haya
+ * Panel de ciudades e ingreso circular (ADR-020/025/029). El ingreso POR ciudad
+ * no se persiste (el sweeper solo deja el evento global), de ahí que solo haya
  * agregados: pendiente en income_ledger (por fuente) y repartido en 24h.
  */
 export const AdminCitiesSchema = z.object({
   cities: z.array(AdminCityItemSchema),
   city_count: z.number().int().min(0),
-  total_population_weight: z.number().int().min(0),
+  total_population: z.number().int().min(0),
   pending_income_cents: z.number().int().min(0),
   pending_income_by_source: z.object({
     wage_cents: z.number().int().min(0),

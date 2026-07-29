@@ -2,7 +2,8 @@
  * CityIncomeService — reparto del ingreso recurrente de las ciudades (flujo
  * circular). Gemelo funcional de `bankService.materializeFees`, pero en vez de
  * plegar a UN agente (el banco), REPARTE lo pendiente del `income_ledger` entre
- * TODAS las ciudades activas, ponderado por `population_weight`.
+ * TODAS las ciudades activas, ponderado por su `population` (ADR-029: peso vivo,
+ * no un dato fijo del seed — crecer da más ingreso).
  *
  * Invocado por el city-income-sweeper del Worker (concurrency 1 ⇒ sin solape).
  * Devuelve el detalle por ciudad para que el sweeper publique la notificación
@@ -30,7 +31,12 @@ export interface CityIncomeResult {
 
 export interface CityWeight {
   agentId: string;
-  populationWeight: number;
+  /**
+   * Habitantes. Es el peso del reparto (ADR-029): ya no es un dato fijo del
+   * seed, sino el tamaño que cada ciudad se ha ganado comprando vivienda, así
+   * que crecer se traduce directamente en más ingreso.
+   */
+  population: number;
 }
 
 /**
@@ -46,13 +52,13 @@ export function splitIncomeByWeight(
   cities: readonly CityWeight[],
 ): CityIncomeDistribution[] {
   if (claimedCents <= 0 || cities.length === 0) return [];
-  const totalWeight = cities.reduce((s, c) => s + c.populationWeight, 0);
+  const totalWeight = cities.reduce((s, c) => s + c.population, 0);
   if (totalWeight <= 0) return [];
 
   const byAgent = new Map<string, number>();
   let distributed = 0;
   for (const c of cities) {
-    const share = Math.floor((claimedCents * c.populationWeight) / totalWeight);
+    const share = Math.floor((claimedCents * c.population) / totalWeight);
     if (share > 0) {
       byAgent.set(c.agentId, (byAgent.get(c.agentId) ?? 0) + share);
       distributed += share;
@@ -61,9 +67,7 @@ export function splitIncomeByWeight(
 
   const remainder = claimedCents - distributed;
   if (remainder > 0) {
-    const largest = cities.reduce((a, b) =>
-      b.populationWeight > a.populationWeight ? b : a,
-    );
+    const largest = cities.reduce((a, b) => (b.population > a.population ? b : a));
     byAgent.set(largest.agentId, (byAgent.get(largest.agentId) ?? 0) + remainder);
   }
 
@@ -95,7 +99,7 @@ async function materializeIncome(
   // Leer las ciudades ANTES de materializar: si no hay ninguna activa, NO se
   // reclama nada (dejar el dinero pendiente evita que desaparezca de la
   // conservación al marcarlo materialized sin destino).
-  const cities = await agentRepository.listActiveCitiesWithWeight(tx);
+  const cities = await agentRepository.listActiveCitiesWithPopulation(tx);
   if (cities.length === 0) {
     return { totalCents: 0, distributions: [] };
   }

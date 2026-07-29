@@ -87,20 +87,22 @@ export interface AgentListItemView {
   capitalAvailableCents: number;
   capitalReservedCents: number;
   registeredAt: Date;
-  /** Peso de reparto del ingreso urbano (ADR-020); NULL en roles no-city. */
-  populationWeight: number | null;
+  /** Habitantes (ADR-029): peso del reparto del ingreso urbano y multiplicador
+   * de las necesidades de consumo. NULL en roles no-city. */
+  population: number | null;
 }
 
 /**
- * Vista del panel de ciudades (ADR-020/025): demanda final urbana con su peso
- * de reparto. El ingreso recibido POR ciudad no se persiste (el sweeper solo
- * deja el evento global `city_income_distributed`), por eso aquí no aparece.
+ * Vista del panel de ciudades (ADR-020/025/029): demanda final urbana con su
+ * población, que es a la vez su peso de reparto y su tamaño ganado comprando
+ * vivienda. El ingreso recibido POR ciudad no se persiste (el sweeper solo deja
+ * el evento global `city_income_distributed`), por eso aquí no aparece.
  */
 export interface CityListItemView {
   agentId: string;
   username: string;
   status: string;
-  populationWeight: number;
+  population: number;
   capitalAvailableCents: number;
   capitalReservedCents: number;
 }
@@ -306,7 +308,7 @@ export const monitoringRepository = {
         capitalAvailableCents: agent.capitalAvailable,
         capitalReservedCents: agent.capitalReserved,
         registeredAt: agent.registeredAt,
-        populationWeight: agent.populationWeight,
+        population: agent.population,
       })
       .from(agent)
       .where(where)
@@ -328,31 +330,31 @@ export const monitoringRepository = {
         capitalAvailableCents: num(r.capitalAvailableCents),
         capitalReservedCents: num(r.capitalReservedCents),
         registeredAt: r.registeredAt,
-        populationWeight: numOrNull(r.populationWeight),
+        population: numOrNull(r.population),
       })),
       total: num(totalRows[0]?.total),
     };
   },
 
-  /** Ciudades (rol `city`), incluidas las no-activas, ordenadas por peso. */
+  /** Ciudades (rol `city`), incluidas las no-activas, ordenadas por población. */
   async listCities(tx: Tx): Promise<CityListItemView[]> {
     const rows = await tx
       .select({
         agentId: agent.agentId,
         username: agent.username,
         status: agent.status,
-        populationWeight: sql<string | number>`coalesce(${agent.populationWeight}, 1)`,
+        population: sql<string | number>`coalesce(${agent.population}, 1)`,
         capitalAvailableCents: agent.capitalAvailable,
         capitalReservedCents: agent.capitalReserved,
       })
       .from(agent)
       .where(eq(agent.role, "city"))
-      .orderBy(desc(sql`coalesce(${agent.populationWeight}, 1)`), asc(agent.username));
+      .orderBy(desc(sql`coalesce(${agent.population}, 1)`), asc(agent.username));
     return rows.map((r) => ({
       agentId: r.agentId,
       username: r.username,
       status: r.status,
-      populationWeight: num(r.populationWeight),
+      population: num(r.population),
       capitalAvailableCents: num(r.capitalAvailableCents),
       capitalReservedCents: num(r.capitalReservedCents),
     }));

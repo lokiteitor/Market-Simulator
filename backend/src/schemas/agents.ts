@@ -138,6 +138,12 @@ export const AgentSnapshotSchema = z.object({
   agent: AgentPublicSchema,
   capital_available_cents: z.number().int().nonnegative(),
   capital_reserved_cents: z.number().int().nonnegative(),
+  /**
+   * Habitantes de la ciudad (ADR-029); null en el resto de roles. Es lo que
+   * escala tanto el ingreso recurrente que recibe como las necesidades que el
+   * servidor le consume, así que un bot-ciudad lo necesita para dimensionarse.
+   */
+  population: z.number().int().min(0).nullable(),
   inventory: z.array(InventoryPositionSchema),
   active_orders: z.array(AgentOrderSchema),
   running_processes: z.array(AgentProcessSchema),
@@ -168,6 +174,37 @@ export const BankruptcyCheckSchema = z.object({
 });
 
 export type BankruptcyCheckJson = z.infer<typeof BankruptcyCheckSchema>;
+
+/**
+ * Necesidad urbana de un producto de la cesta (ADR-029). El servidor devuelve la
+ * cesta COMPLETA, incluidos los productos con necesidad 0 (población pequeña +
+ * producto caro): que un producto no aparezca y que su necesidad sea 0 son cosas
+ * distintas para el cliente.
+ */
+export const CityNeedSchema = z.object({
+  product_id: z.uuid(),
+  /** Clave del catálogo: evita al cliente cruzar con /catalog/products. */
+  product_key: z.string(),
+  /** Necesidad de un periodo de consumo, en centésimas de unidad. */
+  qty_cent_per_period: z.number().int().min(0),
+  /** Stock disponible ahora mismo, para calcular la cobertura. */
+  qty_available_cent: z.number().int().min(0),
+});
+
+/**
+ * openapi components.schemas.CityNeeds (GET /agents/me/city-needs). Es la vista
+ * AUTORITATIVA de lo que la ciudad va a consumir: el cliente no replica la
+ * fórmula ni conoce el presupuesto per cápita del servidor, solo compara con su
+ * stock y compra la diferencia.
+ */
+export const CityNeedsSchema = z.object({
+  population: z.number().int().min(0),
+  /** Duración del periodo al que se refieren las necesidades (segundos SIMULADOS). */
+  period_sim_seconds: z.number().min(0),
+  needs: z.array(CityNeedSchema),
+});
+
+export type CityNeedsJson = z.infer<typeof CityNeedsSchema>;
 
 export const InstallationStatusListSchema = z.array(InstallationStatusSchema);
 export const InventoryPositionListSchema = z.array(InventoryPositionSchema);

@@ -112,6 +112,39 @@ describe("grafo del catálogo", () => {
     expect(sinSalida).toEqual([]);
   });
 
+  test("el catálogo real declara exactamente un bien de inversión urbano", async () => {
+    // ADR-029: la ciudad absorbe `housing` para crecer, y con dos bienes de
+    // inversión los habitantes por unidad serían ambiguos. `parseSeedConfig`
+    // solo prohíbe que haya más de uno (un catálogo reducido sin vivienda es
+    // legítimo, el E2E usa uno); que EXISTA se exige aquí, sobre el catálogo
+    // real: sin él la población de todas las ciudades se queda en el suelo y la
+    // construcción se queda sin demanda.
+    const cfg = await loadCatalog();
+    const housing = cfg.products.filter((p) => p.urban === "housing").map((p) => p.key);
+    expect(housing).toEqual(["vivienda"]);
+  });
+
+  test("la cesta urbana la forman todos los demás bienes de consumo final", async () => {
+    // El papel urbano tiene default implícito (`basket`) justo para que añadir un
+    // bien de consumo al catálogo lo meta en la cesta sin tocar nada más. Este
+    // test fija la consecuencia: NINGÚN `final_consumption` puede quedar fuera de
+    // la demanda urbana, porque las ciudades son la única salida (ADR-025).
+    const cfg = await loadCatalog();
+    const finales = cfg.products.filter((p) => p.category === "final_consumption");
+    const cesta = finales.filter((p) => (p.urban ?? "basket") === "basket");
+    expect(cesta.length).toBe(finales.length - 1); // todos menos la vivienda
+    expect(finales.length).toBeGreaterThan(40);
+  });
+
+  test("ningún producto no-final declara papel urbano", async () => {
+    // Lo replica un CHECK del DDL; aquí se detecta antes de tocar la DB.
+    const cfg = await loadCatalog();
+    const invalidos = cfg.products
+      .filter((p) => p.urban !== undefined && p.category !== "final_consumption")
+      .map((p) => p.key);
+    expect(invalidos).toEqual([]);
+  });
+
   test("el conjunto de recursos con yacimiento es exactamente el esperado", async () => {
     // Guardarraíl de ADR-023. Marcar `finite` un producto es irreversible dentro
     // de una corrida: cuando se agota, su cadena entera muere. Los tres casos

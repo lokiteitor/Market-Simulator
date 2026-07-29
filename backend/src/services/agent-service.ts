@@ -37,6 +37,7 @@ import type {
 } from "../types/contracts";
 import { bankService } from "./bank-service";
 import { publishBankruptcyNotifications } from "./bankruptcy-notify";
+import { cityConsumptionService } from "./city-consumption-service";
 import { bankruptcyService } from "./bankruptcy-service";
 import { inventoryService } from "./inventory-service";
 import { transformationService } from "./transformation-service";
@@ -76,11 +77,33 @@ export interface RunningProcessView {
   actualEndAt: Date | null;
 }
 
+/**
+ * Necesidad urbana del próximo periodo (openapi CityNeeds). Es la vista
+ * autoritativa con la que un bot-ciudad decide qué comprar: el cálculo (y sus
+ * perillas) se queda en el servidor.
+ */
+export interface CityNeedsView {
+  population: number;
+  periodSimSeconds: number;
+  needs: Array<{
+    productId: string;
+    productKey: string;
+    qtyCentPerPeriod: number;
+    qtyAvailableCent: number;
+  }>;
+}
+
 /** Snapshot completo del agente (openapi AgentSnapshot). */
 export interface AgentSelfState {
   agent: AgentRow;
   capitalAvailableCents: number;
   capitalReservedCents: number;
+  /**
+   * Habitantes (ADR-029): null salvo en el rol `city`. Va en la raíz del
+   * snapshot y NO en `AgentPublic` porque el tamaño de una ciudad es información
+   * propia, y meterlo ahí lo colaría también en GET /agents/{id}.
+   */
+  population: number | null;
   inventory: InventoryPositionView[];
   activeOrders: MarketOrderRow[];
   runningProcesses: RunningProcessView[];
@@ -130,6 +153,11 @@ export interface AgentService extends AgentRegistrar {
   ): Promise<InventoryLotRow[]>;
   /** Fila completa del agente; el controller expone solo los campos públicos. */
   getPublicAgent(agentId: string): Promise<AgentRow>;
+  /**
+   * GET /agents/me/city-needs (ADR-029): la cesta que el servidor va a consumirle
+   * a esta ciudad en el próximo periodo, con su stock actual. Solo rol `city`.
+   */
+  getCityNeeds(agentId: string): Promise<CityNeedsView>;
   /** Fondeo de capital semilla diferido y asíncrono. */
   fundAgentSeedCapital(agentId: string): Promise<void>;
 }
@@ -216,6 +244,7 @@ export const agentService: AgentService = {
         agent: agentRow,
         capitalAvailableCents: agentRow.capitalAvailable,
         capitalReservedCents: agentRow.capitalReserved,
+        population: agentRow.population,
         inventory,
         activeOrders,
         runningProcesses,
@@ -233,6 +262,29 @@ export const agentService: AgentService = {
         })),
         recentEvents,
       };
+    });
+  },
+
+  async getCityNeeds(agentId) {
+    return withTransaction(async (tx) => {
+      const agentRow = await agentRepository.findById(tx, agentId);
+      if (agentRow === undefined) {
+        throw domainError("unknown_agent", `El agente ${agentId} no existe.`);
+      }
+      if (agentRow.role !== "city") {
+        throw domainError(
+          "forbidden",
+          "Solo los agentes de rol `city` tienen necesidades de consumo urbano.",
+        );
+      }
+      const population = agentRow.population ?? 0;
+      const { periodSimSeconds, needs } = await cityConsumptionService.getCityNeeds(
+        tx,
+        agentId,
+        population,
+        agentRow.consumedPopSeconds ?? 0,
+      );
+      return { population, periodSimSeconds, needs };
     });
   },
 

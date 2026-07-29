@@ -46,15 +46,22 @@ type GlobalConfig struct {
 	CityPassword                      string                 `yaml:"city_password"`
 	TickIntervalSeconds               int                    `yaml:"tick_interval_seconds"`
 	StartupJitterSeconds              int                    `yaml:"startup_jitter_seconds"`
+	// NeedsRefreshSeconds: cada cuanto se refresca GET /agents/me/city-needs
+	// (ADR-029). La necesidad solo cambia con la poblacion, y el evento
+	// city_population_changed ya fuerza un refresco, asi que puede ser holgado.
+	NeedsRefreshSeconds float64 `yaml:"needs_refresh_seconds"`
+	// HousingShare: cuota del capital que la ciudad reserva para comprar vivienda
+	// (su unico bien de inversion). 0 = lo muestrea cada bot.
+	HousingShare float64 `yaml:"housing_share"`
 }
 
-// City es una entrada de infra/cities.json (fuente única compartida con el
-// seed del backend). bots-ciudad solo necesita el username; population_weight
-// lo consume el backend.
+// City es una entrada de infra/cities.json (fuente única compartida con el seed
+// del backend): solo la LISTA de cuentas. La población ya no se declara ahí
+// (ADR-029): todas nacen iguales y su tamaño lo lleva el servidor en
+// agent.population, que el bot lee del snapshot.
 type City struct {
-	Username         string `json:"username"`
-	Display          string `json:"display"`
-	PopulationWeight int64  `json:"population_weight"`
+	Username string `json:"username"`
+	Display  string `json:"display"`
 }
 
 type citiesFile struct {
@@ -171,7 +178,15 @@ func main() {
 }
 
 func createCityEngine(city City, cfg *GlobalConfig) *engine.Engine {
-	sdkCfg := &engine.Config{
+	return engine.NewEngine(buildCityConfig(city, cfg), botkit.NewConsumerStrategy(), nil, nil)
+}
+
+// buildCityConfig traduce la config global + una entrada de cities.json a la
+// config del engine de ESA ciudad. Separada de createCityEngine para poder
+// verificar sin red lo que no se puede equivocar: login-only (la cuenta ya está
+// sembrada) y la config de la demanda urbana enchufada a la estrategia.
+func buildCityConfig(city City, cfg *GlobalConfig) *engine.Config {
+	return &engine.Config{
 		Server:  cfg.Server,
 		Logging: cfg.Logging,
 		Retry:   cfg.Retry,
@@ -185,12 +200,13 @@ func createCityEngine(city City, cfg *GlobalConfig) *engine.Engine {
 			InsufficientCapitalBackoffSeconds: cfg.InsufficientCapitalBackoffSeconds,
 		},
 		Strategy: map[string]interface{}{
-			"prices":          cfg.Prices,
-			"market":          cfg.Market,
-			"sim_time_factor": cfg.SimTimeFactor,
+			"prices":                cfg.Prices,
+			"market":                cfg.Market,
+			"sim_time_factor":       cfg.SimTimeFactor,
+			"needs_refresh_seconds": cfg.NeedsRefreshSeconds,
+			"housing_share":         cfg.HousingShare,
 		},
 	}
-	return engine.NewEngine(sdkCfg, botkit.NewConsumerStrategy(), nil, nil)
 }
 
 func loadConfig(path string) (*GlobalConfig, error) {

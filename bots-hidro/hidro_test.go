@@ -53,6 +53,9 @@ func (l *libroFalso) RecentTrades(string, models.TradesQuery) ([]models.Trade, e
 
 func (l *libroFalso) BankInfo() (*models.BankInfo, error) { return nil, errSinPatronOro }
 
+// CityNeeds solo lo usa la estrategia de las ciudades; aqui no aplica.
+func (l *libroFalso) CityNeeds() (*models.CityNeeds, error) { return nil, errSinPatronOro }
+
 func producto(id, key string, cat models.ProductCategory) models.Product {
 	return models.Product{ProductID: id, Key: key, Name: key, Unit: "u", Category: cat}
 }

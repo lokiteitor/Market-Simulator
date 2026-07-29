@@ -1,10 +1,11 @@
 /**
- * AdminCitiesPage — ciudades e ingreso circular (ADR-020/025). Solo rol admin.
+ * AdminCitiesPage — ciudades e ingreso circular (ADR-020/025/029). Solo admin.
  *
  * Datos: ["admin","cities"] → GET /admin/cities. El ingreso POR ciudad no se
  * persiste (el sweeper solo deja el evento global `city_income_distributed`),
- * por eso el panel muestra el reparto agregado + el peso con el que cada
- * ciudad participa (`population_weight`, reparto exacto al céntimo).
+ * por eso el panel muestra el reparto agregado + la POBLACIÓN con la que cada
+ * ciudad participa (reparto exacto al céntimo). Desde ADR-029 la población es
+ * dinámica: la tabla ordenada por ella es el ranking de quién está creciendo.
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ export default function AdminCitiesPage() {
   });
 
   const data = citiesQuery.data;
-  const totalWeight = data?.total_population_weight ?? 0;
+  const totalPopulation = data?.total_population ?? 0;
 
   const columns: Array<DataTableColumn<AdminCityItem>> = [
     {
@@ -54,12 +55,12 @@ export default function AdminCitiesPage() {
       render: (c) => <CopyId id={c.agent_id} />,
     },
     {
-      key: "population_weight",
-      header: "Peso poblacional",
+      key: "population",
+      header: "Población",
       align: "right",
       mono: true,
-      render: (c) => c.population_weight,
-      sortValue: (c) => c.population_weight,
+      render: (c) => c.population,
+      sortValue: (c) => c.population,
     },
     {
       key: "share",
@@ -69,10 +70,10 @@ export default function AdminCitiesPage() {
       // Mismo redondeo a bps que usa fmtBps: proporción del ingreso que
       // recibe la ciudad en cada reparto del sweeper.
       render: (c) =>
-        totalWeight === 0
+        totalPopulation === 0
           ? "—"
-          : fmtBps(Math.round((c.population_weight * 10_000) / totalWeight)),
-      sortValue: (c) => c.population_weight,
+          : fmtBps(Math.round((c.population * 10_000) / totalPopulation)),
+      sortValue: (c) => c.population,
     },
     {
       key: "capital_available_cents",
@@ -144,7 +145,7 @@ export default function AdminCitiesPage() {
             <StatCard
               label="Ciudades"
               value={data.city_count}
-              hint={`peso poblacional total: ${data.total_population_weight}`}
+              hint={`población total: ${data.total_population}`}
             />
             <StatCard
               label="Ingreso pendiente"

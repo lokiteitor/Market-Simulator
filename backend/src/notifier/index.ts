@@ -34,6 +34,14 @@ export type NotificationType =
   // Personal (solo ciudades): ingreso recurrente acreditado por el
   // city-income-sweeper (flujo circular). Payload = { amount_cents }.
   | "city_income"
+  // Personal (solo ciudades): el city-consumption-sweeper consumió y DESTRUYÓ
+  // parte de la cesta (ADR-029). Payload = objeto CityConsumption del openapi.
+  // Es la señal para que el bot recalcule qué le falta y vuelva a comprar.
+  | "city_consumed"
+  // Personal (solo ciudades): la población cambió (vivienda absorbida y/o
+  // decaimiento). Payload = objeto CityPopulationChange del openapi. Cambia el
+  // tamaño de TODAS las necesidades, así que el bot refresca /city-needs.
+  | "city_population_changed"
   // Personal: el agente compró o mejoró una instalación (ADR-021).
   // Payload = objeto InstallationStatus del openapi.
   | "installation_purchased"

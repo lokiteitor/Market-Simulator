@@ -43,6 +43,22 @@ func (c *Client) CheckBankruptcy(ctx context.Context) (*models.BankruptcyCheck, 
 	return &resp, nil
 }
 
+// GetCityNeeds obtiene la cesta que el servidor consumira (y destruira) a esta
+// ciudad en el proximo periodo, con su stock actual (GET /agents/me/city-needs,
+// ADR-029). Solo tiene sentido en el rol `city`: el resto recibe 403.
+//
+// Es la fuente AUTORITATIVA de la demanda urbana: la formula (poblacion x
+// presupuesto per capita / coste de referencia) vive en el servidor, para que el
+// cliente no la duplique ni se desincronice de sus perillas.
+func (c *Client) GetCityNeeds(ctx context.Context) (*models.CityNeeds, error) {
+	var resp models.CityNeeds
+	err := c.do(ctx, http.MethodGet, "/agents/me/city-needs", nil, &resp, true)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // GetInstallations retrieves the installations bought by the authenticated
 // agent (economía de instalaciones, ADR-021).
 func (c *Client) GetInstallations(ctx context.Context) ([]models.InstallationStatus, error) {

@@ -534,6 +534,37 @@ paths:
                 items: { $ref: '#/components/schemas/InventoryLot' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /agents/me/city-needs:
+    get:
+      tags: [agent]
+      summary: Necesidades de consumo de la ciudad (solo rol `city`)
+      description: |
+        Vista AUTORITATIVA de lo que el servidor va a consumir (y destruir) a esta
+        ciudad en el próximo periodo, junto con el stock que ya tiene (ADR-029).
+
+        La necesidad de cada producto de la cesta se deriva de la población y de
+        un presupuesto per cápita del servidor, repartido entre la cesta **en
+        dinero** y convertido a unidades con `Product.reference_cost_cents`. El
+        cliente no replica esa fórmula: compara `qty_cent_per_period` (× la
+        cobertura que quiera mantener) con `qty_available_cent` y compra la
+        diferencia.
+
+        Se devuelve la cesta COMPLETA, incluidos los productos con necesidad 0
+        (población pequeña frente a un bien caro): que un producto falte y que su
+        necesidad sea 0 son cosas distintas.
+      responses:
+        '200':
+          description: Necesidades del próximo periodo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CityNeeds' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: El agente no es una ciudad (`forbidden`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /agents/{agent_id}:
     get:
       tags: [agent]
@@ -1280,7 +1311,8 @@ components:
 
     Product:
       type: object
-      required: [product_id, key, name, unit, category, created_at]
+      required:
+        [product_id, key, name, unit, category, reference_cost_cents, urban_role, created_at]
       properties:
         product_id: { type: string, format: uuid }
         key:
@@ -1295,7 +1327,33 @@ components:
           type: string
           description: Unidad de medida del producto (ej. `kg`, `L`, `cabezas`).
         category: { $ref: '#/components/schemas/ProductCategory' }
+        reference_cost_cents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Coste propagado por el grafo de recetas: la referencia de VALOR del
+            producto, el mismo número que los precios base de los bots. **No es
+            un precio de mercado** (ese sale del libro). El consumo urbano
+            (ADR-029) lo usa para repartir el presupuesto per cápita de cada
+            ciudad en dinero y no en unidades.
+        urban_role:
+          allOf: [{ $ref: '#/components/schemas/UrbanRole' }]
+          nullable: true
+          description: |
+            Papel del producto en la economía urbana (ADR-029). `null` en materias
+            primas e intermedios.
         created_at: { type: string, format: date-time }
+
+    UrbanRole:
+      type: string
+      enum: [basket, housing]
+      description: |
+        Papel de un producto de consumo final en la economía urbana (ADR-029):
+          * `basket`  — las ciudades lo consumen y lo DESTRUYEN cada periodo, en
+            cantidad proporcional a su población. Es la demanda recurrente.
+          * `housing` — bien de inversión: la ciudad lo absorbe (el lote se
+            destruye) y cada unidad suma habitantes. Hay exactamente uno.
 
     Deposit:
       type: object
@@ -1437,6 +1495,7 @@ components:
         - agent
         - capital_available_cents
         - capital_reserved_cents
+        - population
         - inventory
         - active_orders
         - running_processes
@@ -1452,6 +1511,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+        population:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: |
+            Habitantes de la ciudad (ADR-029); `null` en el resto de roles. Escala
+            a la vez el ingreso recurrente que recibe y las necesidades que el
+            servidor le consume, así que un bot-ciudad lo necesita para
+            dimensionar sus compras. Va aquí y no en `AgentPublic` porque el
+            tamaño de una ciudad no es información pública.
         inventory:
           type: array
           items: { $ref: '#/components/schemas/InventoryPosition' }
@@ -1475,6 +1545,51 @@ components:
             ejecutados, procesos completados, órdenes expiradas, agentes nuevos,
             agentes quebrados).
           items: { $ref: '#/components/schemas/Event' }
+
+    CityNeed:
+      type: object
+      description: |
+        Necesidad de un producto de la cesta urbana para el próximo periodo de
+        consumo, con el stock actual de la ciudad (ADR-029).
+      required: [product_id, product_key, qty_cent_per_period, qty_available_cent]
+      properties:
+        product_id: { type: string, format: uuid }
+        product_key:
+          type: string
+          description: Clave del catálogo; evita cruzar con `/catalog/products`.
+        qty_cent_per_period:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Cantidad (centésimas de unidad) que el servidor consumirá en un
+            periodo. 0 significa que el producto está en la cesta pero la
+            población actual no llega a demandar ni una centésima de él.
+        qty_available_cent:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Stock disponible ahora mismo (para calcular la cobertura).
+
+    CityNeeds:
+      type: object
+      description: |
+        Respuesta de `GET /agents/me/city-needs` (ADR-029).
+      required: [population, period_sim_seconds, needs]
+      properties:
+        population:
+          type: integer
+          format: int64
+          minimum: 0
+        period_sim_seconds:
+          type: number
+          minimum: 0
+          description: |
+            Duración del periodo al que se refieren las necesidades, en segundos
+            SIMULADOS (el intervalo del sweeper de consumo × `SIM_TIME_FACTOR`).
+        needs:
+          type: array
+          items: { $ref: '#/components/schemas/CityNeed' }
 
     BankruptcyCheck:
       type: object
@@ -1951,6 +2066,8 @@ components:
         - deposit_depleted
         - city_income_distributed
         - installation_purchased
+        - city_consumed
+        - city_population_changed
 
     Event:
       type: object
@@ -2110,6 +2227,8 @@ x-websocket-channel:
           - city_income          # personal (solo rol `city`): ingreso recurrente del flujo circular (payload = { amount_cents })
           - installation_purchased # personal: compra o mejora de instalación (payload = InstallationStatus + amountChargedCents)
           - deposit_depleted     # broadcast: un yacimiento llegó a 0 (payload = { product_id, qty_initial_cent, process_id })
+          - city_consumed        # personal (solo rol `city`): la cesta consumida y DESTRUIDA en la última pasada (payload = { consumed[], unmet[] })
+          - city_population_changed # personal (solo rol `city`): la población cambió por vivienda absorbida y/o decaimiento (payload = { population, habitants_gained, habitants_lost })
       occurred_at: { type: string, format: date-time }
       payload:
         type: object

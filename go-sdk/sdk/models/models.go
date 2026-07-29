@@ -37,15 +37,30 @@ const (
 	CategoryFinalConsumption ProductCategory = "final_consumption"
 )
 
+// UrbanRole es el papel de un producto de consumo final en la economia urbana
+// (ADR-029): "basket" lo consumen y DESTRUYEN las ciudades cada periodo,
+// "housing" lo absorben para crecer. Vacio en materias primas e intermedios.
+type UrbanRole string
+
+const (
+	UrbanRoleBasket  UrbanRole = "basket"
+	UrbanRoleHousing UrbanRole = "housing"
+)
+
 type Product struct {
 	ProductID string `json:"product_id"`
 	// Key es el identificador estable del catálogo (ej. "trigo"); a diferencia
 	// de ProductID (UUID regenerado en cada seed) es constante entre despliegues.
-	Key       string          `json:"key"`
-	Name      string          `json:"name"`
-	Unit      string          `json:"unit"`
-	Category  ProductCategory `json:"category"`
-	CreatedAt time.Time       `json:"created_at"`
+	Key      string          `json:"key"`
+	Name     string          `json:"name"`
+	Unit     string          `json:"unit"`
+	Category ProductCategory `json:"category"`
+	// ReferenceCostCents es el coste propagado por el grafo de recetas: la
+	// referencia de VALOR del producto (el mismo numero que los precios base del
+	// config de los bots), no un precio de mercado.
+	ReferenceCostCents int64     `json:"reference_cost_cents"`
+	UrbanRole          UrbanRole `json:"urban_role"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type RecipeInput struct {
@@ -82,6 +97,28 @@ type InstallationStatus struct {
 	Running               int    `json:"running"`
 	AvailableSlots        int    `json:"available_slots"`
 	NextUpgradePriceCents *int64 `json:"next_upgrade_price_cents"`
+}
+
+// CityNeed es la necesidad de un producto de la cesta urbana para el proximo
+// periodo de consumo, con el stock actual de la ciudad (ADR-029).
+type CityNeed struct {
+	ProductID  string `json:"product_id"`
+	ProductKey string `json:"product_key"`
+	// QtyCentPerPeriod es lo que el servidor CONSUMIRA (destruira) en un periodo.
+	// 0 = el producto esta en la cesta pero la poblacion no llega a demandarlo.
+	QtyCentPerPeriod int64 `json:"qty_cent_per_period"`
+	QtyAvailableCent int64 `json:"qty_available_cent"`
+}
+
+// CityNeeds: respuesta de GET /agents/me/city-needs (ADR-029). Es la vista
+// AUTORITATIVA de lo que la ciudad va a consumir: el cliente no replica la
+// formula (ni conoce el presupuesto per capita del servidor), solo compara con
+// su stock y compra la diferencia.
+type CityNeeds struct {
+	Population int64 `json:"population"`
+	// PeriodSimSeconds es la duracion del periodo en segundos SIMULADOS.
+	PeriodSimSeconds float64    `json:"period_sim_seconds"`
+	Needs            []CityNeed `json:"needs"`
 }
 
 // InstallationType: un tipo comprable del catálogo (GET /catalog/installation-types).
@@ -293,14 +330,18 @@ type EventPage struct {
 }
 
 type AgentSnapshot struct {
-	Agent                 AgentPublic             `json:"agent"`
-	CapitalAvailableCents int64                   `json:"capital_available_cents"`
-	CapitalReservedCents  int64                   `json:"capital_reserved_cents"`
-	Inventory             []InventoryPosition     `json:"inventory"`
-	ActiveOrders          []Order                 `json:"active_orders"`
-	RunningProcesses      []TransformationProcess `json:"running_processes"`
-	Installations         []InstallationStatus    `json:"installations"`
-	RecentEvents          []Event                 `json:"recent_events"`
+	Agent                 AgentPublic `json:"agent"`
+	CapitalAvailableCents int64       `json:"capital_available_cents"`
+	CapitalReservedCents  int64       `json:"capital_reserved_cents"`
+	// Population son los habitantes de la ciudad (ADR-029); nil en el resto de
+	// roles. Escala a la vez el ingreso recurrente que recibe y las necesidades
+	// que el servidor le consume.
+	Population       *int64                  `json:"population"`
+	Inventory        []InventoryPosition     `json:"inventory"`
+	ActiveOrders     []Order                 `json:"active_orders"`
+	RunningProcesses []TransformationProcess `json:"running_processes"`
+	Installations    []InstallationStatus    `json:"installations"`
+	RecentEvents     []Event                 `json:"recent_events"`
 }
 
 // BankruptcyCheck: respuesta de POST /agents/me/bankruptcy-check (ADR-026).

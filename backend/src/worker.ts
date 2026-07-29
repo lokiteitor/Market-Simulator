@@ -27,10 +27,12 @@ import { register, workerJobsFailed, workerJobsProcessed } from "./observability
 import { runOrderExpirySweep } from "./workers/order-expiry-sweeper";
 import { runFeeLedgerSweep } from "./workers/fee-ledger-sweeper";
 import { runCityIncomeSweep } from "./workers/city-income-sweeper";
+import { runCityConsumptionSweep } from "./workers/city-consumption-sweeper";
 import {
   ORDER_EXPIRY_SWEEP_QUEUE,
   FEE_LEDGER_SWEEP_QUEUE,
   CITY_INCOME_SWEEP_QUEUE,
+  CITY_CONSUMPTION_SWEEP_QUEUE,
   REFRESH_TOKEN_CLEANUP_QUEUE,
   SNAPSHOT_QUEUE,
   TRANSFORMATION_SWEEP_QUEUE,
@@ -66,6 +68,7 @@ const transformationQueue = new Queue(TRANSFORMATION_SWEEP_QUEUE, { connection }
 const orderExpiryQueue = new Queue(ORDER_EXPIRY_SWEEP_QUEUE, { connection });
 const feeLedgerQueue = new Queue(FEE_LEDGER_SWEEP_QUEUE, { connection });
 const cityIncomeQueue = new Queue(CITY_INCOME_SWEEP_QUEUE, { connection });
+const cityConsumptionQueue = new Queue(CITY_CONSUMPTION_SWEEP_QUEUE, { connection });
 const cleanupQueue = new Queue(REFRESH_TOKEN_CLEANUP_QUEUE, { connection });
 const goldIssuanceQueue = new Queue(GOLD_ISSUANCE_QUEUE, { connection });
 const queues = [
@@ -73,6 +76,7 @@ const queues = [
   orderExpiryQueue,
   feeLedgerQueue,
   cityIncomeQueue,
+  cityConsumptionQueue,
   cleanupQueue,
   goldIssuanceQueue,
 ];
@@ -96,6 +100,11 @@ await cityIncomeQueue.upsertJobScheduler(
   "city-income-sweep-every",
   { every: config.sweeps.cityIncomeIntervalMs },
   { name: "city-income-sweep", opts: repeatJobOpts },
+);
+await cityConsumptionQueue.upsertJobScheduler(
+  "city-consumption-sweep-every",
+  { every: config.sweeps.cityConsumptionIntervalMs },
+  { name: "city-consumption-sweep", opts: repeatJobOpts },
 );
 await cleanupQueue.upsertJobScheduler(
   "refresh-token-cleanup-daily",
@@ -159,6 +168,16 @@ const cityIncomeWorker = instrument(
   CITY_INCOME_SWEEP_QUEUE,
 );
 
+// El consumo urbano no toma batchSize: recorre TODAS las ciudades activas en
+// cada pasada (son ~50) y cada una en su propia transacción.
+const cityConsumptionWorker = instrument(
+  new Worker(CITY_CONSUMPTION_SWEEP_QUEUE, async () => runCityConsumptionSweep(), {
+    connection,
+    concurrency: 1,
+  }),
+  CITY_CONSUMPTION_SWEEP_QUEUE,
+);
+
 const snapshotWorker = instrument(
   new Worker<SnapshotJobData, SnapshotResult>(
     SNAPSHOT_QUEUE,
@@ -192,6 +211,7 @@ const workers = [
   orderExpiryWorker,
   feeLedgerWorker,
   cityIncomeWorker,
+  cityConsumptionWorker,
   snapshotWorker,
   cleanupWorker,
   goldIssuanceWorker,
@@ -225,6 +245,8 @@ log.info(
       [TRANSFORMATION_SWEEP_QUEUE]: `${config.sweeps.transformationIntervalMs}ms`,
       [ORDER_EXPIRY_SWEEP_QUEUE]: `${config.sweeps.orderExpiryIntervalMs}ms`,
       [FEE_LEDGER_SWEEP_QUEUE]: `${config.sweeps.feeLedgerIntervalMs}ms`,
+      [CITY_INCOME_SWEEP_QUEUE]: `${config.sweeps.cityIncomeIntervalMs}ms`,
+      [CITY_CONSUMPTION_SWEEP_QUEUE]: `${config.sweeps.cityConsumptionIntervalMs}ms`,
       [SNAPSHOT_QUEUE]: "on-demand",
       [REFRESH_TOKEN_CLEANUP_QUEUE]: `${DAY_MS}ms`,
     },

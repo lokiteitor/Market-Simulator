@@ -411,6 +411,20 @@ func (c *Client) parseWSEvent(msg []byte) (events.Event, error) {
 		}
 		p.ReceivedAt = env.OccurredAt
 		ev = p
+	case "city_consumed":
+		var p events.CityConsumed
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.OccurredAt = env.OccurredAt
+		ev = p
+	case "city_population_changed":
+		var p events.CityPopulationChanged
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return nil, err
+		}
+		p.OccurredAt = env.OccurredAt
+		ev = p
 	case "installation_purchased":
 		var p events.InstallationPurchased
 		if err := json.Unmarshal(env.Payload, &p); err != nil {

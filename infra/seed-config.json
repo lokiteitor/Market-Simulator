@@ -914,7 +914,8 @@
       "key": "vivienda",
       "name": "Vivienda",
       "unit": "unidad",
-      "category": "final_consumption"
+      "category": "final_consumption",
+      "urban": "housing"
     }
   ],
   "recipes": [

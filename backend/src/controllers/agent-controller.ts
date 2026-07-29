@@ -134,6 +134,7 @@ export const agentController = {
       agent: toAgentPublicJson(state.agent),
       capital_available_cents: state.capitalAvailableCents,
       capital_reserved_cents: state.capitalReservedCents,
+      population: state.population,
       inventory: state.inventory.map(toInventoryPositionJson),
       active_orders: state.activeOrders.map(toOrderJson),
       running_processes: state.runningProcesses.map(toProcessJson),
@@ -174,6 +175,24 @@ export const agentController = {
       onlyWithStock,
     });
     await reply.code(200).send(lots.map(toInventoryLotJson));
+  },
+
+  /**
+   * GET /agents/me/city-needs — cesta que el servidor consumirá en el próximo
+   * periodo, con el stock actual (ADR-029). 403 fuera del rol `city`.
+   */
+  async getMyCityNeeds(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const view = await agentService.getCityNeeds(request.agentId);
+    await reply.code(200).send({
+      population: view.population,
+      period_sim_seconds: view.periodSimSeconds,
+      needs: view.needs.map((n) => ({
+        product_id: n.productId,
+        product_key: n.productKey,
+        qty_cent_per_period: n.qtyCentPerPeriod,
+        qty_available_cent: n.qtyAvailableCent,
+      })),
+    });
   },
 
   /** GET /agents/{agent_id} — información pública (openapi AgentPublic). */

@@ -3,7 +3,7 @@
  *
  * Job recurrente: pliega el ingreso no materializado de `income_ledger`
  * (salarios reciclados + tasa de consumo) y lo REPARTE entre las ciudades
- * activas ponderado por population_weight. La lógica de dominio vive en
+ * activas ponderado por su población. La lógica de dominio vive en
  * `cityIncomeService.materializeIncome` (una tx; el reparto es exacto). El
  * no-solape lo garantiza el worker (concurrency 1 por cola).
  *

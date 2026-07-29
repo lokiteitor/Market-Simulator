@@ -43,6 +43,8 @@ export function toProductDto(row: ProductRow): ProductDto {
     name: row.name,
     unit: row.unit,
     category: row.category,
+    reference_cost_cents: row.referenceCostCents,
+    urban_role: row.urbanRole,
     created_at: row.createdAt.toISOString(),
   };
 }

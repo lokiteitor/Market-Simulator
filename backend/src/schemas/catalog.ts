@@ -10,9 +10,12 @@
  *     hace el controller (ver catalog-controller.recipeDurationRealSeconds).
  */
 import { z } from "zod";
-import { productCategory } from "../db/schema";
+import { productCategory, urbanRole } from "../db/schema";
 
 export const ProductCategorySchema = z.enum(productCategory.enumValues);
+
+/** Papel del producto en la economía urbana (ADR-029). */
+export const UrbanRoleSchema = z.enum(urbanRole.enumValues);
 
 export const ProductSchema = z.object({
   product_id: z.uuid(),
@@ -20,6 +23,18 @@ export const ProductSchema = z.object({
   name: z.string(),
   unit: z.string(),
   category: ProductCategorySchema,
+  /**
+   * Coste propagado por el grafo de recetas: la referencia de valor del
+   * producto (el mismo número que los precios base de los bots). NO es un
+   * precio de mercado.
+   */
+  reference_cost_cents: z.number().int().min(1),
+  /**
+   * Papel en la economía urbana (ADR-029): `basket` = las ciudades lo consumen
+   * y lo destruyen cada periodo; `housing` = lo absorben para crecer. null en
+   * materias primas e intermedios.
+   */
+  urban_role: UrbanRoleSchema.nullable(),
   created_at: z.iso.datetime(),
 });
 

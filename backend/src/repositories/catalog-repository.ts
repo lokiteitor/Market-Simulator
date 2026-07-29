@@ -66,6 +66,46 @@ export const catalogRepository = {
       .orderBy(asc(recipeInput.recipeId), asc(recipeInput.productId));
   },
 
+  /**
+   * Cesta urbana (ADR-029): los productos que las ciudades consumen y destruyen,
+   * con su coste de referencia para repartir el presupuesto per cápita en dinero.
+   * Orden estable por PK: el reparto debe ser reproducible entre pasadas.
+   */
+  async listUrbanBasket(
+    tx: Tx,
+  ): Promise<Array<{ productId: string; key: string; referenceCostCents: number }>> {
+    const rows = await tx
+      .select({
+        productId: product.productId,
+        key: product.key,
+        referenceCostCents: product.referenceCostCents,
+      })
+      .from(product)
+      .where(eq(product.urbanRole, "basket"))
+      .orderBy(asc(product.productId));
+    return rows.map((r) => ({
+      productId: r.productId,
+      key: r.key,
+      referenceCostCents: Number(r.referenceCostCents),
+    }));
+  },
+
+  /**
+   * El bien de inversión urbano (`urban_role = 'housing'`): lo que una ciudad
+   * absorbe para crecer. El seed garantiza que hay exactamente uno.
+   */
+  async getHousingProduct(
+    tx: Tx,
+  ): Promise<{ productId: string; key: string } | undefined> {
+    const rows = await tx
+      .select({ productId: product.productId, key: product.key })
+      .from(product)
+      .where(eq(product.urbanRole, "housing"))
+      .orderBy(asc(product.productId))
+      .limit(1);
+    return rows[0];
+  },
+
   // -------------------------------------------------------------------------
   // Escrituras (solo seed)
   // -------------------------------------------------------------------------
@@ -86,6 +126,10 @@ export const catalogRepository = {
       name: string;
       unit: string;
       category: ProductRow["category"];
+      /** Coste propagado del catálogo (`catalogCosts`), referencia de valor. */
+      referenceCostCents: number;
+      /** Papel urbano (ADR-029); NULL fuera de `final_consumption`. */
+      urbanRole: ProductRow["urbanRole"];
     },
   ): Promise<{ productId: string }> {
     const rows = await tx

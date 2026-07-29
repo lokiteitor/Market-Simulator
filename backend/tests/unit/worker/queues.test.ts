@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+  CITY_CONSUMPTION_SWEEP_QUEUE,
   CITY_INCOME_SWEEP_QUEUE,
   FEE_LEDGER_SWEEP_QUEUE,
   GOLD_ISSUANCE_QUEUE,
@@ -21,14 +22,15 @@ describe("nombres de colas (contrato §14)", () => {
     expect(ORDER_EXPIRY_SWEEP_QUEUE).toBe("order-expiry-sweep");
     expect(FEE_LEDGER_SWEEP_QUEUE).toBe("fee-ledger-sweep");
     expect(CITY_INCOME_SWEEP_QUEUE).toBe("city-income-sweep");
+    expect(CITY_CONSUMPTION_SWEEP_QUEUE).toBe("city-consumption-sweep");
     expect(SNAPSHOT_QUEUE).toBe("snapshot");
     expect(REFRESH_TOKEN_CLEANUP_QUEUE).toBe("refresh-token-cleanup");
     expect(GOLD_ISSUANCE_QUEUE).toBe("gold-issuance");
   });
 
-  test("WORKER_QUEUES contiene las 7 colas sin duplicados", () => {
-    expect(WORKER_QUEUES).toHaveLength(7);
-    expect(new Set(WORKER_QUEUES).size).toBe(7);
+  test("WORKER_QUEUES contiene las 8 colas sin duplicados", () => {
+    expect(WORKER_QUEUES).toHaveLength(8);
+    expect(new Set(WORKER_QUEUES).size).toBe(8);
   });
 });
 

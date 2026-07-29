@@ -54,6 +54,31 @@ const EnvSchema = z
     // fracción destruida que obligaría a un SUM de tabla completa en cada
     // lectura del invariante de conservación.
     CITY_FEE_SHARE_BPS: nonNegIntFromEnv(5000),
+    // --- Demanda urbana endógena (ADR-029) ---
+    // Población con la que nace TODA ciudad, y suelo del decaimiento: garantiza
+    // que la demanda final nunca se apaga (una ciudad arruinada se encoge hasta
+    // aquí, no muere).
+    CITY_INITIAL_POPULATION: posIntFromEnv(1000),
+    // Habitantes que aporta cada unidad de `vivienda` absorbida.
+    CITY_HABITANTS_PER_HOUSING: posIntFromEnv(4),
+    // Decaimiento de la población por día SIMULADO. Es lo que obliga a reponer
+    // vivienda: sin construcción la ciudad vuelve al suelo. Se deriva de la
+    // cuota `r` del presupuesto que se quiera dedicar a vivienda:
+    //   decay_bps_dia = 10000 × habitantes_por_vivienda × 24 × b × r / coste_vivienda
+    // Con b=20, r=25% y la vivienda a 453.100 ¢ salen ~11 bps/día-sim. Cambiar
+    // `b` obliga a recalcular esto o el equilibrio se desplaza.
+    CITY_POPULATION_DECAY_BPS_PER_SIM_DAY: nonNegIntFromEnv(11),
+    // Presupuesto de consumo por habitante y hora SIMULADA, la perilla de
+    // calibración principal. Se reparte a partes iguales entre la cesta y se
+    // convierte a unidades con `product.reference_cost_cents`, de modo que el
+    // gasto se distribuye en DINERO y no en unidades. En equilibrio debe cumplir
+    // Σ(población) × b ≈ ingreso repartido por hora-sim
+    // (rate(city_income_distributed_cents_total) en Grafana).
+    CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR: posIntFromEnv(20),
+    // Techo del Δt de una pasada de consumo. Sin él, tras una caída larga del
+    // worker la primera pasada arrasaría el inventario de todas las ciudades y
+    // les aplicaría el decaimiento acumulado de golpe.
+    CITY_CONSUMPTION_MAX_CATCHUP_SIM_SECONDS: posIntFromEnv(3600),
     MASTER_SEED: intFromEnv(42),
     DEFAULT_SEED_CAPITAL_CENTS: posIntFromEnv(100000),
     SEED_CAPITAL_TRANSFORMER_MIN_CENTS: posIntFromEnv(120000),
@@ -64,10 +89,13 @@ const EnvSchema = z
     SEED_CONFIG_PATH: z.string().min(1).default("../infra/seed-config.json"),
     // Ciudades-consumidor (rol `city`): lista canónica (fuente única compartida
     // con bots-ciudad), contraseña de siembra (DEBE coincidir con la de
-    // bots-ciudad/config.yaml) y capital semilla por unidad de population_weight.
+    // bots-ciudad/config.yaml) y capital semilla, IGUAL para todas (ADR-029: la
+    // heterogeneidad ya no es un dato de entrada, se la gana cada ciudad
+    // creciendo). Debe cubrir al menos una vivienda o ninguna podrá crecer
+    // hasta haber acumulado ingreso durante mucho tiempo.
     CITY_CONFIG_PATH: z.string().min(1).default("../infra/cities.json"),
     CITY_SEED_PASSWORD: z.string().min(1).default("city-dev-password"),
-    CITY_SEED_CAPITAL_CENTS_PER_WEIGHT: posIntFromEnv(50),
+    CITY_SEED_CAPITAL_CENTS: posIntFromEnv(1400000),
     // Patrón oro (§banco central). El banco NO es registrable ni logueable.
     BANK_USERNAME: z.string().min(3).max(64).default("central_bank"),
     GOLD_PRODUCT_KEY: z.string().min(1).default("oro"),
@@ -101,6 +129,9 @@ const EnvSchema = z
     // para que el lag del saldo del banco sea pequeño.
     FEE_LEDGER_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
     CITY_INCOME_SWEEP_INTERVAL_MS: posIntFromEnv(5000),
+    // Sweeper del consumo urbano (ADR-029): absorbe vivienda, aplica el
+    // decaimiento de población y DESTRUYE la cesta consumida.
+    CITY_CONSUMPTION_SWEEP_INTERVAL_MS: posIntFromEnv(10000),
     SWEEP_BATCH_SIZE: posIntFromEnv(100),
     IDEMPOTENCY_TTL_SECONDS: posIntFromEnv(600),
     RECONNECT_EVENTS_LIMIT: posIntFromEnv(100),
@@ -134,6 +165,11 @@ const EnvSchema = z
   .refine((e) => e.CITY_FEE_SHARE_BPS <= 10000, {
     message: "CITY_FEE_SHARE_BPS debe ser <= 10000 (fracción del fee)",
     path: ["CITY_FEE_SHARE_BPS"],
+  })
+  .refine((e) => e.CITY_POPULATION_DECAY_BPS_PER_SIM_DAY <= 10000, {
+    message:
+      "CITY_POPULATION_DECAY_BPS_PER_SIM_DAY debe ser <= 10000 (fracción de la población)",
+    path: ["CITY_POPULATION_DECAY_BPS_PER_SIM_DAY"],
   })
   .refine((e) => e.DEPOSIT_MIN_EXECUTIONS <= e.DEPOSIT_MAX_EXECUTIONS, {
     message: "DEPOSIT_MIN_EXECUTIONS debe ser <= MAX",
@@ -189,7 +225,19 @@ export interface Config {
   cities: {
     configPath: string;
     seedPassword: string;
-    seedCapitalCentsPerWeight: number;
+    /** Capital semilla, IGUAL para todas las ciudades (ADR-029). */
+    seedCapitalCents: number;
+  };
+  /**
+   * Demanda urbana endógena (ADR-029): población mutable (crece con la vivienda
+   * absorbida, decae si no se repone) y consumo destructivo proporcional a ella.
+   */
+  cityConsumption: {
+    initialPopulation: number;
+    habitantsPerHousing: number;
+    populationDecayBpsPerSimDay: number;
+    needBudgetPerCapitaCentsPerSimHour: number;
+    maxCatchupSimSeconds: number;
   };
   /** Parámetros del patrón oro (banco central + yacimiento finito). */
   gold: {
@@ -221,6 +269,7 @@ export interface Config {
     orderExpiryIntervalMs: number;
     feeLedgerIntervalMs: number;
     cityIncomeIntervalMs: number;
+    cityConsumptionIntervalMs: number;
     batchSize: number;
   };
   idempotencyTtlSeconds: number;
@@ -289,7 +338,14 @@ function loadConfig(): Config {
     cities: {
       configPath: e.CITY_CONFIG_PATH,
       seedPassword: e.CITY_SEED_PASSWORD,
-      seedCapitalCentsPerWeight: e.CITY_SEED_CAPITAL_CENTS_PER_WEIGHT,
+      seedCapitalCents: e.CITY_SEED_CAPITAL_CENTS,
+    },
+    cityConsumption: {
+      initialPopulation: e.CITY_INITIAL_POPULATION,
+      habitantsPerHousing: e.CITY_HABITANTS_PER_HOUSING,
+      populationDecayBpsPerSimDay: e.CITY_POPULATION_DECAY_BPS_PER_SIM_DAY,
+      needBudgetPerCapitaCentsPerSimHour: e.CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR,
+      maxCatchupSimSeconds: e.CITY_CONSUMPTION_MAX_CATCHUP_SIM_SECONDS,
     },
     gold: {
       bankUsername: e.BANK_USERNAME,
@@ -314,6 +370,7 @@ function loadConfig(): Config {
       orderExpiryIntervalMs: e.ORDER_EXPIRY_SWEEP_INTERVAL_MS,
       feeLedgerIntervalMs: e.FEE_LEDGER_SWEEP_INTERVAL_MS,
       cityIncomeIntervalMs: e.CITY_INCOME_SWEEP_INTERVAL_MS,
+      cityConsumptionIntervalMs: e.CITY_CONSUMPTION_SWEEP_INTERVAL_MS,
       batchSize: e.SWEEP_BATCH_SIZE,
     },
     idempotencyTtlSeconds: e.IDEMPOTENCY_TTL_SECONDS,

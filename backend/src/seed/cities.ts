@@ -2,6 +2,10 @@
  * Ciudades-consumidor (rol `city`): schema y parseo de `infra/cities.json`,
  * fuente única compartida con el binario bots-ciudad. No pasan por el
  * seed-config del catálogo (no tienen capacidades).
+ *
+ * El fichero es solo la LISTA de cuentas: la población ya no se declara aquí
+ * (ADR-029). Todas nacen iguales con `CITY_INITIAL_POPULATION` y su tamaño pasa
+ * a ser un resultado de la partida, no un dato de entrada.
  */
 import { z } from "zod";
 import { parseJsonConfig } from "../lib/json-config";
@@ -13,7 +17,6 @@ const CitySchema = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_.-]+$/, "Solo letras, dígitos y . _ -"),
   display: z.string().optional(),
-  population_weight: z.number().int().positive(),
 });
 
 const CitiesConfigSchema = z.object({

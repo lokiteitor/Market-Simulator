@@ -19,6 +19,7 @@ export const TRANSFORMATION_SWEEP_QUEUE = "transformation-sweep";
 export const ORDER_EXPIRY_SWEEP_QUEUE = "order-expiry-sweep";
 export const FEE_LEDGER_SWEEP_QUEUE = "fee-ledger-sweep";
 export const CITY_INCOME_SWEEP_QUEUE = "city-income-sweep";
+export const CITY_CONSUMPTION_SWEEP_QUEUE = "city-consumption-sweep";
 export const SNAPSHOT_QUEUE = "snapshot";
 export const REFRESH_TOKEN_CLEANUP_QUEUE = "refresh-token-cleanup";
 export const GOLD_ISSUANCE_QUEUE = "gold-issuance";
@@ -28,6 +29,7 @@ export const WORKER_QUEUES = [
   ORDER_EXPIRY_SWEEP_QUEUE,
   FEE_LEDGER_SWEEP_QUEUE,
   CITY_INCOME_SWEEP_QUEUE,
+  CITY_CONSUMPTION_SWEEP_QUEUE,
   SNAPSHOT_QUEUE,
   REFRESH_TOKEN_CLEANUP_QUEUE,
   GOLD_ISSUANCE_QUEUE,

@@ -83,8 +83,8 @@ graph LR
 
 | Archivo | Responsabilidad |
 |---------|-----------------|
-| `main.go` | Toma un **flock** de instancia única, lee `config.yaml` + `../infra/cities.json` y lanza una goroutine por ciudad con `botkit.NewConsumerStrategy()`. Sin `-scale` ni rotación. |
-| `config.yaml` | Servidor, MarketView, precios base, `cities_path`, `city_password` y jitter de arranque. |
+| `main.go` | Toma un **flock** de instancia única, lee `config.yaml` + `../infra/cities.json` (solo la LISTA de cuentas: la población la lleva el servidor, ADR-029) y lanza una goroutine por ciudad con `botkit.NewConsumerStrategy()`. Sin `-scale` ni rotación. |
+| `config.yaml` | Servidor, MarketView, precios base, `cities_path`, `city_password`, jitter de arranque y la config de demanda urbana (`needs_refresh_seconds`, `housing_share`). |
 
 Dos diferencias esenciales con `bots-v1`:
 
@@ -511,22 +511,42 @@ transición energética que describe ADR-024.
 
 ### 5.2 Consumer (`botkit/consumer.go`) — solo ciudades
 
-Demanda final con elasticidad; solo opera productos de categoría `final_consumption`. Desde
-ADR-025 la ejecutan **exclusivamente las ~50 ciudades** de `bots-ciudad`: son las únicas con
-ingreso recurrente (salarios reciclados + tasa de consumo, ADR-020) y por tanto la única
-demanda que no se agota.
+Demanda final con elasticidad. Desde ADR-025 la ejecutan **exclusivamente las ~50 ciudades** de
+`bots-ciudad`: son las únicas con ingreso recurrente (salarios reciclados + tasa de consumo,
+ADR-020) y por tanto la única demanda que no se agota.
 
+Desde **ADR-029 compra contra una NECESIDAD, no a ciegas**. El servidor le consume (y destruye)
+cada periodo una cesta proporcional a su población y publica esa necesidad en
+`GET /agents/me/city-needs`; el bot mantiene un stock objetivo y pide solo el hueco:
+
+```
+objetivo_i = necesidad_i × cobertura          (cobertura 3–8 periodos, por bot)
+faltante_i = objetivo_i − (disponible_i + pendiente_de_compra_i)
+```
+
+- **Qué es cesta y qué es inversión lo dice el catálogo**, no una lista local: `urban_role`
+  de cada producto (`basket` / `housing`). Contra un servidor anterior a ADR-029 el campo llega
+  vacío y la estrategia degrada al comportamiento histórico (toda la categoría de consumo
+  final es cesta, sin vivienda) avisando por log.
+- **Orden de atención: cobertura ascendente** (lo que se va a acabar antes, primero), con
+  desempate aleatorio para que 50 ciudades no golpeen el libro en el mismo orden. Sustituye la
+  permutación uniforme: con la cesta entera compitiendo por un presupuesto acotado, el orden
+  **es** la política de racionamiento.
 - **Precio de reserva** por bot = `precio_base × tolerance` (1.05–1.4), con ruido ±5% por
   producto. Se ancla al precio **base**, no al fair, para que la demanda no persiga burbujas.
 - **Presupuesto por tick** = `capital_disponible × spendRate` (2–8%).
 - Por producto: si el mejor ask cabe en la reserva → **levanta el ask** con probabilidad
-  `crossProb` (trade real inmediato); si no, deja un **bid de descanso** bajo el fair, sin
-  exceder la reserva ni el techo de cantidad pendiente.
-- **Cuántos productos mira por tick** = el **9–24% de la cesta** (con suelo de 3), no un
-  número fijo. El reparto es una permutación uniforme sobre *todos* los `final_consumption`,
-  así que cada producto final nuevo le roba atención a los demás; con el 3–8 fijo original,
-  ampliar el catálogo diluía la demanda por producto sin que nadie lo decidiera (ADR-028 lo
-  llevó de 34 a 49 finales). `market.consumer_per_tick > 0` lo fija a mano.
+  `crossProb` (trade real inmediato); si no, deja un **bid de descanso** bajo el fair.
+- **La vivienda va en un bolsillo aparte** (`housing_share`, 15–35% del capital): es el único
+  bien de inversión (cada unidad suma habitantes y sin reponerla la población decae hasta el
+  suelo), cuesta ~2.400 panes y jamás ganaría una puja contra la cesta por el presupuesto de un
+  tick. El bot **ahorra** hasta poder pagar una unidad entera, no apila órdenes y no paga por
+  encima de su reserva.
+- **Refresco de la necesidad**: en `Initialize`, cada `needs_refresh_seconds` (30 s) y de
+  inmediato al recibir `city_population_changed` (la población escala TODAS las necesidades).
+  Si `/city-needs` falla, se conserva la anterior y se reintenta: la población se mueve despacio.
+- **Cuántas órdenes de cesta por tick** = el **9–24% de la cesta** (con suelo de 3).
+  `market.consumer_per_tick > 0` lo fija a mano.
 - Las ciudades imprimen la mayor parte del tape que alimenta las EMAs del resto de roles. Son
   pocas (~50) pero con mucho capital; tras ADR-025 no hay otra demanda final que las respalde,
   así que el volumen de `final_consumption` depende enteramente de su tick.

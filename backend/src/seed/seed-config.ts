@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { agentRole, productCategory } from "../db/schema";
+import { agentRole, productCategory, urbanRole } from "../db/schema";
 import { parseJsonConfig } from "../lib/json-config";
 
 const SeedProductSchema = z.object({
@@ -23,6 +23,15 @@ const SeedProductSchema = z.object({
    * bloque GOLD_DEPOSIT_* porque la paridad monetaria se deriva de él.
    */
   finite: z.boolean().optional(),
+  /**
+   * Papel en la economía urbana (ADR-029). Solo tiene sentido en
+   * `final_consumption` y el default es implícito: todo producto de consumo
+   * final sin marca es `basket` (la cesta que las ciudades consumen y
+   * destruyen). Se declara a mano solo el `housing`, para no repetir 48 veces
+   * lo que es el caso general y para que añadir un bien de consumo nuevo entre
+   * en la cesta sin tocar nada.
+   */
+  urban: z.enum(urbanRole.enumValues).optional(),
 });
 
 const SeedRecipeInputSchema = z.object({
@@ -146,6 +155,36 @@ export function parseSeedConfig(rawJson: string): SeedConfig {
           "un yacimiento exige exactamente una (el tamaño se deriva de su output_qty_cent)",
       );
     }
+  }
+
+  // --- Economía urbana (ADR-029) ---------------------------------------------
+  // `urban` solo tiene sentido en consumo final (lo replica un CHECK del DDL) y
+  // no puede haber más de un bien de inversión: el sweeper lo absorbe para
+  // convertirlo en habitantes, y con dos el crecimiento sería ambiguo (¿cuántos
+  // habitantes aporta cada uno?). El resto de los `final_consumption` son cesta
+  // por defecto, sin declararlo.
+  //
+  // Que EXISTA la vivienda no se exige aquí, sino en el test del catálogo real
+  // (`catalog-graph.test.ts`): un catálogo reducido sin bien de inversión es
+  // legítimo (el E2E usa uno), y el sweeper lo tolera — simplemente no habrá
+  // crecimiento de población.
+  const housingKeys: string[] = [];
+  for (const p of cfg.products) {
+    if (p.urban === undefined) continue;
+    if (p.category !== "final_consumption") {
+      throw new Error(
+        `seed-config: producto "${p.key}" declara urban="${p.urban}" pero su categoría es ` +
+          `"${p.category}"; el papel urbano solo aplica a final_consumption`,
+      );
+    }
+    if (p.urban === "housing") housingKeys.push(p.key);
+  }
+  if (housingKeys.length > 1) {
+    throw new Error(
+      `seed-config: solo puede haber 1 producto con urban="housing" y hay ` +
+        `${housingKeys.length} (${housingKeys.join(", ")}); es el bien que las ciudades ` +
+        "absorben para crecer, y con dos los habitantes por unidad serían ambiguos",
+    );
   }
 
   // --- Tipos de instalación: keys únicas y cobertura receta→tipo exacta -------

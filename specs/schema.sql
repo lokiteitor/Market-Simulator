@@ -112,7 +112,21 @@ CREATE TYPE event_type AS ENUM (
     'money_issued',      -- acuñación de capital semilla en un registro dinámico
     'deposit_depleted',  -- un resource_deposit llegó a 0 (yacimiento agotado)
     'city_income_distributed', -- el sweeper repartió el income_ledger entre ciudades
-    'installation_purchased'   -- un agente compró o mejoró una instalación
+    'installation_purchased',  -- un agente compró o mejoró una instalación
+    'city_consumed',           -- una ciudad consumió (destruyó) su cesta urbana
+    'city_population_changed'  -- la población de una ciudad cambió (vivienda / decaimiento)
+);
+
+-- Papel de un producto en la economía urbana (ADR-029). Solo lo llevan los
+-- productos `final_consumption`; NULL para materias primas e intermedios.
+--   basket  → forma parte de la cesta que las ciudades consumen y DESTRUYEN
+--             cada periodo, en cantidad proporcional a su población.
+--   housing → bien de inversión: la ciudad lo absorbe (se destruye el lote) y
+--             cada unidad suma CITY_HABITANTS_PER_HOUSING habitantes.
+-- Sacarlo a columna evita hardcodear la key 'vivienda' en el dominio.
+CREATE TYPE urban_role AS ENUM (
+    'basket',
+    'housing'
 );
 
 -- Dirección de una conversión en la ventanilla, desde la perspectiva del
@@ -137,8 +151,22 @@ CREATE TABLE product (
     name            TEXT                NOT NULL UNIQUE,
     unit            TEXT                NOT NULL,
     category        product_category    NOT NULL,
-    created_at      TIMESTAMPTZ         NOT NULL DEFAULT now()
+    -- Coste propagado por el grafo de recetas (`catalogCosts`, el mismo número
+    -- que los precios base de los bots). NO es un precio de mercado: es la
+    -- referencia de valor que usa el consumo urbano (ADR-029) para repartir el
+    -- presupuesto per cápita entre la cesta en DINERO y no en unidades, de modo
+    -- que un pan y un automóvil pesen lo mismo en gasto.
+    reference_cost_cents BIGINT         NOT NULL CHECK (reference_cost_cents >= 1),
+    -- Papel en la economía urbana (ADR-029). NULL salvo en `final_consumption`.
+    urban_role      urban_role,
+    created_at      TIMESTAMPTZ         NOT NULL DEFAULT now(),
+    -- Solo los productos de consumo final tienen papel urbano.
+    CHECK (urban_role IS NULL OR category = 'final_consumption')
 );
+
+-- La cesta urbana y el bien de inversión se leen en cada pasada del
+-- city-consumption-sweeper (50 ciudades × 2 queries).
+CREATE INDEX idx_product_urban_role ON product(urban_role) WHERE urban_role IS NOT NULL;
 
 -- Tipo de instalación: "lugar" productivo que los agentes COMPRAN y SUBEN DE
 -- NIVEL para producir (economía de instalaciones, ADR-021). Agrupa varias
@@ -203,9 +231,27 @@ CREATE TABLE agent (
     capital_available   BIGINT          NOT NULL DEFAULT 0 CHECK (capital_available >= 0),
     capital_reserved    BIGINT          NOT NULL DEFAULT 0 CHECK (capital_reserved >= 0),
     seed_capital        BIGINT          NOT NULL,
-    -- Peso de población: SOLO lo usan las ciudades (rol 'city'). Escala su
-    -- capital semilla y su parte del reparto de ingreso recurrente. NULL resto.
-    population_weight   BIGINT,
+    -- Habitantes: SOLO las ciudades (rol 'city'); NULL en el resto. MUTABLE
+    -- (ADR-029): todas nacen con CITY_INITIAL_POPULATION, crecen absorbiendo
+    -- viviendas y decaen si no las reponen, con suelo en la población inicial.
+    -- Es el peso del reparto del ingreso recurrente Y el multiplicador de las
+    -- necesidades de consumo, así que crecer da más ingreso pero cuesta más.
+    population          BIGINT          CHECK (population IS NULL OR population >= 0),
+    -- Instante de la última pasada del city-consumption-sweeper sobre esta
+    -- ciudad; base del Δt de consumo y decaimiento (robusto a caídas del
+    -- worker, a diferencia de asumir el intervalo del job). NULL fuera de 'city'.
+    last_consumption_at TIMESTAMPTZ,
+    -- HABITANTE-SEGUNDOS simulados acumulados: Σ(población × Δt_sim) de todas
+    -- las pasadas de consumo. Monótono. Es el "reloj" del consumo urbano y la
+    -- pieza que hace que el residuo del redondeo NO se pierda: la necesidad de
+    -- un producto se calcula como la DIFERENCIA de dos acumulados enteros, así
+    -- que las fracciones se suman entre pasadas en vez de truncarse a 0 en cada
+    -- una. Sin esto, todo bien que cueste más de unos cientos de céntimos jamás
+    -- llegaría a demandarse (la fracción por pasada redondea a 0 siempre) y las
+    -- ramas caras del catálogo se quedarían sin salida.
+    -- Se cuenta en habitante-segundos y no en segundos para que un cambio de
+    -- población no provoque saltos: sus incrementos son exactamente población×Δt.
+    consumed_pop_seconds BIGINT     CHECK (consumed_pop_seconds IS NULL OR consumed_pop_seconds >= 0),
     registered_at       TIMESTAMPTZ     NOT NULL DEFAULT now(),
     bankrupt_at         TIMESTAMPTZ
 );

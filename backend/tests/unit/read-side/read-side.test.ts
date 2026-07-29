@@ -101,6 +101,8 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
         name: "Trigo",
         unit: "kg",
         category: "raw_primary",
+        referenceCostCents: 42,
+        urbanRole: null,
         createdAt,
       }),
     ).toEqual({
@@ -109,6 +111,8 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
       name: "Trigo",
       unit: "kg",
       category: "raw_primary",
+      reference_cost_cents: 42,
+      urban_role: null,
       created_at: "2026-07-01T10:00:00.000Z",
     });
   });

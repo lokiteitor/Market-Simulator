@@ -18,6 +18,7 @@ import {
   AgentPublicSchema,
   AgentSnapshotSchema,
   BankruptcyCheckSchema,
+  CityNeedsSchema,
   InventoryLotListSchema,
   InventoryLotsQuerySchema,
   InventoryPositionListSchema,
@@ -116,6 +117,19 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     agentController.getMyInventoryLots,
+  );
+
+  // GET /agents/me/city-needs — cesta que el servidor consumirá en el próximo
+  // periodo, con el stock actual (ADR-029). Solo rol `city`: 403 en el resto.
+  r.get(
+    "/agents/me/city-needs",
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        response: { 200: CityNeedsSchema, 403: ProblemSchema },
+      },
+    },
+    agentController.getMyCityNeeds,
   );
 
   // GET /agents/{agent_id} — información pública de cualquier agente.

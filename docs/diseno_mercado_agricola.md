@@ -13,7 +13,7 @@ Se construye un servidor autoritativo de estado que simula un mercado de product
 **Roles de agentes** (registrables: `transformer` y `trader`):
 - **Transformadores:** el **único rol productivo** (ADR-022). Extraen del entorno (pozos, minas, campos) y procesan insumos en productos de mayor valor; absorbieron al antiguo rol de productor primario cuando toda receta pasó a consumir insumos salvo la extracción de agua.
 - **Traders / intermediarios:** compran y revenden buscando ganancia por arbitraje, sin transformar.
-- **Ciudades (`city`):** la demanda final, que compra productos para consumir retirándolos del sistema. **No es registrable**: se siembra (~50 capitales) y la operan los bots de `bots-ciudad`. Es el único rol consumidor porque es el único con ingreso recurrente (ADR-020); el antiguo rol `consumer`, que solo gastaba su capital semilla hasta quebrar, se retiró en ADR-025.
+- **Ciudades (`city`):** la demanda final, que compra productos para consumir retirándolos del sistema —y desde ADR-029 los retira **de verdad**: el servidor destruye su cesta cada periodo en proporción a su población—. **No es registrable**: se siembra (~50 capitales) y la operan los bots de `bots-ciudad`. Es el único rol consumidor porque es el único con ingreso recurrente (ADR-020); el antiguo rol `consumer`, que solo gastaba su capital semilla hasta quebrar, se retiró en ADR-025. Todas nacen con la misma población y su tamaño es un **resultado** de la partida: crecen comprando vivienda y se encogen si dejan de reponerla.
 
 Algunos agentes operan por reglas simples, otros por modelos de ML. El sistema no distingue entre ellos: todos consumen la misma API.
 
@@ -367,7 +367,7 @@ Los roles exentos por diseño (`city`, `admin`) nunca quiebran por ninguna de la
 - Los agentes registrados en el setup inicial reciben capital semilla aleatorio dentro de un rango configurable **por rol**:
   - Transformadores: rango medio-alto (cubren extracción e industria).
   - Traders: rango alto.
-  - Las ciudades no usan estos rangos: su capital semilla es `CITY_SEED_CAPITAL_CENTS_PER_WEIGHT × population_weight`.
+  - Las ciudades no usan estos rangos ni sortean nada: todas reciben el MISMO capital semilla, `CITY_SEED_CAPITAL_CENTS` (ADR-029), que debe cubrir al menos una vivienda o ninguna podrá crecer.
 - Los rangos específicos son parámetros de configuración.
 - La aleatoriedad es determinística a partir de la semilla maestra (ver sección de reproducibilidad).
 
@@ -459,6 +459,8 @@ Estos son los valores que deben quedar expuestos como configuración del sistema
 - Frecuencia del sweeper de procesos
 - Tamaño máximo del resumen de eventos en reconexión
 - Patrón oro: usuario del banco (`BANK_USERNAME`), producto patrón (`GOLD_PRODUCT_KEY`), rango del yacimiento (`GOLD_DEPOSIT_MIN/MAX_QTY_CENT`), ratio de cobertura (`GOLD_COVERAGE_RATIO_BPS`), spread de la ventanilla (`GOLD_WINDOW_SPREAD_BPS`), capital inicial del banco (`GOLD_BANK_INITIAL_CAPITAL_CENTS`)
+- Ciudades: lista de cuentas (`CITY_CONFIG_PATH`), contraseña de siembra (`CITY_SEED_PASSWORD`) y capital semilla uniforme (`CITY_SEED_CAPITAL_CENTS`)
+- Demanda urbana endógena (ADR-029): población inicial y suelo (`CITY_INITIAL_POPULATION`), habitantes por vivienda (`CITY_HABITANTS_PER_HOUSING`), decaimiento de población (`CITY_POPULATION_DECAY_BPS_PER_SIM_DAY`), presupuesto de consumo per cápita (`CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR`), intervalo del sweeper de consumo (`CITY_CONSUMPTION_SWEEP_INTERVAL_MS`) y techo del Δt de recuperación (`CITY_CONSUMPTION_MAX_CATCHUP_SIM_SECONDS`). **Van acoplados**: `decay_bps_día = 10000 × hab_por_vivienda × 24 × b × r / coste_vivienda`, con `r` la cuota del presupuesto que se quiere dedicar a vivienda.
 
 ---
 

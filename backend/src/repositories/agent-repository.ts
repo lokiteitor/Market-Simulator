@@ -102,8 +102,12 @@ export const agentRepository = {
       username: string;
       role: AgentRow["role"];
       seedCapitalCents: number;
-      /** Solo ciudades (rol `city`): peso del reparto del city-income-sweeper. */
-      populationWeight?: number;
+      /** Solo ciudades (rol `city`): habitantes iniciales (ADR-029). */
+      population?: number;
+      /** Solo ciudades: base del Δt del city-consumption-sweeper. */
+      lastConsumptionAt?: Date;
+      /** Solo ciudades: reloj del consumo en habitante-segundos (ADR-029). */
+      consumedPopSeconds?: number;
     },
   ): Promise<AgentRow> {
     const rows = await tx
@@ -114,7 +118,9 @@ export const agentRepository = {
         capitalAvailable: p.seedCapitalCents,
         capitalReserved: 0,
         seedCapital: p.seedCapitalCents,
-        populationWeight: p.populationWeight,
+        population: p.population,
+        lastConsumptionAt: p.lastConsumptionAt,
+        consumedPopSeconds: p.consumedPopSeconds,
       })
       .returning();
     const row = rows[0];
@@ -156,25 +162,103 @@ export const agentRepository = {
   },
 
   /**
-   * Ciudades activas (rol `city`) con su peso de población, para el reparto
-   * ponderado del ingreso recurrente (city-income-service). `population_weight`
-   * es NOT NULL en la práctica para las ciudades (lo pone el seed); COALESCE a 1
-   * por defensa ante datos inconsistentes.
+   * Ciudades activas (rol `city`) con su población, que es el peso del reparto
+   * del ingreso recurrente (city-income-service): una ciudad que ha crecido
+   * comprando vivienda cobra más. `population` es NOT NULL en la práctica para
+   * las ciudades (lo pone el seed); COALESCE a 1 por defensa ante datos
+   * inconsistentes, para que una fila rota no se quede sin ingreso para siempre.
    */
-  async listActiveCitiesWithWeight(
+  async listActiveCitiesWithPopulation(
     tx: Tx,
-  ): Promise<Array<{ agentId: string; populationWeight: number }>> {
+  ): Promise<Array<{ agentId: string; population: number }>> {
     const rows = await tx
       .select({
         agentId: agent.agentId,
-        populationWeight: sql<number>`COALESCE(${agent.populationWeight}, 1)::bigint`,
+        population: sql<number>`COALESCE(${agent.population}, 1)::bigint`,
       })
       .from(agent)
       .where(and(eq(agent.role, "city"), eq(agent.status, "active")));
     return rows.map((r) => ({
       agentId: r.agentId,
-      populationWeight: Number(r.populationWeight),
+      population: Number(r.population),
     }));
+  },
+
+  /**
+   * Ciudades activas para la pasada de consumo urbano (ADR-029), en orden
+   * determinista por `agent_id`. Devuelve solo los ids: cada ciudad se procesa
+   * en su PROPIA transacción, que es donde se lockea su fila.
+   */
+  async listActiveCityIds(tx: Tx): Promise<string[]> {
+    const rows = await tx
+      .select({ agentId: agent.agentId })
+      .from(agent)
+      .where(and(eq(agent.role, "city"), eq(agent.status, "active")))
+      .orderBy(agent.agentId);
+    return rows.map((r) => r.agentId);
+  },
+
+  /**
+   * Lockea la fila de una ciudad para su pasada de consumo y devuelve lo que el
+   * sweeper necesita. `SKIP LOCKED`: si la fila está tomada (una orden en vuelo
+   * de esa misma ciudad, o una pasada anterior que aún no ha commiteado), se
+   * salta la ciudad en esta pasada en vez de esperar — el consumo es acumulativo
+   * vía `last_consumption_at`, así que no se pierde nada.
+   *
+   * Devuelve `null` si no existe, no es ciudad o está lockeada.
+   */
+  async lockCityForConsumption(
+    tx: Tx,
+    agentId: string,
+  ): Promise<{
+    agentId: string;
+    username: string;
+    population: number;
+    lastConsumptionAt: Date | null;
+    consumedPopSeconds: number;
+  } | null> {
+    const rows = await tx
+      .select({
+        agentId: agent.agentId,
+        username: agent.username,
+        population: sql<number>`COALESCE(${agent.population}, 0)::bigint`,
+        lastConsumptionAt: agent.lastConsumptionAt,
+        consumedPopSeconds: sql<number>`COALESCE(${agent.consumedPopSeconds}, 0)::bigint`,
+      })
+      .from(agent)
+      .where(and(eq(agent.agentId, agentId), eq(agent.role, "city"), eq(agent.status, "active")))
+      .for("update", { skipLocked: true });
+    const row = rows[0];
+    if (row === undefined) return null;
+    return {
+      agentId: row.agentId,
+      username: row.username,
+      population: Number(row.population),
+      lastConsumptionAt: row.lastConsumptionAt,
+      consumedPopSeconds: Number(row.consumedPopSeconds),
+    };
+  },
+
+  /**
+   * Fija la población y el instante de la última pasada de consumo de una ciudad
+   * (ADR-029). Se llama con la fila ya lockeada por `lockCityForConsumption`, de
+   * ahí que el valor sea absoluto y no un delta.
+   */
+  async updateCityPopulation(
+    tx: Tx,
+    agentId: string,
+    p: { population: number; lastConsumptionAt: Date; consumedPopSeconds: number },
+  ): Promise<void> {
+    assertNonNegativeInt(p.population, "population");
+    assertNonNegativeInt(p.consumedPopSeconds, "consumedPopSeconds");
+    await tx
+      .update(agent)
+      .set({
+        population: p.population,
+        lastConsumptionAt: p.lastConsumptionAt,
+        consumedPopSeconds: p.consumedPopSeconds,
+      })
+      .where(eq(agent.agentId, agentId));
   },
 
   /** Abono a capital_available (no puede fallar por saldo). */

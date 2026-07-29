@@ -11,7 +11,7 @@
 **Responsables:** Equipo de Simulación de Mercado
 
 **Descripción General**
-Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes concurrentes (transformadores —el único rol productivo, ADR-022—, traders y ciudades —la única demanda final, ADR-025—) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada). Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
+Este documento describe la arquitectura técnica del proyecto **Simulación de Mercado Agrícola**, un servidor autoritativo de estado que simula un mercado de productos agrícolas con hasta ~10.000 agentes concurrentes (transformadores —el único rol productivo, ADR-022—, traders y ciudades —la única demanda final, ADR-025, con población y consumo endógenos, ADR-029—) operando sobre un libro de órdenes con casado precio-tiempo, procesos de transformación con recetas, trazabilidad FIFO por lotes de inventario y un **patrón oro** (banco central con ventanilla acuñadora y emisión respaldada). Recoge las decisiones de diseño, la estructura de componentes, los flujos principales y los estándares de desarrollo. Su propósito es servir como referencia técnica para los equipos de implementación y para auditorías posteriores.
 
 Este documento se apoya en artefactos previos que se consideran fuente de verdad de sus respectivos dominios:
 
@@ -144,6 +144,18 @@ Métricas del **flujo circular de ingreso** (ADR-020), en el dashboard *Negocio*
 | `market_city_income_pending_cents{source}` | Core | Dinero **en tránsito** (debitado al pagador, sin repartir) desglosado en `wage` / `tax`. Debe oscilar cerca de 0; si crece sin parar, el sweeper no da abasto. |
 | `market_conservation_delta_cents` | Core | Invariante monetario: cualquier valor ≠ 0 es un bug de contabilidad. |
 
+Métricas de la **demanda urbana endógena** (ADR-029), en el dashboard *Negocio*:
+
+| Métrica | Proceso | Para qué sirve |
+|---------|---------|----------------|
+| `market_city_population_total` | Core | Tamaño agregado de la demanda final. Debe subir al principio y **aplanarse** (el decaimiento compensa el crecimiento); si cae hacia 50 × `CITY_INITIAL_POPULATION`, la construcción no da abasto y las ciudades están encogiéndose al suelo. |
+| `market_city_population{city}` | Core | Ranking de quién crece: 50 series. Con todas las ciudades naciendo iguales, la dispersión mide lo desigual que es el abastecimiento. |
+| `city_consumption_units_total{product}` | Worker | Unidades DESTRUIDAS por el consumo urbano. **Cierra el balance de la cadena**: `production_units_total` de un bien final solo cuadra contra esto. Si la producción crece y esto no, las ciudades están acumulando en vez de consumir. |
+| `city_need_unmet_units_total{product}` | Worker | Necesidad no cubierta por falta de stock. Es el **termómetro de calibración** de `CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR`: creciendo sin parar ⇒ el presupuesto per cápita excede lo que la economía produce; plano ⇒ calibrado. |
+| `city_habitants_gained_total` / `city_habitants_lost_total` | Worker | Balance demográfico. Perdidos > ganados de forma sostenida ⇒ no se está construyendo suficiente vivienda. |
+
+**Ojo:** este bloque NO lo cubre el invariante monetario (el consumo urbano no toca dinero), así que un error de contabilidad de unidades no lo delata `market_conservation_delta_cents`. La vigilancia es el par producción-vs-consumo.
+
 Métricas de la **cadena de suministro** (ADR-022), en el dashboard *Cadena de suministro*:
 
 | Métrica | Proceso | Para qué sirve |
@@ -228,7 +240,7 @@ El Worker es un proceso independiente con su propio entrypoint que reutiliza los
 
 | Componente | Responsabilidad |
 |-----------|----------------|
-| Queue Bootstrap | Inicializa BullMQ workers para cada cola (`transformation-sweep`, `order-expiry-sweep`, `snapshot`, `refresh-token-cleanup`). |
+| Queue Bootstrap | Inicializa BullMQ workers para cada cola (`transformation-sweep`, `order-expiry-sweep`, `fee-ledger-sweep`, `city-income-sweep`, `city-consumption-sweep`, `snapshot`, `refresh-token-cleanup`, `gold-issuance`). |
 | TransformationSweeper | Job recurrente: invoca `TransformationService.materializeExpired()` que procesa todos los procesos vencidos en batches. |
 | OrderExpirySweeper | Job recurrente: invoca `OrderService.expireOverdue()` que marca como `expired` órdenes vencidas y libera reservas. |
 | SnapshotRunner | Job on-demand: calcula y persiste un `market_snapshot` y sus tablas hijas. |
@@ -599,6 +611,7 @@ Aplicados a este sistema en particular:
 | ADR-026 | 2026-07-27 | Aceptado | Apagado de clientes por quiebra confirmada: `POST /agents/me/bankruptcy-check` evalúa **y aplica** la condición §10 a petición del propio agente (vía *pull*, complementaria a la reactiva), y el engine del SDK expone la señal terminal `Bankrupt()` que retira al bot. Elimina los bots zombi. |
 | ADR-027 | 2026-07-29 | Aceptado | Especialización del enjambre por **oficio** (`bots-v2`): la unidad de especialización pasa del tipo de instalación a un conjunto de recetas concretas declarado en `oficios.yaml`, con composición de flota por cobertura + peso, arranque por capas del grafo, adaptación de parámetros y pivote de oficio. Añade `recipe.key` (espejo de `product.key`) como enabler y subsume `bots-hidro`. |
 | ADR-028 | 2026-07-29 | Aceptado | Cierre de las industrias sin salida: las 30 cadenas que la poda de ADR-027 dejó sin ruta a consumo final se cierran con la **vivienda** como sumidero de la construcción, tres industrias nuevas (`carpinteria`, `carniceria`, `textil`), recategorización de los bienes que ya eran de uso final (aceite, bebidas, gasolina, diésel) y una nuclear para el uranio. Catálogo: 150 productos, 154 recetas, 20 tipos; cero oficios `sin_demanda`. Nuevo test `toda receta llega a consumo final`. |
+| ADR-029 | 2026-07-29 | Aceptado | **Demanda urbana endógena**: la población de las ciudades pasa de constante del seed a variable de estado —todas nacen con `CITY_INITIAL_POPULATION`, crecen absorbiendo `vivienda` (4 hab/unidad) y decaen si no la reponen, con suelo en la inicial—, y lo que compran se **destruye** en un `city-consumption-sweeper` proporcionalmente a su tamaño. Añade `product.urban_role` + `reference_cost_cents`, `agent.population`/`last_consumption_at`/`consumed_pop_seconds`, `GET /agents/me/city-needs` y los eventos `city_consumed` / `city_population_changed`. Matiza ADR-020. |
 | ADR-024 | 2026-07-21 | Aceptado | Fase de energía v1: `electricidad` como producto intermedio consumido por toda la industria (113 recetas), generada por el tipo `generacion` (hidro desde agua + térmicas de carbón/gas finitos). Sin consumo urbano y sin entrar en las extractivas (aciclicidad estricta intacta); se podan los 7 bienes de infraestructura eléctrica del catálogo. Ejecuta la fase pospuesta en ADR-022(c). |
 
 ### 12.3 Detalle de ADRs clave
@@ -715,7 +728,7 @@ Aplicados a este sistema en particular:
 - *Consecuencias:*
   - (+) La demanda se auto-sostiene y se vuelve **anticíclica-estable**: más actividad → más salarios y fees → más ingreso urbano → más demanda. Sin inflación y sin tocar el yacimiento de oro.
   - (+) El único sumidero que queda es `buy_gold`, lo que hace el modelo monetario más fácil de razonar.
-  - (+) El `population_weight` es una sola perilla que gobierna tanto el capital semilla como el ingreso recurrente de cada ciudad (Tokyo ≈ 150× Reikiavik).
+  - (+) ~~El `population_weight` es una sola perilla que gobierna tanto el capital semilla como el ingreso recurrente de cada ciudad (Tokyo ≈ 150× Reikiavik).~~ **Superado por ADR-029**: la población ya no es un dato de entrada sino un resultado de la partida (todas las ciudades nacen iguales), sigue siendo el peso del reparto y además escala lo que se les consume.
   - (−) El reparto debe ser **exacto al céntimo** (`floor` + residuo a la ciudad de mayor peso) o el invariante se rompe; se aísla en una función pura testeada sin DB.
   - (−) Un sweeper y una tabla más. Y el fee que recibe el banco baja según `CITY_FEE_SHARE_BPS`, lo que reduce su capacidad de financiar semillas sin acuñar (parámetro a tunear).
   - (−) Las ciudades necesitan la notificación WS `city_income` para que el bot vea su ingreso; sin ella el capital sube en la DB pero el bot no lo gasta hasta el siguiente snapshot.
@@ -861,6 +874,32 @@ Aplicados a este sistema en particular:
   - (−) **El consumo final sube de 34 a 49 productos y eso diluye la demanda urbana**: la estrategia consumidora baraja *todos* los finales y solo considera 3-8 por tick (`botkit/consumer.go`), así que cada producto pierde ~30% de atención. Mitigable subiendo ese rango; queda como parámetro a vigilar en la primera corrida larga.
   - (−) Añadir dos recetas al mismo output es ahora más delicado: el coste propagado toma el **mínimo** entre ellas, así que la cara queda permanentemente bajo coste. Por eso la tubería de inox y las carnes de cerdo y pollo son productos propios y no variantes de `tuberia`/`carne_procesada`.
   - (−) Cuatro tipos de instalación más que particionar en `bots-v1/specialties.go` cada vez que se toque el catálogo.
+
+**ADR-029 — Demanda urbana endógena: población, vivienda y consumo destructivo (matiza ADR-020)**
+
+- *Contexto:* la demanda final tenía tres agujeros que se refuerzan entre sí.
+  (a) **La población era decorativa.** `agent.population_weight` se sembraba desde `infra/cities.json` (Tokyo 37.400, Reikiavik 240) y **nunca se actualizaba**: no existía ningún `UPDATE` ni endpoint de escritura. La heterogeneidad del mercado era un dato de entrada, no algo que ninguna ciudad pudiera ganar o perder.
+  (b) **La ciudad no consumía nada.** Lo que compraba entraba en `inventory_lot` y se quedaba ahí **para siempre**: el backend no tenía ningún tratamiento de `final_consumption`. El único sumidero era monetario (la ciudad se quedaba sin caja hasta el siguiente reparto), no físico, así que su demanda no dependía de lo que ya tenía y el inventario urbano crecía sin techo.
+  (c) **La cesta no tenía tamaño.** La estrategia consumidora barajaba los 49 finales y compraba una cantidad fija muestreada al azar, sin mirar nunca su inventario.
+- *Decisión:* convertir la demanda final en **endógena**, con el servidor como única autoridad. Cuatro reglas, aplicadas por ciudad en un sweeper nuevo:
+  (a) **Arranque uniforme.** Toda ciudad nace con `CITY_INITIAL_POPULATION` (1000 hab) y el mismo capital semilla plano (`CITY_SEED_CAPITAL_CENTS`, que debe cubrir al menos una vivienda). `population_weight` se renombra a **`population`** y pasa a ser **mutable**; `cities.json` queda reducido a la lista de cuentas.
+  (b) **Crecimiento por inversión.** La `vivienda` que la ciudad compra se **absorbe**: el lote se destruye y cada unidad suma `CITY_HABITANTS_PER_HOUSING` (4) habitantes. Qué producto es el bien de inversión lo dice el catálogo (`product.urban_role = 'housing'`), no una key hardcodeada.
+  (c) **Decaimiento con suelo.** La población pierde `CITY_POPULATION_DECAY_BPS_PER_SIM_DAY` por día simulado, recortado en `CITY_INITIAL_POPULATION`. Es lo que cierra el bucle: sin reponer vivienda la ciudad vuelve al suelo, así que la construcción tiene demanda **estructural** y no solo un pico inicial; y el suelo garantiza que la demanda final nunca se apaga (una ciudad arruinada se encoge, no muere).
+  (d) **Consumo destructivo proporcional.** Cada pasada, el `city-consumption-sweeper` calcula la necesidad de la cesta (`urban_role = 'basket'`) y la consume best-effort, DESTRUYENDO inventario. El presupuesto per cápita (`CITY_NEED_BUDGET_PER_CAPITA_CENTS_PER_SIM_HOUR`) se reparte a partes iguales entre la cesta **en dinero** y se convierte a unidades con `product.reference_cost_cents` (el coste propagado del catálogo, ahora persistido): con un reparto en unidades, un `automovil` (575.004 ¢) y un `pan` (190 ¢) generarían la misma demanda y el gasto urbano se lo comerían los bienes caros.
+- *Piezas de apoyo:*
+  - **El residuo del redondeo se acumula.** La necesidad se calcula como DIFERENCIA de dos acumulados enteros sobre `agent.consumed_pop_seconds` (Σ población × Δt simulado), no como un `floor` por pasada. Sin esto, un producto solo se consumiría si su coste bajase de `pob × b × Δt × 100 / (n × 3600)` —con los defaults, ~578 ¢ para una ciudad en el suelo—, así que **40 de los 49 bienes finales tendrían demanda urbana cero para siempre** y sus cadenas se quedarían sin salida: justo lo que ADR-028 vino a cerrar. El acumulador cuenta habitante-segundos y no segundos para que un cambio de población solo cambie la pendiente y nunca genere un pico retroactivo.
+  - **`GET /agents/me/city-needs`** expone la necesidad del próximo periodo con el stock actual. El cliente no replica la fórmula ni conoce las perillas del servidor: compara con su inventario y compra el hueco.
+  - **Una transacción por ciudad** (no una por pasada, a diferencia de sus sweepers hermanos): acota el lock de la fila del agente, que compite con las órdenes en vuelo de esa misma ciudad, y aísla los fallos. La ciudad lockeada se salta con `SKIP LOCKED` y recupera su Δt en la pasada siguiente, porque `last_consumption_at` no se ha movido.
+  - **`botkit.ConsumerStrategy` reescrita:** stock objetivo = necesidad × cobertura (3-8 periodos), atención por **cobertura ascendente** (lo que se va a acabar antes, primero) en vez de al azar, y la vivienda en un bolsillo de capital aparte porque cuesta ~2.400 panes y jamás ganaría una puja contra la cesta por el presupuesto de un tick.
+- *Consecuencias:*
+  - (+) **El inventario urbano deja de crecer sin techo** y la demanda se vuelve recurrente: la ciudad vuelve al mercado porque su despensa se ha vaciado de verdad, no porque un dado lo diga.
+  - (+) La heterogeneidad del mercado pasa a ser un **resultado**: dos ciudades idénticas divergen según lo bien que las abastezca la economía que las rodea.
+  - (+) El crecimiento es **auto-limitante**: más población da más ingreso (el reparto pondera por ella) pero también más necesidades, así que una ciudad no puede crecer más allá de lo que su cadena de suministro sostiene.
+  - (+) La construcción gana demanda permanente sin tocar el catálogo, y la vivienda deja de ser un sumidero decorativo.
+  - (−) **Tres perillas acopladas** (`b`, el decaimiento y el capital semilla) que hay que calibrar juntas: `decay_bps_día = 10000 × hab_por_vivienda × 24 × b × r / coste_vivienda`, con `r` la cuota del presupuesto dedicada a vivienda. Cambiar `b` sin recalcular el decaimiento desplaza el equilibrio.
+  - (−) El invariante monetario NO cubre esto (no se toca dinero), así que un error de contabilidad de unidades no lo delata `market_conservation_delta_cents`: la vigilancia recae en `city_consumption_units_total` contra `production_units_total` y en `city_need_unmet_units_total`.
+  - (−) Se renombra `population_weight` en el contrato de `/admin/*` y en el frontend, y se destruye inventario **sin trazabilidad por lote**: las tres tablas `*_lot_consumption` exigen FK a trade/proceso/conversión, así que el consumo urbano solo deja el evento agregado `city_consumed`. Es una omisión deliberada: esas unidades salen del sistema y su coste no se necesita aguas abajo.
+  - (−) Una ciudad pequeña solo demanda los bienes baratos de la cesta; los caros llegan al ritmo del acumulador (un `automovil` tarda ~1.000 pasadas en pedir su primera centésima con 1000 habitantes). Es la progresión buscada, pero significa que las ramas caras dependen de que las ciudades **crezcan**.
 
 ---
 
