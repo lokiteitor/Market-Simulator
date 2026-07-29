@@ -164,6 +164,7 @@ export async function runSeed(): Promise<"seeded" | "skipped"> {
     let recipeInputCount = 0;
     for (const r of cfg.recipes) {
       const { recipeId } = await catalogRepository.insertRecipe(tx, {
+        key: r.key,
         name: r.name,
         outputProductId: mustGet(productIdByKey, r.output, "producto"),
         outputQtyCent: r.output_qty_cent,

@@ -34,6 +34,12 @@ export type RecipeInputDto = z.infer<typeof RecipeInputSchema>;
 
 export const RecipeSchema = z.object({
   recipe_id: z.uuid(),
+  /**
+   * Clave estable del catálogo (seed-config, ej. `cultivo_trigo`). Espejo de
+   * `Product.key`: es lo que permite a un cliente nombrar una receta concreta
+   * sin depender del UUID (regenerado en cada seed) ni del `name` de display.
+   */
+  key: z.string(),
   name: z.string(),
   output_product_id: z.uuid(),
   output_qty_cent: z.number().int().min(1),

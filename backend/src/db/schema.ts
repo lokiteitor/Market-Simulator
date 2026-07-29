@@ -155,6 +155,10 @@ export const recipe = pgTable(
   "recipe",
   {
     recipeId: uuid("recipe_id").primaryKey().default(sql`uuidv7()`),
+    // Identificador estable del catálogo (seed-config `key`, ej.
+    // 'cultivo_trigo'); espejo de product.key. Los clientes nombran recetas por
+    // esta clave: el UUID se regenera en cada seed y `name` es texto de display.
+    key: text("key").notNull().unique(),
     outputProductId: uuid("output_product_id")
       .notNull()
       .references(() => product.productId),

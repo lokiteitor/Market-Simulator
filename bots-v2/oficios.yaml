@@ -1,0 +1,686 @@
+# Catálogo de OFICIOS (ADR-027) — escrito y mantenido A MANO.
+#
+# La unidad de especialización de bots-v2 es el oficio: un conjunto de RECETAS
+# concretas, no un tipo de instalación entero como en bots-v1. El motivo está en
+# el ADR, pero en corto: el round-robin de v1 daba 1/6 de la flota a las 2
+# recetas del agua y otro 1/6 a las 113 industriales, y dentro de un tipo el
+# nivel de la instalación es un presupuesto de concurrencia COMPARTIDO
+# (ADR-021), así que un bot con nivel 3 en `componentes` nunca cubre sus 20
+# recetas: cubre 3 al azar. Con oficios, quién produce qué deja de ser una
+# lotería.
+#
+# Las recetas se nombran por su `key` de catálogo (`recipe.key`, espejo de
+# `product.key`). Si el servidor es anterior a esa columna, el runner cae a
+# resolver por (tipo de instalación, producto de salida) y avisa por log.
+#
+# Campos de un oficio:
+#   key                    identificador del oficio (username y logs)
+#   nombre                 etiqueta legible
+#   rol                    rol con que se registra en la API (transformer|trader)
+#   tipos                  tipos de instalación que está dispuesto a COMPRAR
+#   recetas                claves de receta que produce (subconjunto de `tipos`)
+#   capa                   profundidad en el grafo del catálogo; ordena el
+#                          arranque (capa 0 = el agua, la raíz de ADR-022)
+#   peso                   cuota en la flota, proporcional. 0 = solo cobertura
+#   max_nivel              tope de nivel de instalación al que aspira
+#   insumos_permitidos     (opc.) lista blanca de insumos; descarta recetas que
+#                          consuman cualquier otra cosa
+#   exigir_sin_yacimiento  (opc.) descarta recetas con insumos de yacimiento
+#                          finito (ADR-023)
+#   apagado                (opc.) coste_margen (default) | coste_variable
+#   freno                  (opc.) precio (default) | almacen
+#   inventario_max_execs   (opc.) con freno: almacen, ejecuciones de stock
+#                          antes de dejar de producir
+#   sin_demanda            (opc.) documenta que NINGÚN output del oficio se
+#                          consume en el catálogo: ni es insumo de otra receta
+#                          ni es final_consumption. Van con peso 0 porque su
+#                          único destino garantizado es la quiebra; se mantiene
+#                          la cobertura mínima para que el mercado exista.
+version: 1
+
+flota:
+  # Bots asignados a CADA oficio antes de repartir nada por peso. Es lo que
+  # garantiza que ningún eslabón nazca huérfano: con reparto puramente
+  # proporcional, los oficios de peso bajo salían a cero y la cadena se
+  # atascaba aguas arriba para siempre.
+  cobertura_minima: 3
+  # Segundos reales de separación entre capas al arrancar. La capa 0 (agua)
+  # entra primero y la industria pesada al final: arrancar desde inventario
+  # cero en orden inverso es lo que dejaba bids vivos en mercados que nadie
+  # surtía.
+  segundos_por_capa: 90
+
+oficios:
+  # === Capa 0-1: la raíz y la energía ======================================
+  - key: aguador
+    nombre: Aguador
+    rol: transformer
+    tipos: [pozo_agua]
+    recetas: [pozo_agua_profundo, pozo_somero]
+    capa: 0
+    peso: 90 # el agua la consumen 39 recetas y solo estas dos la producen
+    max_nivel: 5
+
+  - key: hidroelectrico
+    nombre: Central hidroeléctrica
+    rol: transformer
+    tipos: [generacion]
+    recetas: [generacion_hidro]
+    capa: 1
+    peso: 45
+    max_nivel: 4
+    # Absorbe el binario bots-hidro: es la generadora MARGINAL por construcción
+    # (~44 ¢/kWh contra los ~27 de la térmica de carbón), así que apagarla con
+    # el criterio genérico —parar si alguien vende bajo coste+margen— la apaga
+    # casi siempre. Y cuando los yacimientos de carbón y gas se agoten
+    # (ADR-023) es la única generación que queda en pie.
+    insumos_permitidos: [agua]
+    exigir_sin_yacimiento: true
+    apagado: coste_variable
+    freno: almacen
+    inventario_max_execs: 6
+
+  - key: termico
+    nombre: Central térmica
+    rol: transformer
+    tipos: [generacion]
+    recetas: [central_termica_carbon, central_termica_gas]
+    capa: 2
+    peso: 45 # la electricidad es insumo de las 113 recetas industriales
+    max_nivel: 4
+
+  # === Capa 1: extractivas =================================================
+  - key: minero_ferroso
+    nombre: Minería ferrosa
+    rol: transformer
+    tipos: [mina]
+    recetas: [mineria_hierro, mineria_carbon]
+    capa: 1
+    peso: 35 # hierro y carbón: el acero (34 consumidores) y las térmicas
+    max_nivel: 4
+
+  - key: minero_no_ferroso
+    nombre: Minería no ferrosa
+    rol: transformer
+    tipos: [mina]
+    recetas: [mineria_cobre, mineria_bauxita, mineria_niquel]
+    capa: 1
+    peso: 25
+    max_nivel: 3
+
+  - key: minero_estrategico
+    nombre: Minería estratégica
+    rol: transformer
+    tipos: [mina]
+    recetas: [mineria_litio, mineria_uranio, mineria_fosfato]
+    capa: 1
+    peso: 12 # fosfato→fertilizantes y litio→baterías tiran; el uranio no
+    max_nivel: 3
+
+  - key: minero_precioso
+    nombre: Minería de metales preciosos
+    rol: transformer
+    tipos: [mina]
+    recetas: [mineria_oro, mineria_plata]
+    capa: 1
+    peso: 15 # el oro tiene ingreso garantizado en la ventanilla del banco
+    max_nivel: 3
+
+  - key: cantero
+    nombre: Cantera de roca
+    rol: transformer
+    tipos: [cantera]
+    recetas: [cantera_caliza, cantera_piedra]
+    capa: 1
+    peso: 20
+    max_nivel: 3
+
+  - key: arenero
+    nombre: Extracción de áridos y sal
+    rol: transformer
+    tipos: [cantera]
+    recetas: [extraccion_arena, extraccion_arcilla, extraccion_sal]
+    capa: 1
+    peso: 25 # arena → vidrio, silicio y hormigón
+    max_nivel: 3
+
+  - key: petrolero
+    nombre: Pozo de hidrocarburos
+    rol: transformer
+    tipos: [pozo]
+    recetas: [pozo_petroleo, pozo_gas]
+    capa: 1
+    peso: 30 # base de toda la refinería y de los fertilizantes
+    max_nivel: 4
+
+  - key: semillero
+    nombre: Vivero de semillas
+    rol: transformer
+    tipos: [campo]
+    recetas: [vivero_semillas]
+    capa: 1
+    peso: 30 # sin semillas no hay ni un cultivo ni tala (11 consumidores)
+    max_nivel: 4
+
+  - key: maderero
+    nombre: Explotación forestal
+    rol: transformer
+    tipos: [bosque]
+    recetas: [tala]
+    capa: 2
+    peso: 15
+    max_nivel: 3
+
+  # === Capa 2: primera transformación ======================================
+  - key: siderurgico
+    nombre: Siderurgia
+    rol: transformer
+    tipos: [metalurgia]
+    recetas: [fundicion_acero, fundicion_inox]
+    capa: 2
+    peso: 50 # el acero lo consumen 34 recetas: el cuello de botella industrial
+    max_nivel: 4
+
+  - key: aluminero
+    nombre: Aluminio
+    rol: transformer
+    tipos: [metalurgia]
+    recetas: [refino_aluminio, laminado_aluminio, perfilado_aluminio]
+    capa: 2
+    peso: 22
+    max_nivel: 3
+
+  - key: cobrero
+    nombre: Cobre y conductores
+    rol: transformer
+    tipos: [metalurgia]
+    recetas: [refino_cobre, trefilado_cable, bobinado_cobre]
+    capa: 2
+    peso: 22
+    max_nivel: 3
+
+  - key: cementero
+    nombre: Cemento y hormigón
+    rol: transformer
+    tipos: [materiales]
+    recetas: [produccion_cemento, mezcla_hormigon]
+    capa: 2
+    peso: 25 # el hormigón lo consumen 10 recetas de construcción
+    max_nivel: 3
+
+  - key: vidriero
+    nombre: Vidrio y cristal
+    rol: transformer
+    tipos: [materiales]
+    recetas: [fundicion_vidrio, templado_cristal, produccion_cristal_tecnico]
+    capa: 2
+    peso: 18
+    max_nivel: 3
+
+  - key: ceramista
+    nombre: Ladrillo y asfalto
+    rol: transformer
+    tipos: [materiales]
+    recetas: [coccion_ladrillos, produccion_asfalto]
+    capa: 2
+    peso: 0
+    max_nivel: 2
+    sin_demanda: true # ni ladrillos ni asfalto son insumo de nada en el catálogo
+
+  - key: fertilizante
+    nombre: Fertilizantes
+    rol: transformer
+    tipos: [refineria]
+    recetas: [produccion_fertilizantes]
+    capa: 2
+    peso: 30 # los consumen los 10 cultivos: sin ellos el campo no arranca
+    max_nivel: 4
+
+  - key: silicio
+    nombre: Silicio
+    rol: transformer
+    tipos: [refineria]
+    recetas: [produccion_silicio]
+    capa: 2
+    peso: 12
+    max_nivel: 3
+
+  - key: petroquimico
+    nombre: Petroquímica
+    rol: transformer
+    tipos: [refineria]
+    recetas: [sintesis_plastico, polimerizacion, sintesis_caucho]
+    capa: 2
+    peso: 28 # el plástico lo consumen 9 recetas
+    max_nivel: 3
+
+  - key: quimico
+    nombre: Química de base
+    rol: transformer
+    tipos: [refineria]
+    recetas: [sintesis_quimicos, produccion_resinas]
+    capa: 2
+    peso: 18
+    max_nivel: 3
+
+  - key: refinador_combustibles
+    nombre: Refinería de combustibles
+    rol: transformer
+    tipos: [refineria]
+    recetas: [refino_diesel, refino_gasolina, refino_queroseno]
+    capa: 2
+    peso: 0
+    max_nivel: 2
+    # Deliberado (ADR-022): ninguna extractiva consume combustible, porque eso
+    # cerraría un ciclo en el grafo e impediría arrancar desde inventario cero.
+    # El efecto colateral es que diésel, gasolina y queroseno no tienen ningún
+    # comprador en el catálogo.
+    sin_demanda: true
+
+  - key: lubricantes
+    nombre: Lubricantes
+    rol: transformer
+    tipos: [refineria]
+    recetas: [refino_lubricantes, produccion_lubricante_ind]
+    capa: 2
+    peso: 0
+    max_nivel: 2
+    sin_demanda: true # el lubricante industrial no entra en ninguna receta
+
+  # === Capa 3: agro, madera y componentes básicos ==========================
+  - key: cerealista
+    nombre: Cerealista
+    rol: transformer
+    tipos: [campo]
+    recetas: [cultivo_trigo, cultivo_maiz]
+    capa: 3
+    peso: 25 # trigo→harina→pan y maíz→masa/piensos
+    max_nivel: 3
+
+  - key: oleaginoso
+    nombre: Cultivos industriales de soya y caña
+    rol: transformer
+    tipos: [campo]
+    recetas: [cultivo_soya, cultivo_cana]
+    capa: 3
+    peso: 20
+    max_nivel: 3
+
+  - key: hortelano
+    nombre: Horticultura
+    rol: transformer
+    tipos: [campo]
+    recetas: [cultivo_tomate, cosecha_frutas, cosecha_verduras]
+    capa: 3
+    peso: 20 # frutas y verduras van directas a las ciudades
+    max_nivel: 3
+
+  - key: cultivo_industrial
+    nombre: Algodón, café y cacao
+    rol: transformer
+    tipos: [campo]
+    recetas: [cultivo_algodon, cultivo_cafe, cultivo_cacao]
+    capa: 3
+    peso: 15
+    max_nivel: 3
+
+  - key: laminador
+    nombre: Laminación y perfilado
+    rol: transformer
+    tipos: [metalurgia]
+    recetas: [laminado_lamina, laminado_viga, perfilado_metal]
+    capa: 3
+    peso: 30
+    max_nivel: 3
+
+  - key: tubero
+    nombre: Tubería de acero
+    rol: transformer
+    tipos: [metalurgia]
+    recetas: [extrusion_tubo]
+    capa: 3
+    peso: 15
+    max_nivel: 3
+
+  - key: aserrador
+    nombre: Aserradero
+    rol: transformer
+    tipos: [aserradero]
+    recetas: [aserrado, tratado_madera, produccion_contrachapado]
+    capa: 3
+    peso: 15
+    max_nivel: 3
+
+  - key: papelero
+    nombre: Celulosa y papel
+    rol: transformer
+    tipos: [aserradero]
+    recetas: [produccion_celulosa, produccion_papel, produccion_carton]
+    capa: 3
+    peso: 0
+    max_nivel: 2
+    # La rama entera es un callejón sin salida: celulosa→papel→cartón, y el
+    # cartón no lo consume ninguna receta ni es consumo final. El consumo
+    # interno del propio oficio no cuenta como demanda.
+    sin_demanda: true
+
+  - key: textil
+    nombre: Hilado y textil
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [hilado_fibra, elab_textiles]
+    capa: 3
+    peso: 15
+    max_nivel: 3
+
+  - key: circuitero
+    nombre: Circuitos y microchips
+    rol: transformer
+    tipos: [electronica]
+    recetas: [ensamble_circuito, ensamble_microchip]
+    capa: 3
+    peso: 25
+    max_nivel: 3
+
+  - key: electromecanico
+    nombre: Electromecánica
+    rol: transformer
+    tipos: [electronica]
+    recetas: [ensamble_cableado, ensamble_motor_elec, ensamble_bateria]
+    capa: 3
+    peso: 22 # el cableado lo consumen 9 recetas
+    max_nivel: 3
+
+  - key: transmision
+    nombre: Transmisión y rodadura
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_caja, ensamble_frenos, ensamble_suspension, ensamble_rodamientos]
+    capa: 3
+    peso: 18
+    max_nivel: 3
+
+  - key: cauchero
+    nombre: Neumáticos
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_neumatico]
+    capa: 3
+    peso: 12
+    max_nivel: 3
+
+  - key: cerrajero
+    nombre: Carpintería metálica
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_puerta, ensamble_ventana, ensamble_panel_pref]
+    capa: 3
+    peso: 12
+    max_nivel: 3
+
+  # === Capa 4: industria intermedia ========================================
+  - key: piensos
+    nombre: Fábrica de piensos
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [produccion_piensos]
+    capa: 4
+    peso: 25 # sin piensos no hay ganadería: las 5 recetas de granja los exigen
+    max_nivel: 4
+
+  - key: molinero
+    nombre: Molienda
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [molienda, nixtamalizado]
+    capa: 4
+    peso: 20
+    max_nivel: 3
+
+  - key: azucarero
+    nombre: Azúcar y chocolate
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [refino_azucar, elab_chocolate]
+    capa: 4
+    peso: 18
+    max_nivel: 3
+
+  - key: aceitero
+    nombre: Aceites y conservas
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [prensado_aceite, salseria, enlatado_conservas]
+    capa: 4
+    peso: 12
+    max_nivel: 3
+
+  - key: optoelectronico
+    nombre: Pantallas y sensores
+    rol: transformer
+    tipos: [electronica]
+    recetas: [ensamble_pantalla, ensamble_sensor]
+    capa: 4
+    peso: 18
+    max_nivel: 3
+
+  - key: motorista
+    nombre: Motores
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_motor, ensamble_motor_aero, ensamble_generador]
+    capa: 4
+    peso: 25 # el motor de combustión lo consumen 10 recetas
+    max_nivel: 3
+
+  - key: carrocero
+    nombre: Chasis e interiores
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_chasis, ensamble_asiento, ensamble_panel_int]
+    capa: 4
+    peso: 18
+    max_nivel: 3
+
+  - key: hidraulico
+    nombre: Hidráulica y depósitos
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_bomba, ensamble_hidraulico, ensamble_tuberia, ensamble_tanque]
+    capa: 4
+    peso: 20
+    max_nivel: 3
+
+  - key: climatizacion
+    nombre: Refrigeración y aislamiento
+    rol: transformer
+    tipos: [componentes]
+    recetas: [ensamble_refrig, ensamble_aislamiento]
+    capa: 4
+    peso: 12
+    max_nivel: 3
+
+  - key: ferroviario
+    nombre: Material ferroviario
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_locomotora, fab_vagon]
+    capa: 4
+    peso: 12
+    max_nivel: 2
+
+  - key: constructor_industrial
+    nombre: Construcción industrial
+    rol: transformer
+    tipos: [construccion]
+    recetas:
+      [
+        constr_planta_industrial,
+        constr_planta_ensamblaje,
+        constr_planta_quimica,
+        constr_refineria,
+        constr_fabrica_ligera,
+        constr_fabrica_aeronaves,
+      ]
+    capa: 4
+    peso: 15
+    max_nivel: 2
+
+  # === Capa 5-6: consumo final e industria pesada ==========================
+  - key: panadero
+    nombre: Panadería
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [panaderia, tortilleria]
+    capa: 5
+    peso: 22 # pan y tortilla van directos a las ciudades
+    max_nivel: 3
+
+  - key: bebidas
+    nombre: Embotelladora
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [embotellado_bebidas]
+    capa: 5
+    peso: 0
+    max_nivel: 2
+    sin_demanda: true # `bebidas` es intermediate y no entra en ninguna receta
+
+  - key: ganadero_lechero
+    nombre: Ganadería lechera
+    rol: transformer
+    tipos: [granja]
+    recetas: [ordena]
+    capa: 5
+    peso: 20 # la leche alimenta 4 recetas de agroindustria
+    max_nivel: 3
+
+  - key: ganadero_carne
+    nombre: Ganadería cárnica
+    rol: transformer
+    tipos: [granja]
+    recetas: [cria_bovino, cria_cerdos, cria_pollos]
+    capa: 5
+    peso: 18
+    max_nivel: 3
+
+  - key: ganadero_lana
+    nombre: Ganadería ovina
+    rol: transformer
+    tipos: [granja]
+    recetas: [esquila]
+    capa: 5
+    peso: 0
+    max_nivel: 2
+    sin_demanda: true # la lana no la consume ninguna receta (el textil usa algodón)
+
+  - key: controlista
+    nombre: Sistemas de control
+    rol: transformer
+    tipos: [electronica]
+    recetas: [ensamble_control]
+    capa: 5
+    peso: 25 # 17 recetas de ensamblaje y construcción dependen de él
+    max_nivel: 4
+
+  - key: electronica_consumo
+    nombre: Electrónica de consumo
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_computadora, fab_telefono, fab_televisor]
+    capa: 5
+    peso: 18
+    max_nivel: 2
+
+  - key: constructor_civil
+    nombre: Construcción civil
+    rol: transformer
+    tipos: [construccion]
+    recetas: [constr_edificio_res, constr_edificio_com, constr_almacen]
+    capa: 5
+    peso: 18
+    max_nivel: 2
+
+  - key: constructor_transporte
+    nombre: Infraestructura de transporte
+    rol: transformer
+    tipos: [construccion]
+    recetas:
+      [constr_puerto, constr_aeropuerto, constr_estacion, constr_terminal, constr_astillero]
+    capa: 5
+    peso: 12
+    max_nivel: 2
+
+  - key: lacteo
+    nombre: Industria láctea
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [planta_lactea, queseria, elab_mantequilla, elab_yogur]
+    capa: 6
+    peso: 20
+    max_nivel: 3
+
+  - key: carnico
+    nombre: Procesado cárnico
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [procesado_carne]
+    capa: 6
+    peso: 0
+    max_nivel: 2
+    sin_demanda: true # `carne_procesada` es intermediate y nadie la consume
+
+  - key: automotriz
+    nombre: Automoción
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_automovil, fab_camion_carga, fab_camion_cisterna, fab_camion_refrigerado]
+    capa: 6
+    peso: 20
+    max_nivel: 2
+
+  - key: naval
+    nombre: Astillero
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_barco_carga, fab_barco_petrolero]
+    capa: 6
+    peso: 10
+    max_nivel: 2
+
+  - key: aeronautico
+    nombre: Aeronáutica
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_avion]
+    capa: 6
+    peso: 8
+    max_nivel: 2
+
+  - key: maquinaria
+    nombre: Maquinaria pesada
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_excavadora, fab_grua]
+    capa: 6
+    peso: 12
+    max_nivel: 2
+
+  - key: electrodomestico
+    nombre: Electrodomésticos
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_lavadora, fab_refrigerador]
+    capa: 6
+    peso: 12
+    max_nivel: 2
+
+  # === Liquidez ============================================================
+  - key: creador_mercado
+    nombre: Creador de mercado
+    rol: trader
+    tipos: []
+    recetas: []
+    capa: 1 # entra pronto: sin libro que cotizar, los productores no ven fair
+    peso: 60
+    max_nivel: 0

@@ -102,6 +102,7 @@ export const catalogRepository = {
   async insertRecipe(
     tx: Tx,
     p: {
+      key: string;
       name: string;
       outputProductId: string;
       outputQtyCent: number;
@@ -114,6 +115,7 @@ export const catalogRepository = {
     const rows = await tx
       .insert(recipe)
       .values({
+        key: p.key,
         name: p.name,
         outputProductId: p.outputProductId,
         outputQty: p.outputQtyCent,

@@ -57,6 +57,7 @@ function toRecipeInputDto(row: RecipeInputRow): RecipeInputDto {
 export function toRecipeDto(row: RecipeWithInputs): RecipeDto {
   return {
     recipe_id: row.recipeId,
+    key: row.key,
     name: row.name,
     output_product_id: row.outputProductId,
     output_qty_cent: row.outputQty,

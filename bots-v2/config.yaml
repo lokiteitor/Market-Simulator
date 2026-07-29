@@ -1,0 +1,268 @@
+server:
+  base_url: "http://market-simulator:9080/v1"
+  ws_url: "ws://market-simulator:9080/v1/ws"
+
+logging:
+  level: "info"
+  format: "text" # text or json
+
+retry:
+  max_attempts: 5
+  initial_backoff_ms: 1000
+  max_backoff_ms: 30000
+
+# Factor de tiempo de simulacion del servidor (env SIM_TIME_FACTOR, default 5).
+# El servidor cobra el salario como wage_rate_cents_per_sec * segundos_SIMULADOS,
+# pero /catalog/recipes expone duration_seconds ya convertido a segundos REALES.
+# Los bots multiplican por este factor para estimar el costo laboral correctamente.
+sim_time_factor: 5
+
+# Si el servidor rechaza una accion con 422 insufficient_capital, el bot duerme
+# este backoff (segundos reales), descarta el resto del lote y rebasea su
+# estado con un snapshot fresco. Clave en modo swarm: un bot sin capital deja
+# de martillar la API y cede el lugar al siguiente. 0 = default del SDK (60s).
+insufficient_capital_backoff_seconds: 120
+
+# Cada cuanto se releen los yacimientos finitos (ADR-023, GET /catalog/deposits).
+# El rendimiento de un yacimiento cae en horas, asi que 300 s sobra; lo que no
+# puede es no refrescarse nunca, o el bot seguiria valorando la mineria con el
+# output nominal de la receta y produciria a perdida. 0 = default del SDK (300).
+deposit_refresh_seconds: 300
+
+# Configuración de rotación de bots para simular actividad humana:
+# - max_active: cantidad máxima de bots activos concurrentemente (0 para sin límite, ejecuta todos)
+# - active_duration: cuánto tiempo juega cada bot antes de dormir y rotar (ej. "10m", "600s", "1h")
+#   Debe ser >= el TTL máximo de órdenes (600s, botkit.TTLJitter): con turnos más
+#   cortos los bids de insumos expiran mientras el bot duerme su ciclo de rotación
+#   y el enjambre degenera a producir solo las recetas sin insumos (agua).
+#   Alargarla NO sube la concurrencia (la fija max_active); REDUCE los logins/min
+#   (= max_active/active_duration, argon2id cada uno con -no-persist).
+# - scale: cantidad de bots programáticos a generar (0 para usar la lista manual de bots)
+max_active: 500
+active_duration: "10m"
+scale: 0   # 0 = usar la lista manual `bots:` de abajo; el enjambre se pide con -scale N
+
+# Vista de mercado de los bots (MarketView). Todos opcionales; defaults en codigo.
+market:
+  # Peso del ultimo trade en la EMA del valor justo (0-1).
+  ema_alpha: 0.25
+  # Banda del fair value alrededor del precio base: evita fugas de precio por
+  # retroalimentacion bot-a-bot. fair queda en [base*lo, base*hi].
+  fair_band_lo: 0.4
+  fair_band_hi: 2.5
+  # Frescura del cache de top-of-book (segundos) antes de refetchear.
+  top_ttl_seconds: 12
+  # Llamadas REST de top-of-book permitidas por bot por tick. Con enjambres
+  # grandes (-scale) este numero es lo que protege al servidor.
+  rest_budget_per_tick: 4
+  # Ventana (segundos) para considerar que un producto tiene mercado "vivo".
+  recent_window_seconds: 600
+
+# Precios base (cents/unidad) para evaluar trades y margenes.
+# NO EDITAR A MANO: bloque generado por propagacion de costo desde
+# infra/seed-config.json (fuente unica del catalogo) con
+#   cd backend && bun src/scripts/generate-bot-prices.ts
+#   costo_unit = (wage_rate*duration_sim + sum(insumos)) * 100 / output_qty_cent
+# El mismo bloque va en bots-v1/config.yaml y bots-ciudad/config.yaml: si
+# divergen, los bots de mercado y las ciudades valoran distinto lo mismo.
+# Cubre los 155 productos del catalogo (materias primas, intermedios y finales).
+prices:
+  # --- Materias primas ---
+  trigo: 21
+  maiz: 17
+  leche: 51
+  tomate: 26
+  hierro: 20
+  carbon: 20
+  mineral_cobre: 20
+  bauxita: 20
+  litio: 204
+  niquel: 34
+  oro: 820
+  plata: 680
+  uranio: 1020
+  arena: 10
+  piedra: 10
+  caliza: 10
+  arcilla: 10
+  fosfato: 26
+  sal: 13
+  petroleo: 41
+  gas_natural: 51
+  agua: 10
+  troncos: 25
+  soya: 21
+  algodon: 26
+  cana_azucar: 17
+  cafe: 52
+  cacao: 52
+  frutas: 19
+  verduras: 19
+  ganado_bovino: 2056
+  cerdos: 1028
+  pollos: 103
+  lana: 51
+  # --- Intermedios ---
+  semillas: 26
+  harina: 79
+  masa: 44
+  acero: 63
+  acero_inoxidable: 137
+  aluminio: 100
+  cobre_refinado: 125
+  cemento: 39
+  hormigon: 35
+  vidrio: 45
+  ladrillos: 25
+  asfalto: 55
+  plastico: 94
+  caucho_sintetico: 94
+  fertilizantes: 78
+  productos_quimicos: 75
+  silicio: 162
+  tablas: 64
+  celulosa: 64
+  papel: 105
+  carton: 153
+  azucar: 87
+  aceite_vegetal: 115
+  carne_procesada: 94
+  lacteos: 102
+  gasolina: 114
+  diesel: 114
+  electricidad: 27
+  queroseno: 142
+  lubricantes: 189
+  viga_acero: 132
+  lamina_acero: 132
+  tubo_acero: 140
+  perfil_metalico: 132
+  lamina_aluminio: 206
+  perfil_aluminio: 206
+  cable_cobre: 223
+  bobina_cobre: 241
+  cristal_plano: 108
+  cristal_tecnico: 159
+  polimeros: 174
+  resinas: 157
+  fibra_sintetica: 180
+  lubricante_industrial: 301
+  madera_tratada: 123
+  contrachapado: 131
+  conservas: 47
+  piensos: 47
+  bebidas: 51
+  chasis: 38514
+  motor_combustion: 44992
+  caja_cambios: 23589
+  suspension: 25311
+  frenos: 20772
+  rodamientos: 10044
+  bomba_industrial: 26142
+  motor_electrico: 32176
+  generador: 74944
+  bateria: 26873
+  cableado: 294
+  circuito_impreso: 20792
+  microchip: 49274
+  sensor: 41069
+  pantalla: 46352
+  ventana: 17368
+  puerta_industrial: 14264
+  panel_prefabricado: 19674
+  tuberia: 242
+  asiento: 25371
+  panel_interior: 19704
+  neumatico: 23195
+  sistema_hidraulico: 58814
+  motor_aeronautico: 102353
+  sistema_control: 225122
+  tanque_especializado: 43360
+  sistema_refrigeracion: 63427
+  aislamiento_termico: 276
+  # --- Consumo final ---
+  pan: 190
+  tortilla: 94
+  queso: 2365
+  salsa: 111
+  camion_carga: 669723
+  camion_cisterna: 634291
+  camion_refrigerado: 636739
+  locomotora_diesel: 547796
+  vagon_carga: 158880
+  barco_carga: 777729
+  barco_petrolero: 947568
+  avion_carga: 876629
+  planta_industrial: 146075
+  refineria: 735020
+  planta_ensamblaje: 637081
+  astillero: 468498
+  fabrica_aeronaves: 525063
+  planta_quimica: 691231
+  estacion_carga: 89910
+  terminal_ferroviaria: 581674
+  puerto_comercial: 245075
+  aeropuerto_carga: 864346
+  automovil: 573644
+  refrigerador: 119788
+  lavadora: 313152
+  televisor: 100614
+  computadora: 187635
+  telefono: 177068
+  excavadora: 507955
+  grua: 257993
+  edificio_residencial: 204848
+  edificio_comercial: 290549
+  fabrica_urbana_ligera: 327914
+  almacen_logistico: 128976
+  mantequilla: 383
+  yogur: 100
+  chocolate: 182
+  textiles: 118
+
+
+# Lista manual de bots (solo se usa SIN -scale). A diferencia de bots-v1, un bot
+# no declara `strategy` sino `oficio`: la clave de un oficio de oficios.yaml, de
+# donde salen también su rol, sus recetas y su capa de arranque.
+bots:
+  - username: "v2_aguador_1"
+    password: "dev-password-123"
+    oficio: "aguador"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_agua_1.json"
+    auto_register: true
+
+  - username: "v2_hidro_1"
+    password: "dev-password-123"
+    oficio: "hidroelectrico"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_hidro_1.json"
+    auto_register: true
+
+  - username: "v2_siderurgico_1"
+    password: "dev-password-123"
+    oficio: "siderurgico"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_sider_1.json"
+    auto_register: true
+
+  - username: "v2_minero_ferroso_1"
+    password: "dev-password-123"
+    oficio: "minero_ferroso"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_minfe_1.json"
+    auto_register: true
+
+  - username: "v2_panadero_1"
+    password: "dev-password-123"
+    oficio: "panadero"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_pan_1.json"
+    auto_register: true
+
+  - username: "v2_trader_1"
+    password: "dev-password-123"
+    oficio: "creador_mercado"
+    tick_interval_seconds: 5
+    persist_path: "./.session_v2_trade_1.json"
+    auto_register: true

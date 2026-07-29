@@ -122,12 +122,14 @@ describe("mappers de DTO (snake_case, fechas ISO)", () => {
       duration: "00:01:00",
       wageRateCentsPerSec: 1,
       installationTypeId: UUID_D,
+      key: "germinado_rapido",
       name: "Germinado rápido",
       createdAt,
       inputs: [{ recipeId: UUID_B, productId: UUID_C, qtyRequired: 150 }],
     });
     expect(dto).toEqual({
       recipe_id: UUID_B,
+      key: "germinado_rapido",
       name: "Germinado rápido",
       output_product_id: UUID_A,
       output_qty_cent: 50_000,

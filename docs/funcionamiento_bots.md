@@ -1,13 +1,17 @@
-# Funcionamiento de los Bots — `bots-v1` + `bots-ciudad` + `bots-hidro` + `go-sdk`
+# Funcionamiento de los Bots — `bots-v1` + `bots-v2` + `bots-ciudad` + `bots-hidro` + `go-sdk`
 
-> **Estado:** documento vivo, refleja el código a 2026-07-28.
-> Hay **tres binarios** de bots, todos sobre **`go-sdk/`** (motor de agente reutilizable):
+> **Estado:** documento vivo, refleja el código a 2026-07-29.
+> Hay **cuatro binarios** de bots, todos sobre **`go-sdk/`** (motor de agente reutilizable):
 > **`bots-v1/`** (enjambre de estrategias heurísticas, replicable en varias instancias),
+> **`bots-v2/`** (enjambre especializado por **oficio**, ADR-027: sustituye a `bots-v1` +
+> `bots-hidro` y puede correr en paralelo con ellos — ver **§11**),
 > **`bots-ciudad/`** (las ciudades-consumidor: conjunto FIJO de capitales, **instancia
 > única**) y **`bots-hidro/`** (parque de centrales hidroeléctricas dedicadas, replicable
-> como `bots-v1` y **sin rotación**). El antiguo `bot-engine/` fue eliminado (commit
-> `b0f4e242`) y no debe referenciarse. El cliente Python (`market-client/`) y los ejemplos
-> del SDK son herramientas auxiliares, no forman parte del runtime de bots.
+> como `bots-v1` y **sin rotación**; subsumido por el oficio `hidroelectrico` de `bots-v2`).
+> Las secciones §1–§10 describen `bots-v1`, que sigue siendo funcional. El antiguo
+> `bot-engine/` fue eliminado (commit `b0f4e242`) y no debe referenciarse. El cliente Python
+> (`market-client/`) y los ejemplos del SDK son herramientas auxiliares, no forman parte del
+> runtime de bots.
 
 ---
 
@@ -663,3 +667,99 @@ make run-swarm
 | Bot Trader RL-PPO | Abandonado (`ced48883`) | Se pivotó a heurísticos reactivos antes de intentar ML (ver plan en memoria del proyecto: heurísticos → recorder → ML). |
 | `market-client/` (Python) | Auxiliar | Cliente de pruebas/manual, no parte del runtime de bots. |
 | `go-sdk/examples/` | Auxiliar | Ejemplo de uso del SDK. |
+
+---
+
+## 11. `bots-v2` — especialización por oficio (ADR-027)
+
+Enjambre de segunda generación. Mismo SDK, misma API y la misma economía por ejecución
+que `bots-v1`; lo que cambia es **quién produce qué**. Detalle completo en
+`bots-v2/README.md`; aquí lo esencial.
+
+### 11.1 Por qué
+
+La unidad de especialización de `bots-v1` es el **tipo de instalación**, y el catálogo no
+está repartido así. Con `-scale 10000` y round-robin entre 6 estrategias:
+
+| Especialidad v1 | Recetas | Bots  | Bots/receta |
+| --------------- | ------- | ----- | ----------- |
+| `aguador`       | 2       | 1.667 | 833         |
+| `energetico`    | 3       | 1.667 | 556         |
+| `farmer`        | 17      | 1.667 | 98          |
+| `miner`         | 17      | 1.667 | 98          |
+| `transformer`   | **113** | 1.667 | **14,7**    |
+
+Y dentro de un tipo la cobertura tampoco está garantizada: el nivel de la instalación es
+un presupuesto de concurrencia **compartido** (ADR-021) y la reposición de insumos está
+acotada a `cuota[tipo] < nivel`, así que un bot con nivel 3 en `componentes` cubre 3 de
+sus 20 recetas — y cuáles lo decide el `rnd.Perm` de cada tick. Un eslabón sin productor
+real para toda la corrida todo lo que cuelga de él.
+
+`bots-hidro` es el síntoma: una especialización *dentro* de `generacion` que no cabía en
+el modelo y se resolvió duplicando un binario.
+
+### 11.2 El oficio
+
+Un conjunto de **recetas concretas**, escrito a mano en `bots-v2/oficios.yaml` (66
+oficios, 152 recetas, sin solapes) y nombrado por `recipe.key` — la clave estable del
+catálogo que ADR-027 añadió como espejo de `product.key`. Sin ella el cliente no puede
+nombrar una receta (`recipe_id` se regenera en cada seed, `name` es texto de display), y
+por eso `prioridadRenovablePrimero` tenía que distinguir la hidro por la presencia de
+yacimiento en sus insumos.
+
+```yaml
+- key: hidroelectrico
+  tipos: [generacion]
+  recetas: [generacion_hidro]
+  capa: 1
+  peso: 45
+  insumos_permitidos: [agua]
+  exigir_sin_yacimiento: true
+  apagado: coste_variable # no coste+margen: es la generadora marginal
+  freno: almacen # no por precio: acumular y parar, no rematar
+```
+
+Esos campos son **todo** `bots-hidro` (§5.4): el binario queda subsumido.
+
+Si el servidor no expone `recipe.key` (es anterior al backfill), cada oficio degrada a
+"todas las recetas de mis tipos" —el comportamiento de v1— y avisa por log.
+
+### 11.3 Diferencias de comportamiento frente a `bots-v1`
+
+| Aspecto            | `bots-v1`                              | `bots-v2`                                                                     |
+| ------------------ | -------------------------------------- | ----------------------------------------------------------------------------- |
+| Reparto de flota   | round-robin, 1/6 por estrategia        | cobertura mínima por oficio + reparto por `peso`; determinista e inspeccionable con `-dry-run` |
+| Varios runners     | cada uno replica la flota entera       | `--shard i/N`: la unión de los shards **es** la flota                          |
+| Arranque           | jitter uniforme en `[0, S]`            | `capa × segundos_por_capa` + jitter intra-capa (agua → … → industria pesada)   |
+| Orden de recetas   | `rnd.Perm` + prioridad ad hoc          | por **margen esperado**, desempate aleatorio                                   |
+| Parámetros         | sorteados en `Initialize`, fijos       | margen y undercut se **adaptan** según se acumule o se coloque el stock        |
+| Nicho inviable     | el bot espera a quebrar (ADR-026)      | **pivota** a otro oficio de una instalación ya pagada                          |
+| Rotación           | ciega                                  | el productor deja de arrancar procesos en los últimos 90 s del turno           |
+
+### 11.4 Operación
+
+```bash
+make build-bots-v2
+make plan-swarm-v2     # composición de la flota, sin tocar el servidor
+make run-bots-v2       # los 6 bots de ejemplo del config.yaml
+make run-swarm-v2      # 10.000 bots
+```
+
+`bots-v2` tiene namespace UUID propio: puede correr **a la vez** que `bots-v1` contra la
+misma economía sin robarle las cuentas, que es la forma de comparar las dos flotas. Lo
+que no conviene es lanzarlo junto a `bots-hidro`, porque el oficio `hidroelectrico` ya
+cubre ese papel.
+
+### 11.5 Hallazgo: productos sin ningún comprador
+
+Los tests de cobertura destaparon que **21 de los 149 productos no los compra nadie** —ni
+son insumo de otra receta ni son `final_consumption`—, y agrupan 7 oficios enteros:
+`refinador_combustibles` (diésel, gasolina, queroseno), `lubricantes`, `papelero`
+(celulosa→papel→cartón, la rama completa), `ceramista` (ladrillos, asfalto), `bebidas`,
+`carnico` y `ganadero_lana`.
+
+Parte es deliberado —ADR-022 pospone el combustible en las extractivas para no cerrar
+ciclos en el grafo—, pero el resto parece un hueco del catálogo, no de los bots. En
+`oficios.yaml` van marcados `sin_demanda: true` con peso 0 (reciben solo la cobertura
+mínima: su único destino garantizado es la quiebra) y un test falla si la afirmación deja
+de ser cierta en cualquiera de los dos sentidos.

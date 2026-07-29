@@ -54,7 +54,13 @@ type RecipeInput struct {
 }
 
 type Recipe struct {
-	RecipeID            string `json:"recipe_id"`
+	RecipeID string `json:"recipe_id"`
+	// Key es el identificador estable del catálogo (ej. "cultivo_trigo"); a
+	// diferencia de RecipeID (UUID regenerado en cada seed) es constante entre
+	// despliegues. Es lo que permite a un cliente declarar en qué recetas se
+	// especializa (los oficios de bots-v2) en vez de inferirlo por heurísticas
+	// sobre los insumos. Vacío si el servidor es anterior a la columna.
+	Key                 string `json:"key"`
 	Name                string `json:"name"`
 	OutputProductID     string `json:"output_product_id"`
 	OutputQtyCent       int64  `json:"output_qty_cent"`

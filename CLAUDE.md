@@ -21,6 +21,13 @@ make build-bots
 make run-bots          # los 6 bots de bots-v1/config.yaml
 make run-swarm         # 10.000 bots con jitter de arranque de 900s
 
+# Enjambre v2: especializado por OFICIO (ADR-027). Namespace UUID propio, así que
+# puede correr A LA VEZ que bots-v1 contra la misma economía. Absorbe bots-hidro.
+make build-bots-v2
+make plan-swarm-v2     # composición de la flota (dry-run), sin tocar el servidor
+make run-bots-v2       # los 6 bots de ejemplo de bots-v2/config.yaml
+make run-swarm-v2      # 10.000 bots escalonados por capa del grafo
+
 # Ciudades (demanda urbana): conjunto FIJO de ~50 capitales, INSTANCIA ÚNICA (flock).
 make build-bots-ciudad
 make run-bots-ciudad
@@ -98,6 +105,8 @@ Ver `docs/funcionamiento_bots.md`. Un binario Go lanza N bots como goroutines; c
 La estrategia consumidor y los helpers compartidos (humanización, dinero, market view, precios base, venta a mercado, economía de instalaciones, rendimiento de yacimientos) viven en **`go-sdk/sdk/botkit`**; los helpers los comparten los tres binarios de bots, pero la estrategia consumidora la usa **solo `bots-ciudad`** desde ADR-025. `bots-v1/botkit_aliases.go` es solo un shim que re-exporta los helpers con los nombres locales. **Al tocar un helper, editarlo en `botkit`.**
 
 `bots-hidro/` es el parque hidroeléctrico: bots que compran agua, la turbinan y venden electricidad, y **solo eso**. Existe aparte porque el `energetico` de `bots-v1` se queda con el tipo `generacion` entero y, al escalar de nivel, las líneas nuevas se van a las térmicas (más baratas por kWh), así que la capacidad renovable acaba siendo un residuo del arranque; cuando los yacimientos de carbón y gas se agoten (ADR-023) la hidro es la única generación que queda en pie. Selecciona su receta por lista blanca de insumos (`insumos_renovables`, default `agua`) **y** ausencia de yacimiento —la lista blanca manda, porque `GET /catalog/deposits` puede fallar al arrancar y el engine sigue asumiendo recursos infinitos—; se apaga por **coste variable** en vez de coste+margen (es la generadora marginal por construcción) y por **almacén lleno** en vez de por precio. Es replicable como `bots-v1` (usernames UUID v5 desde `--runner-id`, con namespace propio) y **no rota**.
+
+`bots-v2/` es el enjambre de segunda generación (**ADR-027**). Cambia la unidad de especialización: del *tipo de instalación* (`bots-v1/specialties.go`) al **oficio**, un conjunto de **recetas concretas** declarado a mano en `bots-v2/oficios.yaml` (66 oficios que cubren las 152 recetas, validados contra `infra/seed-config.json` por `oficios_test.go`). Las recetas se nombran por **`recipe.key`**, columna añadida en el mismo ADR como espejo de `product.key` (con `backend/src/scripts/backfill-recipe-keys.ts` para bases vivas); si el servidor no la expone, el oficio degrada al comportamiento de v1 y avisa. Aporta: composición de flota por **cobertura mínima + peso** (ningún eslabón nace huérfano, frente al round-robin de v1 que daba 1/6 de la flota a 2 recetas y otro 1/6 a 113), `--shard i/N` (la unión de los shards **es** la flota, no N copias), arranque escalonado por **capa del grafo**, orden de recetas por margen, **adaptación** lenta de margen/undercut y **pivote de oficio** dentro de una instalación ya pagada. `bots-hidro` queda subsumido en 5 campos del oficio `hidroelectrico` (`insumos_permitidos`, `exigir_sin_yacimiento`, `apagado: coste_variable`, `freno: almacen`). Namespace UUID propio: v1 y v2 pueden correr a la vez sobre la misma economía para compararse.
 
 `market-client/` es un cliente Python **auxiliar** (pruebas/manual y base del bot trader RL); no forma parte del runtime de bots.
 

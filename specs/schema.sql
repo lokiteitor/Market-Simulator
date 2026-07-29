@@ -161,6 +161,12 @@ CREATE TABLE installation_type (
 
 CREATE TABLE recipe (
     recipe_id           UUID            PRIMARY KEY DEFAULT uuidv7(),
+    -- Identificador estable del catálogo (seed-config `key`, ej. 'cultivo_trigo');
+    -- espejo de product.key. Permite a los clientes nombrar una receta concreta
+    -- sin depender del UUID (regenerado en cada seed) ni del `name` de display.
+    -- Sin esto, un cliente que quiera especializarse en un subconjunto de
+    -- recetas solo puede inferirlo por heurísticas sobre sus insumos.
+    key                 TEXT            NOT NULL UNIQUE,
     output_product_id   UUID            NOT NULL REFERENCES product(product_id),
     output_qty          BIGINT          NOT NULL CHECK (output_qty > 0),
     duration            INTERVAL        NOT NULL CHECK (duration > INTERVAL '0'),

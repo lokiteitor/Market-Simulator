@@ -1343,6 +1343,7 @@ components:
       type: object
       required:
         - recipe_id
+        - key
         - name
         - output_product_id
         - output_qty_cent
@@ -1353,6 +1354,12 @@ components:
         - created_at
       properties:
         recipe_id: { type: string, format: uuid }
+        key:
+          type: string
+          description: >-
+            Clave estable del catálogo (seed-config, ej. `cultivo_trigo`). Espejo de
+            `Product.key`: permite al cliente nombrar una receta concreta sin depender
+            del `recipe_id` (regenerado en cada seed) ni del `name` de display.
         name: { type: string }
         output_product_id: { type: string, format: uuid }
         output_qty_cent:

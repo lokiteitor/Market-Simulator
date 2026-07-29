@@ -171,6 +171,7 @@ CREATE TABLE product (
 -- Tabla
 CREATE TABLE recipe (
     recipe_id                UUID            PRIMARY KEY DEFAULT uuidv7(),
+    key                      TEXT            NOT NULL UNIQUE,
     output_product_id        UUID            NOT NULL REFERENCES product(product_id),
     output_qty               BIGINT          NOT NULL CHECK (output_qty > 0),
     duration                 INTERVAL        NOT NULL CHECK (duration > INTERVAL '0'),
@@ -184,7 +185,7 @@ CREATE TABLE recipe (
 #### DDL de Índices y Constraints
 
 ```sql
--- Índices automáticos: PK sobre recipe_id, UNIQUE sobre name.
+-- Índices automáticos: PK sobre recipe_id, UNIQUE sobre key y sobre name.
 
 -- Constraints
 ALTER TABLE recipe ADD CONSTRAINT recipe_output_qty_positive CHECK (output_qty > 0);
@@ -198,6 +199,7 @@ ALTER TABLE recipe ADD CONSTRAINT recipe_output_product_fk FOREIGN KEY (output_p
 | Campo                     | Tipo          | Descripción                                                                                                                              |
 | ------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `recipe_id`               | `UUID`        | Identificador único de la receta.                                                                                                        |
+| `key`                     | `TEXT`        | Clave estable del catálogo (`seed-config.json`, ej. `cultivo_trigo`). Espejo de `product.key`: constante entre despliegues, mientras `recipe_id` se regenera en cada seed. Es lo que permite a un cliente declarar en qué recetas se especializa (los oficios de `bots-v2`, ADR-027) en vez de inferirlo por heurísticas sobre los insumos. |
 | `output_product_id`       | `UUID`        | Producto que resulta de ejecutar la receta. Un solo producto resultante en v1.                                                           |
 | `output_qty`              | `BIGINT`      | Cantidad producida por ejecución, en centésimas de la unidad del producto.                                                               |
 | `duration`                | `INTERVAL`    | Duración de una ejecución de la receta en tiempo real. Para procesos con N ejecuciones, la duración total es `duration × N`.             |
