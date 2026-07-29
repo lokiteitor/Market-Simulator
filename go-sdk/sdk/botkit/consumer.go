@@ -1,6 +1,7 @@
 package botkit
 
 import (
+	"math"
 	"math/rand/v2"
 	"sync"
 
@@ -38,6 +39,28 @@ type consumerParams struct {
 	restBudget    int
 }
 
+// Cuota de la cesta que una ciudad mira en cada tick. Se dimensiona como
+// FRACCIÓN y no como número fijo porque el reparto es una permutación uniforme
+// sobre TODOS los productos de consumo final: cada producto final que se añade
+// al catálogo le roba atención a los demás. Con el 3-8 fijo original, ampliar
+// el catálogo bajaba la demanda por producto sin que nadie lo decidiera (los
+// valores de aquí son ese mismo 3-8 sobre los 34 finales que había entonces).
+// `market.consumer_per_tick` en el config lo fija a mano si hace falta.
+const (
+	consumerPerTickShareMin = 0.09
+	consumerPerTickShareMax = 0.24
+	consumerPerTickMin      = 3
+)
+
+func consumerPerTick(rnd *rand.Rand, finales int, cfg map[string]interface{}) int {
+	if fijo := int(MarketCfgFloat(cfg, "consumer_per_tick", 0)); fijo > 0 {
+		return fijo
+	}
+	lo := max(consumerPerTickMin, int(math.Round(float64(finales)*consumerPerTickShareMin)))
+	hi := max(lo, int(math.Round(float64(finales)*consumerPerTickShareMax)))
+	return SampleIntRange(rnd, lo, hi)
+}
+
 func NewConsumerStrategy() *ConsumerStrategy {
 	return &ConsumerStrategy{
 		basePrices: make(map[string]int64),
@@ -57,7 +80,7 @@ func (s *ConsumerStrategy) Initialize(ctx *strategy.Context) error {
 	s.p = consumerParams{
 		tolerance:     SampleRange(s.rnd, 1.05, 1.4),
 		spendRate:     SampleRange(s.rnd, 0.02, 0.08),
-		perTick:       SampleIntRange(s.rnd, 3, 8),
+		perTick:       consumerPerTick(s.rnd, len(s.finalProducts), ctx.Config),
 		crossProb:     SampleRange(s.rnd, 0.4, 0.8),
 		buyTargetCent: int64(SampleRange(s.rnd, 200, 600)),
 		restingDisc:   SampleRange(s.rnd, 0.02, 0.08),

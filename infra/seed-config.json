@@ -299,12 +299,6 @@
       "category": "intermediate"
     },
     {
-      "key": "asfalto",
-      "name": "Asfalto",
-      "unit": "kg",
-      "category": "intermediate"
-    },
-    {
       "key": "plastico",
       "name": "Plástico",
       "unit": "kg",
@@ -350,7 +344,7 @@
       "key": "aceite_vegetal",
       "name": "Aceite vegetal",
       "unit": "litro",
-      "category": "intermediate"
+      "category": "final_consumption"
     },
     {
       "key": "carne_procesada",
@@ -362,24 +356,18 @@
       "key": "gasolina",
       "name": "Gasolina",
       "unit": "litro",
-      "category": "intermediate"
+      "category": "final_consumption"
     },
     {
       "key": "diesel",
       "name": "Diésel",
       "unit": "litro",
-      "category": "intermediate"
+      "category": "final_consumption"
     },
     {
       "key": "electricidad",
       "name": "Electricidad",
       "unit": "kWh",
-      "category": "intermediate"
-    },
-    {
-      "key": "queroseno",
-      "name": "Queroseno",
-      "unit": "litro",
       "category": "intermediate"
     },
     {
@@ -488,7 +476,7 @@
       "key": "bebidas",
       "name": "Bebidas",
       "unit": "litro",
-      "category": "intermediate"
+      "category": "final_consumption"
     },
     {
       "key": "chasis",
@@ -770,7 +758,7 @@
       "key": "textiles",
       "name": "Textiles",
       "unit": "kg",
-      "category": "final_consumption"
+      "category": "intermediate"
     },
     {
       "key": "manzana",
@@ -824,6 +812,108 @@
       "key": "helado",
       "name": "Helado",
       "unit": "litro",
+      "category": "final_consumption"
+    },
+    {
+      "key": "carne_cerdo",
+      "name": "Carne de cerdo",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "carne_pollo",
+      "name": "Carne de pollo",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "hilo_lana",
+      "name": "Hilo de lana",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "cafe_tostado",
+      "name": "Café tostado",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "tuberia_inox",
+      "name": "Tubería de acero inoxidable",
+      "unit": "kg",
+      "category": "intermediate"
+    },
+    {
+      "key": "mueble",
+      "name": "Mueble de madera",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "parquet",
+      "name": "Parquet de madera",
+      "unit": "m2",
+      "category": "final_consumption"
+    },
+    {
+      "key": "embutidos",
+      "name": "Embutidos",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "jamon",
+      "name": "Jamón curado",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "pollo_envasado",
+      "name": "Pollo envasado",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "ropa",
+      "name": "Ropa",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "calzado",
+      "name": "Calzado",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "cafe_molido",
+      "name": "Café molido",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "cafe_soluble",
+      "name": "Café soluble",
+      "unit": "kg",
+      "category": "final_consumption"
+    },
+    {
+      "key": "menaje_cocina",
+      "name": "Menaje de cocina",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "joyeria",
+      "name": "Joyería de plata",
+      "unit": "unidad",
+      "category": "final_consumption"
+    },
+    {
+      "key": "vivienda",
+      "name": "Vivienda",
+      "unit": "unidad",
       "category": "final_consumption"
     }
   ],
@@ -1655,6 +1745,10 @@
           "qty_cent": 1000
         },
         {
+          "product": "piedra",
+          "qty_cent": 15000
+        },
+        {
           "product": "electricidad",
           "qty_cent": 8700
         }
@@ -1695,29 +1789,6 @@
         {
           "product": "electricidad",
           "qty_cent": 7700
-        }
-      ]
-    },
-    {
-      "key": "produccion_asfalto",
-      "name": "Producción de asfalto",
-      "output": "asfalto",
-      "installation_type": "materiales",
-      "output_qty_cent": 40000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "petroleo",
-          "qty_cent": 20000
-        },
-        {
-          "product": "piedra",
-          "qty_cent": 30000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 13800
         }
       ]
     },
@@ -1885,7 +1956,7 @@
       "key": "procesado_carne",
       "name": "Procesado de carne",
       "output": "carne_procesada",
-      "installation_type": "agroindustria",
+      "installation_type": "carniceria",
       "output_qty_cent": 25000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 3,
@@ -1925,25 +1996,6 @@
       "output": "diesel",
       "installation_type": "refineria",
       "output_qty_cent": 25000,
-      "duration_sim_seconds": 3600,
-      "wage_rate_cents_per_sec": 2,
-      "inputs": [
-        {
-          "product": "petroleo",
-          "qty_cent": 40000
-        },
-        {
-          "product": "electricidad",
-          "qty_cent": 17700
-        }
-      ]
-    },
-    {
-      "key": "refino_queroseno",
-      "name": "Refino de queroseno",
-      "output": "queroseno",
-      "installation_type": "refineria",
-      "output_qty_cent": 20000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
       "inputs": [
@@ -2242,7 +2294,7 @@
       "key": "hilado_fibra",
       "name": "Hilado de fibra sintética",
       "output": "fibra_sintetica",
-      "installation_type": "agroindustria",
+      "installation_type": "textil",
       "output_qty_cent": 16000,
       "duration_sim_seconds": 3600,
       "wage_rate_cents_per_sec": 2,
@@ -2288,6 +2340,10 @@
         {
           "product": "tablas",
           "qty_cent": 20000
+        },
+        {
+          "product": "resinas",
+          "qty_cent": 1500
         },
         {
           "product": "electricidad",
@@ -2629,6 +2685,10 @@
         {
           "product": "plastico",
           "qty_cent": 500
+        },
+        {
+          "product": "plata",
+          "qty_cent": 50
         },
         {
           "product": "electricidad",
@@ -3327,7 +3387,7 @@
       "inputs": [
         {
           "product": "acero",
-          "qty_cent": 5000
+          "qty_cent": 3000
         },
         {
           "product": "sistema_refrigeracion",
@@ -3336,6 +3396,10 @@
         {
           "product": "panel_interior",
           "qty_cent": 100
+        },
+        {
+          "product": "acero_inoxidable",
+          "qty_cent": 2000
         },
         {
           "product": "electricidad",
@@ -3354,7 +3418,7 @@
       "inputs": [
         {
           "product": "acero",
-          "qty_cent": 5000
+          "qty_cent": 3000
         },
         {
           "product": "motor_electrico",
@@ -3363,6 +3427,10 @@
         {
           "product": "sistema_control",
           "qty_cent": 100
+        },
+        {
+          "product": "acero_inoxidable",
+          "qty_cent": 2000
         },
         {
           "product": "electricidad",
@@ -3582,7 +3650,7 @@
       "key": "elab_textiles",
       "name": "Elaboración de textiles",
       "output": "textiles",
-      "installation_type": "agroindustria",
+      "installation_type": "textil",
       "output_qty_cent": 15000,
       "duration_sim_seconds": 5400,
       "wage_rate_cents_per_sec": 2,
@@ -3795,6 +3863,408 @@
           "qty_cent": 9200
         }
       ]
+    },
+    {
+      "key": "fab_mueble",
+      "name": "Fabricación de muebles",
+      "output": "mueble",
+      "installation_type": "carpinteria",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 7200,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "contrachapado",
+          "qty_cent": 6000
+        },
+        {
+          "product": "madera_tratada",
+          "qty_cent": 4000
+        },
+        {
+          "product": "resinas",
+          "qty_cent": 1000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 12000
+        }
+      ]
+    },
+    {
+      "key": "fab_parquet",
+      "name": "Fabricación de parquet",
+      "output": "parquet",
+      "installation_type": "carpinteria",
+      "output_qty_cent": 3000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "madera_tratada",
+          "qty_cent": 8000
+        },
+        {
+          "product": "resinas",
+          "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9000
+        }
+      ]
+    },
+    {
+      "key": "despiece_cerdo",
+      "name": "Despiece de cerdo",
+      "output": "carne_cerdo",
+      "installation_type": "carniceria",
+      "output_qty_cent": 22000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cerdos",
+          "qty_cent": 1000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "despiece_pollo",
+      "name": "Despiece de pollo",
+      "output": "carne_pollo",
+      "installation_type": "carniceria",
+      "output_qty_cent": 18000,
+      "duration_sim_seconds": 2700,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "pollos",
+          "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6500
+        }
+      ]
+    },
+    {
+      "key": "elab_embutidos",
+      "name": "Elaboración de embutidos",
+      "output": "embutidos",
+      "installation_type": "carniceria",
+      "output_qty_cent": 20000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "carne_cerdo",
+          "qty_cent": 15000
+        },
+        {
+          "product": "carne_procesada",
+          "qty_cent": 5000
+        },
+        {
+          "product": "sal",
+          "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9000
+        }
+      ]
+    },
+    {
+      "key": "elab_jamon",
+      "name": "Curado de jamón",
+      "output": "jamon",
+      "installation_type": "carniceria",
+      "output_qty_cent": 12000,
+      "duration_sim_seconds": 10800,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "carne_cerdo",
+          "qty_cent": 18000
+        },
+        {
+          "product": "sal",
+          "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7000
+        }
+      ]
+    },
+    {
+      "key": "envasado_pollo",
+      "name": "Envasado de pollo",
+      "output": "pollo_envasado",
+      "installation_type": "carniceria",
+      "output_qty_cent": 16000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "carne_pollo",
+          "qty_cent": 18000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 6000
+        }
+      ]
+    },
+    {
+      "key": "hilado_lana",
+      "name": "Hilado de lana",
+      "output": "hilo_lana",
+      "installation_type": "textil",
+      "output_qty_cent": 12000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "lana",
+          "qty_cent": 15000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7000
+        }
+      ]
+    },
+    {
+      "key": "confeccion_ropa",
+      "name": "Confección de ropa",
+      "output": "ropa",
+      "installation_type": "textil",
+      "output_qty_cent": 400,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "textiles",
+          "qty_cent": 3000
+        },
+        {
+          "product": "hilo_lana",
+          "qty_cent": 2000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "confeccion_calzado",
+      "name": "Confección de calzado",
+      "output": "calzado",
+      "installation_type": "textil",
+      "output_qty_cent": 300,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "textiles",
+          "qty_cent": 2000
+        },
+        {
+          "product": "caucho_sintetico",
+          "qty_cent": 1500
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 8000
+        }
+      ]
+    },
+    {
+      "key": "tueste_cafe",
+      "name": "Tueste de café",
+      "output": "cafe_tostado",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 16000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cafe",
+          "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 7500
+        }
+      ]
+    },
+    {
+      "key": "molido_cafe",
+      "name": "Molido de café",
+      "output": "cafe_molido",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 15000,
+      "duration_sim_seconds": 1800,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "cafe_tostado",
+          "qty_cent": 16000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 5000
+        }
+      ]
+    },
+    {
+      "key": "liofilizado_cafe",
+      "name": "Liofilizado de café",
+      "output": "cafe_soluble",
+      "installation_type": "agroindustria",
+      "output_qty_cent": 6000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "cafe_tostado",
+          "qty_cent": 16000
+        },
+        {
+          "product": "agua",
+          "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 12000
+        }
+      ]
+    },
+    {
+      "key": "extrusion_tubo_inox",
+      "name": "Extrusión de tubería inoxidable",
+      "output": "tuberia_inox",
+      "installation_type": "metalurgia",
+      "output_qty_cent": 16000,
+      "duration_sim_seconds": 3600,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "acero_inoxidable",
+          "qty_cent": 20000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 15000
+        }
+      ]
+    },
+    {
+      "key": "fab_menaje",
+      "name": "Fabricación de menaje de cocina",
+      "output": "menaje_cocina",
+      "installation_type": "ensamblaje",
+      "output_qty_cent": 400,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "acero_inoxidable",
+          "qty_cent": 3000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 12000
+        }
+      ]
+    },
+    {
+      "key": "fab_joyeria",
+      "name": "Orfebrería de plata",
+      "output": "joyeria",
+      "installation_type": "ensamblaje",
+      "output_qty_cent": 200,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "plata",
+          "qty_cent": 200
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 9000
+        }
+      ]
+    },
+    {
+      "key": "generacion_nuclear",
+      "name": "Central nuclear",
+      "output": "electricidad",
+      "installation_type": "generacion",
+      "output_qty_cent": 60000,
+      "duration_sim_seconds": 5400,
+      "wage_rate_cents_per_sec": 2,
+      "inputs": [
+        {
+          "product": "uranio",
+          "qty_cent": 400
+        },
+        {
+          "product": "agua",
+          "qty_cent": 20000
+        }
+      ]
+    },
+    {
+      "key": "constr_vivienda",
+      "name": "Construcción de vivienda",
+      "output": "vivienda",
+      "installation_type": "constructora",
+      "output_qty_cent": 100,
+      "duration_sim_seconds": 21600,
+      "wage_rate_cents_per_sec": 3,
+      "inputs": [
+        {
+          "product": "hormigon",
+          "qty_cent": 250000
+        },
+        {
+          "product": "ladrillos",
+          "qty_cent": 120000
+        },
+        {
+          "product": "madera_tratada",
+          "qty_cent": 30000
+        },
+        {
+          "product": "ventana",
+          "qty_cent": 600
+        },
+        {
+          "product": "puerta_industrial",
+          "qty_cent": 300
+        },
+        {
+          "product": "tuberia_inox",
+          "qty_cent": 10000
+        },
+        {
+          "product": "cableado",
+          "qty_cent": 5000
+        },
+        {
+          "product": "electricidad",
+          "qty_cent": 150000
+        }
+      ]
     }
   ],
   "installation_types": [
@@ -3935,15 +4405,15 @@
         "elab_chocolate",
         "refino_azucar",
         "prensado_aceite",
-        "procesado_carne",
         "produccion_piensos",
         "embotellado_bebidas",
         "enlatado_conservas",
-        "hilado_fibra",
-        "elab_textiles",
         "pasteurizado_leche",
         "elab_crema",
-        "elab_helado"
+        "elab_helado",
+        "tueste_cafe",
+        "molido_cafe",
+        "liofilizado_cafe"
       ]
     },
     {
@@ -3966,7 +4436,8 @@
         "perfilado_metal",
         "extrusion_tubo",
         "trefilado_cable",
-        "bobinado_cobre"
+        "bobinado_cobre",
+        "extrusion_tubo_inox"
       ]
     },
     {
@@ -3983,8 +4454,7 @@
         "produccion_cristal_tecnico",
         "coccion_ladrillos",
         "produccion_cemento",
-        "mezcla_hormigon",
-        "produccion_asfalto"
+        "mezcla_hormigon"
       ]
     },
     {
@@ -3998,7 +4468,6 @@
       "recipes": [
         "refino_diesel",
         "refino_gasolina",
-        "refino_queroseno",
         "sintesis_caucho",
         "sintesis_plastico",
         "sintesis_quimicos",
@@ -4019,7 +4488,8 @@
       "recipes": [
         "generacion_hidro",
         "central_termica_carbon",
-        "central_termica_gas"
+        "central_termica_gas",
+        "generacion_nuclear"
       ]
     },
     {
@@ -4109,7 +4579,67 @@
         "fab_refrigerador",
         "fab_telefono",
         "fab_televisor",
-        "fab_vagon"
+        "fab_vagon",
+        "fab_menaje",
+        "fab_joyeria"
+      ]
+    },
+    {
+      "key": "carpinteria",
+      "name": "Carpintería y mueble",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 42000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "fab_mueble",
+        "fab_parquet"
+      ]
+    },
+    {
+      "key": "carniceria",
+      "name": "Carnicería y cárnicos",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 35000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "procesado_carne",
+        "despiece_cerdo",
+        "despiece_pollo",
+        "elab_embutidos",
+        "elab_jamon",
+        "envasado_pollo"
+      ]
+    },
+    {
+      "key": "textil",
+      "name": "Industria textil",
+      "role": "transformer",
+      "unit_label": "lineas_produccion",
+      "base_price_cents": 40000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "hilado_fibra",
+        "elab_textiles",
+        "hilado_lana",
+        "confeccion_ropa",
+        "confeccion_calzado"
+      ]
+    },
+    {
+      "key": "constructora",
+      "name": "Constructora de vivienda",
+      "role": "transformer",
+      "unit_label": "obras",
+      "base_price_cents": 85000,
+      "growth_bps": 17000,
+      "max_level": 10,
+      "recipes": [
+        "constr_vivienda"
       ]
     }
   ],

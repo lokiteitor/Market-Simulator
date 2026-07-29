@@ -2,7 +2,7 @@
 
 > **Proyecto:** Market-Simulator (Simulación de Mercado)
 >
-> **Versión:** 3.3 — retirada de la construcción (135 productos / 138 recetas)
+> **Versión:** 3.4 — cierre de las industrias sin salida (150 productos / 154 recetas)
 >
 > **Estado:** Referencia canónica del catálogo **actual** de
 > `infra/seed-config.json` + reglas para ampliarlo.
@@ -20,6 +20,12 @@
 > (plantas, edificios, puertos, astilleros…) eran edificios, no bienes que se
 > fabrican, se guardan en un almacén FIFO y se transportan al mercado. Con ellos
 > se fue su tipo de instalación entero.
+> La v3.4 cerró los **30 callejones sin salida** que dejó esa poda: la línea de
+> materiales desemboca ahora en la **vivienda**, la madera en carpintería, la
+> ganadería en carnicería, la lana en confección y el café en tostadero; los
+> bienes que ya eran de uso final (aceite, bebidas, gasolina, diésel) pasaron a
+> `final_consumption` y el asfalto y el queroseno se retiraron. Lo vigila el test
+> `toda receta llega a consumo final` de `catalog-graph.test.ts`.
 > Las tablas §3-§5 se generan del `seed-config.json`
 > real con `backend/src/scripts/generate-catalog-artifacts.ts`.
 
@@ -27,11 +33,12 @@
 
 ## 1. Resumen del catálogo actual
 
-- **135 productos**: 32 `raw_primary`, 69 `intermediate`, 34 `final_consumption`.
-- **138 recetas**; todo producto tiene al menos una receta que lo produce; solo
-  el `agua` tiene dos (pozo profundo y pozo somero) y la `electricidad` tres
-  (hidro y térmicas de carbón y gas, ADR-024).
-- **16 tipos de instalación** (ADR-021), todos del rol `transformer`, el único
+- **150 productos**: 32 `raw_primary`, 69 `intermediate`, 49 `final_consumption`.
+- **154 recetas**; todo producto tiene al menos una receta que lo produce y
+  **todas llegan a un consumo final**; solo el `agua` tiene dos (pozo profundo y
+  pozo somero) y la `electricidad` cuatro (hidro, térmicas de carbón y gas, y
+  nuclear, ADR-024).
+- **20 tipos de instalación** (ADR-021), todos del rol `transformer`, el único
   rol productivo (ADR-022).
 
 La cadena es un **grafo conexo y acíclico con una sola raíz**: lo único que nace
@@ -48,9 +55,12 @@ catálogo:
   produce nadie. Desde ADR-024 la industria añade un eslabón más: agua →
   electricidad → industria.
 - **La electricidad (ADR-024) solo fluye hacia la industria**: la generan el
-  tipo `generacion` (hidro desde agua; térmicas de carbón y gas, ambos finitos)
-  y la consumen las 95 recetas industriales al 8-20% de su coste. **No** entra
-  en las extractivas ni la generación quema derivados (diésel): cerraría ciclos.
+  tipo `generacion` (hidro desde agua; térmicas de carbón y gas y nuclear desde
+  uranio, los tres finitos) y la consumen las 110 recetas industriales al 8-20%
+  de su coste. **No** entra en las extractivas ni la generación quema derivados
+  industriales (diésel, queroseno): cerraría ciclos. Solo admite combustibles
+  primarios —agua, carbón, gas natural y uranio—, que salen de extractivas que
+  a su vez no consumen electricidad.
   Las ciudades tampoco la compran (es `intermediate`, no `final_consumption`).
 - **Los pozos de petróleo y gas no pueden consumir derivados del petróleo**: se
   cerraría un ciclo y el mundo no podría producir su primera unidad desde
@@ -140,7 +150,7 @@ acreditado al banco central vía `fee_ledger`.
 
 ## 3. Tipos de instalación actuales
 
-Los 16 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022).
+Los 20 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022).
 
 | key | Nombre | Recetas | Precio base (¢) | Growth (bps) | Nivel máx |
 | --- | ------ | ------- | --------------- | ------------ | --------- |
@@ -152,18 +162,22 @@ Los 16 tipos pertenecen al rol `transformer`, el único rol productivo (ADR-022)
 | `bosque` | Bosque maderero | 1 | 15000 | 17000 | 10 |
 | `pozo_agua` | Pozo de agua | 2 | 12000 | 17000 | 10 |
 | `agroindustria` | Agroindustria alimentaria | 20 | 40000 | 17000 | 10 |
-| `metalurgia` | Industria metalúrgica | 12 | 45000 | 17000 | 10 |
-| `materiales` | Fábrica de materiales de construcción | 7 | 40000 | 17000 | 10 |
-| `refineria` | Refinería petroquímica | 10 | 50000 | 17000 | 10 |
-| `generacion` | Generación eléctrica | 3 | 50000 | 17000 | 10 |
+| `metalurgia` | Industria metalúrgica | 13 | 45000 | 17000 | 10 |
+| `materiales` | Fábrica de materiales de construcción | 6 | 40000 | 17000 | 10 |
+| `refineria` | Refinería petroquímica | 9 | 50000 | 17000 | 10 |
+| `generacion` | Generación eléctrica | 4 | 50000 | 17000 | 10 |
 | `aserradero` | Aserradero y papelera | 3 | 38000 | 17000 | 10 |
 | `electronica` | Planta de electrónica | 8 | 80000 | 17000 | 10 |
 | `componentes` | Fábrica de componentes mecánicos | 19 | 70000 | 17000 | 10 |
-| `ensamblaje` | Planta de ensamblaje final | 16 | 90000 | 17000 | 10 |
+| `ensamblaje` | Planta de ensamblaje final | 18 | 90000 | 17000 | 10 |
+| `carpinteria` | Carpintería y mueble | 2 | 42000 | 17000 | 10 |
+| `carniceria` | Carnicería y cárnicos | 6 | 35000 | 17000 | 10 |
+| `textil` | Industria textil | 5 | 40000 | 17000 | 10 |
+| `constructora` | Constructora de vivienda | 1 | 85000 | 17000 | 10 |
 
 ## 4. Productos actuales
 
-Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, cuyo rendimiento decae al vaciarse). (135 productos, 15 con yacimiento más el oro, que lo recibe del patrón oro.)
+Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del coste; §6) · **Yacimiento** (ADR-023: ✔ = recurso no renovable con stock finito, cuyo rendimiento decae al vaciarse). (150 productos, 15 con yacimiento más el oro, que lo recibe del patrón oro.)
 
 ### 4.1 `raw_primary` — Recursos naturales extraídos
 
@@ -214,10 +228,9 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `aluminio` | Aluminio | kg | 100 | — |
 | `cobre_refinado` | Cobre refinado | kg | 125 | — |
 | `cemento` | Cemento | kg | 39 | — |
-| `hormigon` | Hormigón | kg | 35 | — |
+| `hormigon` | Hormigón | kg | 38 | — |
 | `vidrio` | Vidrio | kg | 45 | — |
 | `ladrillos` | Ladrillos | unidad | 25 | — |
-| `asfalto` | Asfalto | kg | 55 | — |
 | `plastico` | Plástico | kg | 94 | — |
 | `caucho_sintetico` | Caucho sintético | kg | 94 | — |
 | `fertilizantes` | Fertilizantes | kg | 78 | — |
@@ -225,12 +238,8 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `silicio` | Silicio | kg | 162 | — |
 | `tablas` | Tablas | kg | 64 | — |
 | `azucar` | Azúcar | kg | 87 | — |
-| `aceite_vegetal` | Aceite vegetal | litro | 115 | — |
 | `carne_procesada` | Carne procesada | kg | 94 | — |
-| `gasolina` | Gasolina | litro | 114 | — |
-| `diesel` | Diésel | litro | 114 | — |
 | `electricidad` | Electricidad | kWh | 27 | — |
-| `queroseno` | Queroseno | litro | 142 | — |
 | `viga_acero` | Vigas de acero | kg | 132 | — |
 | `lamina_acero` | Láminas de acero | kg | 132 | — |
 | `tubo_acero` | Tubos de acero | kg | 140 | — |
@@ -245,9 +254,8 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `resinas` | Resinas | kg | 157 | — |
 | `fibra_sintetica` | Fibra sintética | kg | 180 | — |
 | `madera_tratada` | Madera tratada | kg | 123 | — |
-| `contrachapado` | Contrachapado | kg | 131 | — |
+| `contrachapado` | Contrachapado | kg | 144 | — |
 | `piensos` | Piensos | kg | 47 | — |
-| `bebidas` | Bebidas | litro | 51 | — |
 | `chasis` | Chasis | unidad | 38514 | — |
 | `motor_combustion` | Motor de combustión | unidad | 44992 | — |
 | `caja_cambios` | Caja de cambios | unidad | 23589 | — |
@@ -259,10 +267,10 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `generador` | Generador | unidad | 74944 | — |
 | `bateria` | Batería | unidad | 26873 | — |
 | `cableado` | Cableado | kg | 294 | — |
-| `circuito_impreso` | Circuitos impresos | unidad | 20792 | — |
-| `microchip` | Microchips | unidad | 49274 | — |
-| `sensor` | Sensores | unidad | 41069 | — |
-| `pantalla` | Pantallas | unidad | 46352 | — |
+| `circuito_impreso` | Circuitos impresos | unidad | 21132 | — |
+| `microchip` | Microchips | unidad | 49614 | — |
+| `sensor` | Sensores | unidad | 41409 | — |
+| `pantalla` | Pantallas | unidad | 46692 | — |
 | `ventana` | Ventanas | unidad | 17368 | — |
 | `puerta_industrial` | Puertas industriales | unidad | 14264 | — |
 | `tuberia` | Tuberías | kg | 242 | — |
@@ -270,11 +278,17 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `panel_interior` | Paneles interiores | unidad | 19704 | — |
 | `neumatico` | Neumáticos | unidad | 23195 | — |
 | `sistema_hidraulico` | Sistema hidráulico | unidad | 58814 | — |
-| `motor_aeronautico` | Motor aeronáutico | unidad | 102353 | — |
-| `sistema_control` | Sistema de control | unidad | 225122 | — |
+| `motor_aeronautico` | Motor aeronáutico | unidad | 102693 | — |
+| `sistema_control` | Sistema de control | unidad | 226482 | — |
 | `tanque_especializado` | Tanque especializado | unidad | 43360 | — |
 | `sistema_refrigeracion` | Sistema de refrigeración | unidad | 63427 | — |
 | `aislamiento_termico` | Aislamiento térmico | kg | 276 | — |
+| `textiles` | Textiles | kg | 118 | — |
+| `carne_cerdo` | Carne de cerdo | kg | 106 | — |
+| `carne_pollo` | Carne de pollo | kg | 51 | — |
+| `hilo_lana` | Hilo de lana | kg | 140 | — |
+| `cafe_tostado` | Café tostado | kg | 123 | — |
+| `tuberia_inox` | Tubería de acero inoxidable | kg | 242 | — |
 
 ### 4.3 `final_consumption` — Productos finales
 
@@ -284,27 +298,30 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `tortilla` | Tortilla | kg | 94 | — |
 | `queso` | Queso fresco | kg | 2365 | — |
 | `salsa` | Salsa de tomate | litro | 111 | — |
+| `aceite_vegetal` | Aceite vegetal | litro | 115 | — |
+| `gasolina` | Gasolina | litro | 114 | — |
+| `diesel` | Diésel | litro | 114 | — |
 | `conservas` | Conservas | kg | 41 | — |
-| `camion_carga` | Camión de carga | unidad | 669723 | — |
-| `camion_cisterna` | Camión cisterna | unidad | 634291 | — |
-| `camion_refrigerado` | Camión refrigerado | unidad | 636739 | — |
-| `locomotora_diesel` | Locomotora diésel | unidad | 547796 | — |
+| `bebidas` | Bebidas | litro | 51 | — |
+| `camion_carga` | Camión de carga | unidad | 671083 | — |
+| `camion_cisterna` | Camión cisterna | unidad | 635651 | — |
+| `camion_refrigerado` | Camión refrigerado | unidad | 638099 | — |
+| `locomotora_diesel` | Locomotora diésel | unidad | 549156 | — |
 | `vagon_carga` | Vagón de carga | unidad | 158880 | — |
-| `barco_carga` | Barco de carga | unidad | 777729 | — |
-| `barco_petrolero` | Barco petrolero | unidad | 947568 | — |
-| `avion_carga` | Avión de carga | unidad | 876629 | — |
-| `automovil` | Automóvil | unidad | 573644 | — |
-| `refrigerador` | Refrigerador | unidad | 119788 | — |
-| `lavadora` | Lavadora | unidad | 313152 | — |
-| `televisor` | Televisor | unidad | 100614 | — |
-| `computadora` | Computadora | unidad | 187635 | — |
-| `telefono` | Teléfono | unidad | 177068 | — |
-| `excavadora` | Excavadora | unidad | 507955 | — |
+| `barco_carga` | Barco de carga | unidad | 780449 | — |
+| `barco_petrolero` | Barco petrolero | unidad | 950288 | — |
+| `avion_carga` | Avión de carga | unidad | 880029 | — |
+| `automovil` | Automóvil | unidad | 575004 | — |
+| `refrigerador` | Refrigerador | unidad | 121268 | — |
+| `lavadora` | Lavadora | unidad | 315992 | — |
+| `televisor` | Televisor | unidad | 101294 | — |
+| `computadora` | Computadora | unidad | 188655 | — |
+| `telefono` | Teléfono | unidad | 178088 | — |
+| `excavadora` | Excavadora | unidad | 509315 | — |
 | `grua` | Grúa | unidad | 257993 | — |
 | `mantequilla` | Mantequilla | kg | 383 | — |
 | `yogur` | Yogur | litro | 100 | — |
 | `chocolate` | Chocolate | kg | 182 | — |
-| `textiles` | Textiles | kg | 118 | — |
 | `manzana` | Manzana | kg | 19 | — |
 | `naranja` | Naranja | kg | 19 | — |
 | `platano` | Plátano | kg | 19 | — |
@@ -314,6 +331,18 @@ Formato: **key** · Nombre · Unidad · **precio base** (¢/unidad, derivado del
 | `leche_pasteurizada` | Leche pasteurizada | litro | 100 | — |
 | `crema` | Crema | litro | 100 | — |
 | `helado` | Helado | litro | 117 | — |
+| `mueble` | Mueble de madera | unidad | 39970 | — |
+| `parquet` | Parquet de madera | m2 | 874 | — |
+| `embutidos` | Embutidos | kg | 197 | — |
+| `jamon` | Jamón curado | kg | 448 | — |
+| `pollo_envasado` | Pollo envasado | kg | 113 | — |
+| `ropa` | Ropa | unidad | 6175 | — |
+| `calzado` | Calzado | unidad | 7377 | — |
+| `cafe_molido` | Café molido | kg | 164 | — |
+| `cafe_soluble` | Café soluble | kg | 660 | — |
+| `menaje_cocina` | Menaje de cocina | unidad | 5888 | — |
+| `joyeria` | Joyería de plata | unidad | 9995 | — |
+| `vivienda` | Vivienda | unidad | 453100 | — |
 
 ## 5. Recetas actuales (agrupadas por tipo de instalación)
 
@@ -413,15 +442,15 @@ catálogo.
 | `elab_chocolate` | Elaboración de chocolate | `chocolate` | 20000 | 5400 | 3 | 36318 | 55% | `cacao`×15000, `azucar`×10000, `electricidad`×13400 |
 | `refino_azucar` | Refino de azúcar | `azucar` | 20000 | 3600 | 2 | 17455 | 59% | `cana_azucar`×50000, `electricidad`×6500 |
 | `prensado_aceite` | Prensado de aceite vegetal | `aceite_vegetal` | 15000 | 3600 | 2 | 17301 | 58% | `soya`×40000, `electricidad`×6300 |
-| `procesado_carne` | Procesado de carne | `carne_procesada` | 25000 | 3600 | 3 | 23402 | 54% | `ganado_bovino`×500, `electricidad`×8600 |
 | `produccion_piensos` | Producción de piensos | `piensos` | 35000 | 3600 | 2 | 16420 | 56% | `maiz`×20000, `soya`×20000, `electricidad`×6000 |
 | `embotellado_bebidas` | Embotellado de bebidas | `bebidas` | 35000 | 3600 | 2 | 17982 | 60% | `agua`×3000, `azucar`×10000, `electricidad`×6600 |
 | `enlatado_conservas` | Enlatado de conservas de tomate | `conservas` | 35000 | 3600 | 2 | 14437 | 50% | `tomate`×20000, `sal`×3000, `electricidad`×6100 |
-| `hilado_fibra` | Hilado de fibra sintética | `fibra_sintetica` | 16000 | 3600 | 2 | 28862 | 75% | `plastico`×20000, `electricidad`×10600 |
-| `elab_textiles` | Elaboración de textiles | `textiles` | 15000 | 5400 | 2 | 17755 | 39% | `algodon`×20000, `electricidad`×6500 |
 | `pasteurizado_leche` | Pasteurizado de leche | `leche_pasteurizada` | 25000 | 3600 | 2 | 24984 | 71% | `leche`×30000, `electricidad`×9200 |
 | `elab_crema` | Elaboración de crema | `crema` | 25000 | 3600 | 2 | 24984 | 71% | `leche`×30000, `electricidad`×9200 |
 | `elab_helado` | Elaboración de helado | `helado` | 25000 | 3600 | 2 | 29334 | 75% | `leche`×30000, `azucar`×5000, `electricidad`×9200 |
+| `tueste_cafe` | Tueste de café | `cafe_tostado` | 16000 | 3600 | 2 | 19625 | 63% | `cafe`×20000, `electricidad`×7500 |
+| `molido_cafe` | Molido de café | `cafe_molido` | 15000 | 1800 | 2 | 24630 | 85% | `cafe_tostado`×16000, `electricidad`×5000 |
+| `liofilizado_cafe` | Liofilizado de café | `cafe_soluble` | 6000 | 5400 | 3 | 39620 | 59% | `cafe_tostado`×16000, `agua`×5000, `electricidad`×12000 |
 
 ### 5.9 `metalurgia` — Industria metalúrgica
 
@@ -439,6 +468,7 @@ catálogo.
 | `extrusion_tubo` | Extrusión de tubos | `tubo_acero` | 17000 | 3600 | 2 | 23823 | 70% | `acero`×20000, `electricidad`×14900 |
 | `trefilado_cable` | Trefilado de cable de cobre | `cable_cobre` | 14000 | 3600 | 2 | 31269 | 77% | `cobre_refinado`×15000, `electricidad`×19700 |
 | `bobinado_cobre` | Bobinado de cobre | `bobina_cobre` | 13000 | 3600 | 2 | 31269 | 77% | `cobre_refinado`×15000, `electricidad`×19700 |
+| `extrusion_tubo_inox` | Extrusión de tubería inoxidable | `tuberia_inox` | 16000 | 3600 | 2 | 38650 | 81% | `acero_inoxidable`×20000, `electricidad`×15000 |
 
 ### 5.10 `materiales` — Fábrica de materiales de construcción
 
@@ -449,8 +479,7 @@ catálogo.
 | `produccion_cristal_tecnico` | Producción de cristal técnico | `cristal_tecnico` | 15000 | 3600 | 3 | 23823 | 55% | `vidrio`×20000, `electricidad`×14900 |
 | `coccion_ladrillos` | Cocción de ladrillos | `ladrillos` | 50000 | 3600 | 2 | 12279 | 41% | `arcilla`×30000, `electricidad`×7700 |
 | `produccion_cemento` | Producción de cemento | `cemento` | 35000 | 3600 | 2 | 13495 | 47% | `caliza`×40000, `electricidad`×8500 |
-| `mezcla_hormigon` | Mezcla de hormigón | `hormigon` | 40000 | 1800 | 2 | 13899 | 74% | `cemento`×15000, `arena`×20000, `agua`×1000, `electricidad`×8700 |
-| `produccion_asfalto` | Producción de asfalto | `asfalto` | 40000 | 3600 | 2 | 22126 | 67% | `petroleo`×20000, `piedra`×30000, `electricidad`×13800 |
+| `mezcla_hormigon` | Mezcla de hormigón | `hormigon` | 40000 | 1800 | 2 | 15399 | 77% | `cemento`×15000, `arena`×20000, `agua`×1000, `piedra`×15000, `electricidad`×8700 |
 
 ### 5.11 `refineria` — Refinería petroquímica
 
@@ -458,7 +487,6 @@ catálogo.
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
 | `refino_diesel` | Refino de diésel | `diesel` | 25000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
 | `refino_gasolina` | Refino de gasolina | `gasolina` | 25000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
-| `refino_queroseno` | Refino de queroseno | `queroseno` | 20000 | 3600 | 2 | 28379 | 75% | `petroleo`×40000, `electricidad`×17700 |
 | `sintesis_caucho` | Síntesis de caucho | `caucho_sintetico` | 25000 | 3600 | 2 | 23442 | 69% | `petroleo`×30000, `electricidad`×14600 |
 | `sintesis_plastico` | Síntesis de plástico | `plastico` | 25000 | 3600 | 2 | 23442 | 69% | `petroleo`×30000, `electricidad`×14600 |
 | `sintesis_quimicos` | Síntesis de productos químicos | `productos_quimicos` | 30000 | 3600 | 2 | 22530 | 68% | `petroleo`×25000, `sal`×10000, `electricidad`×14000 |
@@ -474,6 +502,7 @@ catálogo.
 | `generacion_hidro` | Generación hidroeléctrica | `electricidad` | 30000 | 3600 | 2 | 13200 | 45% | `agua`×60000 |
 | `central_termica_carbon` | Central térmica de carbón | `electricidad` | 60000 | 3600 | 2 | 16200 | 56% | `carbon`×40000, `agua`×10000 |
 | `central_termica_gas` | Central térmica de gas | `electricidad` | 60000 | 3600 | 2 | 18400 | 61% | `gas_natural`×20000, `agua`×10000 |
+| `generacion_nuclear` | Central nuclear | `electricidad` | 60000 | 5400 | 2 | 16880 | 36% | `uranio`×400, `agua`×20000 |
 
 ### 5.13 `aserradero` — Aserradero y papelera
 
@@ -481,27 +510,27 @@ catálogo.
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
 | `aserrado` | Aserradero | `tablas` | 30000 | 3600 | 2 | 19090 | 62% | `troncos`×40000, `electricidad`×7000 |
 | `tratado_madera` | Tratado de madera | `madera_tratada` | 18000 | 3600 | 2 | 22187 | 68% | `tablas`×20000, `electricidad`×8100 |
-| `produccion_contrachapado` | Producción de contrachapado | `contrachapado` | 17000 | 3600 | 2 | 22187 | 68% | `tablas`×20000, `electricidad`×8100 |
+| `produccion_contrachapado` | Producción de contrachapado | `contrachapado` | 17000 | 3600 | 2 | 24542 | 71% | `tablas`×20000, `resinas`×1500, `electricidad`×8100 |
 
 ### 5.14 `electronica` — Planta de electrónica
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
-| `ensamble_circuito` | Ensamblaje de circuitos impresos | `circuito_impreso` | 100 | 5400 | 3 | 20792 | 22% | `oro`×100, `cobre_refinado`×1000, `plastico`×500, `electricidad`×7600 |
-| `ensamble_microchip` | Fabricación de microchips | `microchip` | 100 | 7200 | 3 | 49274 | 56% | `circuito_impreso`×100, `productos_quimicos`×500, `silicio`×1000, `electricidad`×18100 |
-| `ensamble_sensor` | Fabricación de sensores | `sensor` | 100 | 5400 | 3 | 41069 | 61% | `circuito_impreso`×100, `electricidad`×15100 |
-| `ensamble_pantalla` | Fabricación de pantallas | `pantalla` | 100 | 5400 | 3 | 46352 | 65% | `cristal_tecnico`×3000, `circuito_impreso`×100, `electricidad`×17000 |
+| `ensamble_circuito` | Ensamblaje de circuitos impresos | `circuito_impreso` | 100 | 5400 | 3 | 21132 | 23% | `oro`×100, `cobre_refinado`×1000, `plastico`×500, `plata`×50, `electricidad`×7600 |
+| `ensamble_microchip` | Fabricación de microchips | `microchip` | 100 | 7200 | 3 | 49614 | 56% | `circuito_impreso`×100, `productos_quimicos`×500, `silicio`×1000, `electricidad`×18100 |
+| `ensamble_sensor` | Fabricación de sensores | `sensor` | 100 | 5400 | 3 | 41409 | 61% | `circuito_impreso`×100, `electricidad`×15100 |
+| `ensamble_pantalla` | Fabricación de pantallas | `pantalla` | 100 | 5400 | 3 | 46692 | 65% | `cristal_tecnico`×3000, `circuito_impreso`×100, `electricidad`×17000 |
 | `ensamble_cableado` | Ensamblaje de cableado | `cableado` | 8000 | 3600 | 2 | 23519 | 69% | `cable_cobre`×5000, `plastico`×3000, `electricidad`×8700 |
 | `ensamble_bateria` | Ensamblaje de batería | `bateria` | 100 | 5400 | 3 | 26873 | 40% | `litio`×3000, `plastico`×2000, `electricidad`×9900 |
 | `ensamble_motor_elec` | Ensamblaje de motor eléctrico | `motor_electrico` | 100 | 5400 | 3 | 32176 | 50% | `bobina_cobre`×4000, `acero`×5000, `electricidad`×11800 |
-| `ensamble_control` | Ensamblaje de sistema de control | `sistema_control` | 100 | 5400 | 3 | 225122 | 93% | `microchip`×200, `sensor`×200, `cableado`×2000, `electricidad`×82800 |
+| `ensamble_control` | Ensamblaje de sistema de control | `sistema_control` | 100 | 5400 | 3 | 226482 | 93% | `microchip`×200, `sensor`×200, `cableado`×2000, `electricidad`×82800 |
 
 ### 5.15 `componentes` — Fábrica de componentes mecánicos
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
 | `ensamble_motor` | Ensamblaje de motor de combustión | `motor_combustion` | 100 | 7200 | 3 | 44992 | 52% | `acero`×15000, `aluminio`×5000, `cable_cobre`×2000, `electricidad`×16600 |
-| `ensamble_motor_aero` | Ensamblaje de motor aeronáutico | `motor_aeronautico` | 100 | 7200 | 3 | 102353 | 79% | `aluminio`×15000, `acero`×10000, `microchip`×100, `electricidad`×37700 |
+| `ensamble_motor_aero` | Ensamblaje de motor aeronáutico | `motor_aeronautico` | 100 | 7200 | 3 | 102693 | 79% | `aluminio`×15000, `acero`×10000, `microchip`×100, `electricidad`×37700 |
 | `ensamble_chasis` | Ensamblaje de chasis | `chasis` | 100 | 5400 | 3 | 38514 | 58% | `viga_acero`×8000, `lamina_acero`×6000, `electricidad`×14200 |
 | `ensamble_caja` | Ensamblaje de caja de cambios | `caja_cambios` | 100 | 5400 | 3 | 23589 | 31% | `acero`×8000, `electricidad`×8700 |
 | `ensamble_frenos` | Ensamblaje de frenos | `frenos` | 100 | 5400 | 3 | 20772 | 22% | `acero`×4000, `electricidad`×7600 |
@@ -524,22 +553,58 @@ catálogo.
 
 | Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
 | ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
-| `fab_automovil` | Fabricación de automóvil | `automovil` | 100 | 14400 | 3 | 573644 | 92% | `chasis`×100, `motor_combustion`×100, `sistema_control`×100, `cristal_plano`×1500, `neumatico`×400, `asiento`×200, `panel_interior`×100, `electricidad`×211000 |
-| `fab_avion` | Fabricación de avión de carga | `avion_carga` | 100 | 21600 | 3 | 876629 | 93% | `lamina_aluminio`×30000, `motor_aeronautico`×200, `sistema_control`×200, `cristal_tecnico`×5000, `electricidad`×322700 |
-| `fab_barco_carga` | Fabricación de barco de carga | `barco_carga` | 100 | 21600 | 3 | 777729 | 92% | `viga_acero`×50000, `motor_combustion`×200, `sistema_control`×200, `cableado`×10000, `electricidad`×286300 |
-| `fab_barco_petrolero` | Fabricación de barco petrolero | `barco_petrolero` | 100 | 21600 | 3 | 947568 | 93% | `viga_acero`×50000, `motor_combustion`×200, `tanque_especializado`×300, `bomba_industrial`×200, `sistema_control`×200, `electricidad`×348800 |
-| `fab_camion_carga` | Fabricación de camión de carga | `camion_carga` | 100 | 18000 | 3 | 669723 | 92% | `chasis`×100, `motor_combustion`×100, `caja_cambios`×100, `suspension`×100, `frenos`×200, `neumatico`×600, `cableado`×3000, `sistema_control`×100, `cristal_plano`×2000, `electricidad`×246300 |
-| `fab_camion_cisterna` | Fabricación de camión cisterna | `camion_cisterna` | 100 | 18000 | 3 | 634291 | 91% | `chasis`×100, `motor_combustion`×100, `tanque_especializado`×100, `bomba_industrial`×100, `neumatico`×600, `sistema_control`×100, `electricidad`×233300 |
-| `fab_camion_refrigerado` | Fabricación de camión refrigerado | `camion_refrigerado` | 100 | 18000 | 3 | 636739 | 92% | `chasis`×100, `motor_combustion`×100, `sistema_refrigeracion`×100, `aislamiento_termico`×3000, `neumatico`×600, `sistema_control`×100, `electricidad`×234200 |
-| `fab_computadora` | Fabricación de computadora | `computadora` | 100 | 7200 | 3 | 187635 | 88% | `microchip`×200, `pantalla`×100, `plastico`×2000, `cobre_refinado`×500, `electricidad`×69000 |
-| `fab_excavadora` | Fabricación de excavadora | `excavadora` | 100 | 18000 | 3 | 507955 | 89% | `acero`×25000, `motor_combustion`×100, `sistema_hidraulico`×200, `sistema_control`×100, `electricidad`×186900 |
+| `fab_automovil` | Fabricación de automóvil | `automovil` | 100 | 14400 | 3 | 575004 | 92% | `chasis`×100, `motor_combustion`×100, `sistema_control`×100, `cristal_plano`×1500, `neumatico`×400, `asiento`×200, `panel_interior`×100, `electricidad`×211000 |
+| `fab_avion` | Fabricación de avión de carga | `avion_carga` | 100 | 21600 | 3 | 880029 | 93% | `lamina_aluminio`×30000, `motor_aeronautico`×200, `sistema_control`×200, `cristal_tecnico`×5000, `electricidad`×322700 |
+| `fab_barco_carga` | Fabricación de barco de carga | `barco_carga` | 100 | 21600 | 3 | 780449 | 92% | `viga_acero`×50000, `motor_combustion`×200, `sistema_control`×200, `cableado`×10000, `electricidad`×286300 |
+| `fab_barco_petrolero` | Fabricación de barco petrolero | `barco_petrolero` | 100 | 21600 | 3 | 950288 | 93% | `viga_acero`×50000, `motor_combustion`×200, `tanque_especializado`×300, `bomba_industrial`×200, `sistema_control`×200, `electricidad`×348800 |
+| `fab_camion_carga` | Fabricación de camión de carga | `camion_carga` | 100 | 18000 | 3 | 671083 | 92% | `chasis`×100, `motor_combustion`×100, `caja_cambios`×100, `suspension`×100, `frenos`×200, `neumatico`×600, `cableado`×3000, `sistema_control`×100, `cristal_plano`×2000, `electricidad`×246300 |
+| `fab_camion_cisterna` | Fabricación de camión cisterna | `camion_cisterna` | 100 | 18000 | 3 | 635651 | 92% | `chasis`×100, `motor_combustion`×100, `tanque_especializado`×100, `bomba_industrial`×100, `neumatico`×600, `sistema_control`×100, `electricidad`×233300 |
+| `fab_camion_refrigerado` | Fabricación de camión refrigerado | `camion_refrigerado` | 100 | 18000 | 3 | 638099 | 92% | `chasis`×100, `motor_combustion`×100, `sistema_refrigeracion`×100, `aislamiento_termico`×3000, `neumatico`×600, `sistema_control`×100, `electricidad`×234200 |
+| `fab_computadora` | Fabricación de computadora | `computadora` | 100 | 7200 | 3 | 188655 | 89% | `microchip`×200, `pantalla`×100, `plastico`×2000, `cobre_refinado`×500, `electricidad`×69000 |
+| `fab_excavadora` | Fabricación de excavadora | `excavadora` | 100 | 18000 | 3 | 509315 | 89% | `acero`×25000, `motor_combustion`×100, `sistema_hidraulico`×200, `sistema_control`×100, `electricidad`×186900 |
 | `fab_grua` | Fabricación de grúa | `grua` | 100 | 18000 | 3 | 257993 | 79% | `acero`×25000, `motor_combustion`×100, `sistema_hidraulico`×200, `electricidad`×94900 |
-| `fab_lavadora` | Fabricación de lavadora | `lavadora` | 100 | 7200 | 3 | 313152 | 93% | `acero`×5000, `motor_electrico`×100, `sistema_control`×100, `electricidad`×115200 |
-| `fab_locomotora` | Fabricación de locomotora diésel | `locomotora_diesel` | 100 | 21600 | 3 | 547796 | 88% | `motor_combustion`×200, `chasis`×100, `sistema_control`×100, `generador`×100, `electricidad`×201600 |
-| `fab_refrigerador` | Fabricación de refrigerador | `refrigerador` | 100 | 7200 | 3 | 119788 | 82% | `acero`×5000, `sistema_refrigeracion`×100, `panel_interior`×100, `electricidad`×44100 |
-| `fab_telefono` | Fabricación de teléfono | `telefono` | 100 | 5400 | 3 | 177068 | 91% | `microchip`×100, `pantalla`×100, `bateria`×100, `circuito_impreso`×100, `electricidad`×65100 |
-| `fab_televisor` | Fabricación de televisor | `televisor` | 100 | 7200 | 3 | 100614 | 79% | `pantalla`×100, `circuito_impreso`×100, `plastico`×2000, `electricidad`×37000 |
+| `fab_lavadora` | Fabricación de lavadora | `lavadora` | 100 | 7200 | 3 | 315992 | 93% | `acero`×3000, `motor_electrico`×100, `sistema_control`×100, `acero_inoxidable`×2000, `electricidad`×115200 |
+| `fab_locomotora` | Fabricación de locomotora diésel | `locomotora_diesel` | 100 | 21600 | 3 | 549156 | 88% | `motor_combustion`×200, `chasis`×100, `sistema_control`×100, `generador`×100, `electricidad`×201600 |
+| `fab_refrigerador` | Fabricación de refrigerador | `refrigerador` | 100 | 7200 | 3 | 121268 | 82% | `acero`×3000, `sistema_refrigeracion`×100, `panel_interior`×100, `acero_inoxidable`×2000, `electricidad`×44100 |
+| `fab_telefono` | Fabricación de teléfono | `telefono` | 100 | 5400 | 3 | 178088 | 91% | `microchip`×100, `pantalla`×100, `bateria`×100, `circuito_impreso`×100, `electricidad`×65100 |
+| `fab_televisor` | Fabricación de televisor | `televisor` | 100 | 7200 | 3 | 101294 | 79% | `pantalla`×100, `circuito_impreso`×100, `plastico`×2000, `electricidad`×37000 |
 | `fab_vagon` | Fabricación de vagón de carga | `vagon_carga` | 100 | 10800 | 3 | 158880 | 80% | `viga_acero`×15000, `rodamientos`×800, `perfil_metalico`×8000, `electricidad`×58400 |
+| `fab_menaje` | Fabricación de menaje de cocina | `menaje_cocina` | 400 | 5400 | 3 | 23550 | 31% | `acero_inoxidable`×3000, `electricidad`×12000 |
+| `fab_joyeria` | Orfebrería de plata | `joyeria` | 200 | 5400 | 3 | 19990 | 19% | `plata`×200, `electricidad`×9000 |
+
+### 5.17 `carpinteria` — Carpintería y mueble
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
+| `fab_mueble` | Fabricación de muebles | `mueble` | 100 | 7200 | 3 | 39970 | 46% | `contrachapado`×6000, `madera_tratada`×4000, `resinas`×1000, `electricidad`×12000 |
+| `fab_parquet` | Fabricación de parquet | `parquet` | 3000 | 5400 | 2 | 26210 | 59% | `madera_tratada`×8000, `resinas`×2000, `electricidad`×9000 |
+
+### 5.18 `carniceria` — Carnicería y cárnicos
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
+| `procesado_carne` | Procesado de carne | `carne_procesada` | 25000 | 3600 | 3 | 23402 | 54% | `ganado_bovino`×500, `electricidad`×8600 |
+| `despiece_cerdo` | Despiece de cerdo | `carne_cerdo` | 22000 | 3600 | 3 | 23240 | 54% | `cerdos`×1000, `electricidad`×8000 |
+| `despiece_pollo` | Despiece de pollo | `carne_pollo` | 18000 | 2700 | 2 | 9215 | 41% | `pollos`×2000, `electricidad`×6500 |
+| `elab_embutidos` | Elaboración de embutidos | `embutidos` | 20000 | 5400 | 3 | 39490 | 59% | `carne_cerdo`×15000, `carne_procesada`×5000, `sal`×2000, `electricidad`×9000 |
+| `elab_jamon` | Curado de jamón | `jamon` | 12000 | 10800 | 3 | 53760 | 40% | `carne_cerdo`×18000, `sal`×3000, `electricidad`×7000 |
+| `envasado_pollo` | Envasado de pollo | `pollo_envasado` | 16000 | 3600 | 2 | 18000 | 60% | `carne_pollo`×18000, `electricidad`×6000 |
+
+### 5.19 `textil` — Industria textil
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
+| `hilado_fibra` | Hilado de fibra sintética | `fibra_sintetica` | 16000 | 3600 | 2 | 28862 | 75% | `plastico`×20000, `electricidad`×10600 |
+| `elab_textiles` | Elaboración de textiles | `textiles` | 15000 | 5400 | 2 | 17755 | 39% | `algodon`×20000, `electricidad`×6500 |
+| `hilado_lana` | Hilado de lana | `hilo_lana` | 12000 | 3600 | 2 | 16740 | 57% | `lana`×15000, `electricidad`×7000 |
+| `confeccion_ropa` | Confección de ropa | `ropa` | 400 | 5400 | 3 | 24700 | 34% | `textiles`×3000, `hilo_lana`×2000, `electricidad`×8000 |
+| `confeccion_calzado` | Confección de calzado | `calzado` | 300 | 5400 | 3 | 22130 | 27% | `textiles`×2000, `caucho_sintetico`×1500, `electricidad`×8000 |
+
+### 5.20 `constructora` — Constructora de vivienda
+
+| Receta | Nombre | Salida | Qty | Dur (s sim) | Sal | Coste ejec (¢) | Ins % | Insumos |
+| ------ | ------ | ------ | --- | ----------- | --- | -------------- | ----- | ------- |
+| `constr_vivienda` | Construcción de vivienda | `vivienda` | 100 | 21600 | 3 | 453100 | 86% | `hormigon`×250000, `ladrillos`×120000, `madera_tratada`×30000, `ventana`×600, `puerta_industrial`×300, `tuberia_inox`×10000, `cableado`×5000, `electricidad`×150000 |
 
 ---
 
@@ -575,7 +640,7 @@ Rangos observados en el catálogo actual; mantenerlos al añadir recetas.
   para recursos geológicos (`mina`, `cantera`, `pozo`) y con **una sola receta**
   que los produzca — con dos, la conversión de `DEPOSIT_MIN/MAX_EXECUTIONS` a
   centésimas sería ambigua y `parseSeedConfig` lo rechaza. **Nunca** marcar el
-  `agua` (raíz del grafo: la consumen 43 recetas, agotarla apaga la economía) ni
+  `agua` (raíz del grafo: la consumen 45 recetas, agotarla apaga la economía) ni
   el `oro` (su yacimiento sale de `GOLD_DEPOSIT_*`). El conjunto exacto lo fija
   `catalog-graph.test.ts`, para que ampliarlo sea una decisión y no un descuido.
 - **Coherencia económica**: el coste acumulado (insumos + salario) debe crecer a

@@ -130,10 +130,9 @@ prices:
   aluminio: 100
   cobre_refinado: 125
   cemento: 39
-  hormigon: 35
+  hormigon: 38
   vidrio: 45
   ladrillos: 25
-  asfalto: 55
   plastico: 94
   caucho_sintetico: 94
   fertilizantes: 78
@@ -141,12 +140,8 @@ prices:
   silicio: 162
   tablas: 64
   azucar: 87
-  aceite_vegetal: 115
   carne_procesada: 94
-  gasolina: 114
-  diesel: 114
   electricidad: 27
-  queroseno: 142
   viga_acero: 132
   lamina_acero: 132
   tubo_acero: 140
@@ -161,9 +156,8 @@ prices:
   resinas: 157
   fibra_sintetica: 180
   madera_tratada: 123
-  contrachapado: 131
+  contrachapado: 144
   piensos: 47
-  bebidas: 51
   chasis: 38514
   motor_combustion: 44992
   caja_cambios: 23589
@@ -175,10 +169,10 @@ prices:
   generador: 74944
   bateria: 26873
   cableado: 294
-  circuito_impreso: 20792
-  microchip: 49274
-  sensor: 41069
-  pantalla: 46352
+  circuito_impreso: 21132
+  microchip: 49614
+  sensor: 41409
+  pantalla: 46692
   ventana: 17368
   puerta_industrial: 14264
   tuberia: 242
@@ -186,37 +180,46 @@ prices:
   panel_interior: 19704
   neumatico: 23195
   sistema_hidraulico: 58814
-  motor_aeronautico: 102353
-  sistema_control: 225122
+  motor_aeronautico: 102693
+  sistema_control: 226482
   tanque_especializado: 43360
   sistema_refrigeracion: 63427
   aislamiento_termico: 276
+  textiles: 118
+  carne_cerdo: 106
+  carne_pollo: 51
+  hilo_lana: 140
+  cafe_tostado: 123
+  tuberia_inox: 242
   # --- Consumo final ---
   pan: 190
   tortilla: 94
   queso: 2365
   salsa: 111
+  aceite_vegetal: 115
+  gasolina: 114
+  diesel: 114
   conservas: 41
-  camion_carga: 669723
-  camion_cisterna: 634291
-  camion_refrigerado: 636739
-  locomotora_diesel: 547796
+  bebidas: 51
+  camion_carga: 671083
+  camion_cisterna: 635651
+  camion_refrigerado: 638099
+  locomotora_diesel: 549156
   vagon_carga: 158880
-  barco_carga: 777729
-  barco_petrolero: 947568
-  avion_carga: 876629
-  automovil: 573644
-  refrigerador: 119788
-  lavadora: 313152
-  televisor: 100614
-  computadora: 187635
-  telefono: 177068
-  excavadora: 507955
+  barco_carga: 780449
+  barco_petrolero: 950288
+  avion_carga: 880029
+  automovil: 575004
+  refrigerador: 121268
+  lavadora: 315992
+  televisor: 101294
+  computadora: 188655
+  telefono: 178088
+  excavadora: 509315
   grua: 257993
   mantequilla: 383
   yogur: 100
   chocolate: 182
-  textiles: 118
   manzana: 19
   naranja: 19
   platano: 19
@@ -226,3 +229,15 @@ prices:
   leche_pasteurizada: 100
   crema: 100
   helado: 117
+  mueble: 39970
+  parquet: 874
+  embutidos: 197
+  jamon: 448
+  pollo_envasado: 113
+  ropa: 6175
+  calzado: 7377
+  cafe_molido: 164
+  cafe_soluble: 660
+  menaje_cocina: 5888
+  joyeria: 9995
+  vivienda: 453100

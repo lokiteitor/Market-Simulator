@@ -12,6 +12,8 @@
  *      de la nada.
  *   3. Todo producto tiene al menos una receta que lo produce.
  *   4. Ningún `final_consumption` se usa como insumo (si se usa, es intermedio).
+ *   4.b Toda receta llega a un consumo final: sin comprador al otro extremo de
+ *      la cadena, producir solo quema capital.
  *   5. Los recursos con yacimiento finito (ADR-023) son exactamente los
  *      geológicos no renovables: ni el agua (raíz), ni la arena, ni el oro.
  *   6. Frontera de la fase de energía (ADR-024): la electricidad solo fluye
@@ -79,11 +81,42 @@ describe("grafo del catálogo", () => {
     expect(usados).toEqual([]);
   });
 
+  test("toda receta llega a consumo final: no hay callejones sin salida", async () => {
+    // Las ciudades son la ÚNICA demanda final (ADR-025) y solo compran
+    // `final_consumption`. Un producto que no llega hasta ahí —ni directamente
+    // ni a través de otras recetas— solo puede quemar capital: el bot paga
+    // insumos y salario y se queda el lote en el almacén para siempre.
+    //
+    // El test mira hacia ADELANTE (¿alguien lo compra al final?), que es lo
+    // contrario del test de huérfanos (¿alguien lo produce?). Retirar una
+    // receta consumidora sin darse cuenta mata la cadena entera que la
+    // alimentaba, y eso es exactamente lo que pasó al quitar la línea de
+    // construcción: 30 de 135 productos se quedaron sin salida en silencio.
+    const cfg = await loadCatalog();
+    const utiles = new Set(
+      cfg.products.filter((p) => p.category === "final_consumption").map((p) => p.key),
+    );
+    for (let cambio = true; cambio; ) {
+      cambio = false;
+      for (const r of cfg.recipes) {
+        if (!utiles.has(r.output)) continue;
+        for (const i of r.inputs) {
+          if (!utiles.has(i.product)) {
+            utiles.add(i.product);
+            cambio = true;
+          }
+        }
+      }
+    }
+    const sinSalida = cfg.recipes.filter((r) => !utiles.has(r.output)).map((r) => `${r.key}→${r.output}`);
+    expect(sinSalida).toEqual([]);
+  });
+
   test("el conjunto de recursos con yacimiento es exactamente el esperado", async () => {
     // Guardarraíl de ADR-023. Marcar `finite` un producto es irreversible dentro
     // de una corrida: cuando se agota, su cadena entera muere. Los tres casos
     // que este test impide de verdad son marcar el AGUA (raíz del grafo: la
-    // consumen 36 recetas), marcar la ARENA (excluida a propósito: alimenta
+    // consumen 45 recetas), marcar la ARENA (excluida a propósito: alimenta
     // silicio, vidrio y hormigón) y marcar el ORO (su yacimiento lo siembra el
     // patrón oro, y duplicarlo revienta la PK de resource_deposit).
     const cfg = await loadCatalog();
@@ -145,7 +178,11 @@ describe("grafo del catálogo", () => {
       .map((r) => r.key);
     expect(extractivasConElec).toEqual([]);
 
-    const COMBUSTIBLES_PRIMARIOS = new Set(["agua", "carbon", "gas_natural"]);
+    // El uranio entra en la lista por la nuclear: es un recurso geológico que
+    // solo produce la `mina`, y las extractivas no consumen electricidad, así
+    // que no cierra ciclo. Como es finito (ADR-023), la nuclear se apaga igual
+    // que las térmicas y la hidro sigue siendo la última generación en pie.
+    const COMBUSTIBLES_PRIMARIOS = new Set(["agua", "carbon", "gas_natural", "uranio"]);
     const generacionFuera = cfg.recipes
       .filter((r) => r.installation_type === "generacion")
       .flatMap((r) => r.inputs.filter((i) => !COMBUSTIBLES_PRIMARIOS.has(i.product)).map((i) => `${r.key}←${i.product}`));

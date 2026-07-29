@@ -510,7 +510,7 @@ Los recursos **no renovables** del catálogo no son infinitos: cada uno tiene un
 
 ### Qué NO es finito, y por qué
 
-- **El agua.** Es la raíz única del grafo (ADR-022): la consumen 43 recetas y de ella cuelgan los 134 productos restantes. Un yacimiento de agua no sería escasez, sería el interruptor de apagado de la simulación.
+- **El agua.** Es la raíz única del grafo (ADR-022): la consumen 45 recetas y de ella cuelgan los 149 productos restantes. Un yacimiento de agua no sería escasez, sería el interruptor de apagado de la simulación.
 - **La arena.** Excluida a propósito pese a ser geológica: alimenta silicio, vidrio y hormigón, y por tanto toda la electrónica.
 - **Cultivos, ganadería y bosque.** Son biológicamente renovables. `tala` ya consume `semillas`, que es exactamente cómo se modela un bosque gestionado.
 

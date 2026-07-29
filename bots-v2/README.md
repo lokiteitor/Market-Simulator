@@ -29,7 +29,7 @@ el modelo y acabó siendo un binario duplicado.
 
 Un conjunto de **recetas concretas**, declarado a mano en [`oficios.yaml`](oficios.yaml)
 y nombrado por `recipe.key` (la clave estable del catálogo, espejo de `product.key`). Son
-66 oficios que cubren las 152 recetas: `aguador`, `siderurgico`, `panadero`,
+70 oficios que cubren las 154 recetas: `aguador`, `siderurgico`, `panadero`,
 `hidroelectrico`, `controlista`…
 
 ```yaml
@@ -116,35 +116,30 @@ tipos" (o sea, el comportamiento de v1) y lo avisa por log en cada bot.
 ## Hallazgo del catálogo
 
 Los tests (`oficios_test.go`) comprobaron algo que no es de los bots sino del catálogo:
-había **30 de las 152 recetas que no llegaban a ningún consumo final** siguiendo el grafo
-hacia adelante. Como las ciudades son la única demanda final y solo compran
-`final_consumption` (ADR-025), esas recetas no se pueden vender.
+había **30 recetas que no llegaban a ningún consumo final** siguiendo el grafo hacia
+adelante. Como las ciudades son la única demanda final y solo compran `final_consumption`
+(ADR-025), esas recetas no se pueden vender: producirlas solo quema capital.
 
 El test es **transitivo** a propósito: preguntar solo "¿lo compra alguien?" da falsos
 vivos (al ganado bovino lo compra `procesado_carne`, cuya carne procesada no compra nadie).
 
-**Poda aplicada** (v3.2 del catálogo). Se eliminaron las ramas de lubricantes y de
-celulosa→papel→cartón, y los tres genéricos sin salida (`frutas`, `verduras`, `lacteos`)
-se desglosaron en productos concretos de consumo final: manzana, naranja, plátano,
-lechuga, zanahoria, cebolla, leche pasteurizada, crema y helado. `conservas` pasó a
-consumo final y su receta ahora enlata tomate y sal. Quedan **20 recetas muertas** y
-**6 oficios** marcados `sin_demanda: true` con peso 0 —reciben solo la cobertura mínima,
-porque su único destino garantizado es la quiebra—:
+**Resuelto** (catálogo v3.4, ADR-028). En vez de podar otra vez, se cerraron las cadenas:
+la vivienda (tipo `constructora`) absorbe hormigón, ladrillos, madera, ventanas, puertas y
+tubería de inox; la carpintería, la carnicería y el textil dan salida a madera, ganado y
+lana; el uranio estrena central nuclear; la plata entra en los circuitos impresos; y lo que
+ya era de uso final (aceite vegetal, bebidas, gasolina, diésel) pasó a `final_consumption`.
+Asfalto y queroseno se retiraron.
 
-| Oficio                   | Recetas                                                |
-| ------------------------ | ------------------------------------------------------ |
-| `refinador_combustibles` | `refino_diesel`, `refino_gasolina`, `refino_queroseno` |
-| `ceramista`              | `coccion_ladrillos`, `produccion_asfalto`              |
-| `ganadero_carne`         | `cria_bovino`, `cria_cerdos`, `cria_pollos`            |
-| `carnico`                | `procesado_carne`                                      |
-| `bebidas`                | `embotellado_bebidas`                                  |
-| `ganadero_lana`          | `esquila`                                              |
+Hoy **no queda ningún oficio con `sin_demanda: true`**: los 11 que lo llevaban recuperaron
+peso y se añadieron 7 oficios nuevos (`nuclear`, `cafetero`, `confeccionista`, `carpintero`,
+`bienes_hogar`, `chacinero`, `constructor`), 63 → 70. El campo sigue existiendo, y
+`TestSinDemandaEsCierto` sigue fallando en los **dos** sentidos: si se marca sin que sea
+verdad y si no se marca cuando lo es.
 
-El resto son recetas muertas dentro de oficios vivos (`fundicion_inox`, `mineria_uranio`,
-`mineria_plata`, `mineria_niquel`, `cultivo_cafe`, `produccion_resinas`, `prensado_aceite`,
-`cantera_piedra`, `extraccion_arcilla`): el oficio se sostiene con sus otras recetas y el
-orden por margen las deja al final. Los combustibles son deliberados — ADR-022 pospone el
-combustible en las extractivas para no cerrar ciclos en el grafo.
+La red de seguridad principal se mudó al backend: `catalog-graph.test.ts` tiene ahora el
+test `toda receta llega a consumo final`, que mira **receta a receta**. El de aquí es a
+nivel de oficio y basta con que *una* de sus recetas tenga demanda, así que no habría
+detectado los nueve callejones que vivían dentro de oficios sanos.
 
 ## Archivos
 

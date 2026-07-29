@@ -89,6 +89,19 @@ oficios:
     peso: 45 # la electricidad es insumo de las 95 recetas industriales
     max_nivel: 4
 
+  - key: nuclear
+    nombre: Central nuclear
+    rol: transformer
+    tipos: [generacion]
+    recetas: [generacion_nuclear]
+    capa: 2
+    peso: 18
+    max_nivel: 3
+    # Queda justo por encima de la térmica de carbón en coste (~28 contra ~27
+    # ¢/kWh), a propósito: es carga base, no la generadora marginal. Su uranio
+    # también es finito (ADR-023), así que se agota como las térmicas y la hidro
+    # sigue siendo la última en pie.
+
   # === Capa 1: extractivas =================================================
   - key: minero_ferroso
     nombre: Minería ferrosa
@@ -114,7 +127,7 @@ oficios:
     tipos: [mina]
     recetas: [mineria_litio, mineria_uranio, mineria_fosfato]
     capa: 1
-    peso: 12 # fosfato→fertilizantes y litio→baterías tiran; el uranio no
+    peso: 16 # fosfato→fertilizantes, litio→baterías y uranio→central nuclear
     max_nivel: 3
 
   - key: minero_precioso
@@ -132,11 +145,10 @@ oficios:
     tipos: [cantera]
     recetas: [cantera_caliza, cantera_piedra]
     capa: 1
-    peso: 0
-    max_nivel: 2
-    # La piedra ya solo iba al asfalto (invendible) y la caliza al cemento, que
-    # se quedó sin salida al retirarse la construcción del catálogo.
-    sin_demanda: true
+    peso: 22
+    max_nivel: 3
+    # Las dos alimentan la vivienda: la caliza vía cemento→hormigón y la piedra
+    # como grava de ese mismo hormigón.
 
   - key: arenero
     nombre: Extracción de áridos y sal
@@ -171,11 +183,10 @@ oficios:
     tipos: [bosque]
     recetas: [tala]
     capa: 2
-    peso: 0
-    max_nivel: 2
-    # Los troncos solo los serraba el aserradero, y toda la madera transformada
-    # colgaba de la construcción.
-    sin_demanda: true
+    peso: 25
+    max_nivel: 3
+    # Troncos → aserradero → carpintería (mueble y parquet) y madera tratada
+    # para la vivienda.
 
   # === Capa 2: primera transformación ======================================
   - key: siderurgico
@@ -211,10 +222,8 @@ oficios:
     tipos: [materiales]
     recetas: [produccion_cemento, mezcla_hormigon]
     capa: 2
-    peso: 0
-    max_nivel: 2
-    # El hormigón lo consumían las 10 recetas de construcción y nada más.
-    sin_demanda: true
+    peso: 26 # el hormigón es el insumo más pesado de la vivienda
+    max_nivel: 3
 
   - key: vidriero
     nombre: Vidrio y cristal
@@ -226,14 +235,13 @@ oficios:
     max_nivel: 3
 
   - key: ceramista
-    nombre: Ladrillo y asfalto
+    nombre: Ladrillo
     rol: transformer
     tipos: [materiales]
-    recetas: [coccion_ladrillos, produccion_asfalto]
+    recetas: [coccion_ladrillos]
     capa: 2
-    peso: 0
-    max_nivel: 2
-    sin_demanda: true # ni ladrillos ni asfalto son insumo de nada en el catálogo
+    peso: 20 # 1.200 ladrillos por vivienda
+    max_nivel: 3
 
   - key: fertilizante
     nombre: Fertilizantes
@@ -275,15 +283,13 @@ oficios:
     nombre: Refinería de combustibles
     rol: transformer
     tipos: [refineria]
-    recetas: [refino_diesel, refino_gasolina, refino_queroseno]
+    recetas: [refino_diesel, refino_gasolina]
     capa: 2
-    peso: 0
-    max_nivel: 2
-    # Deliberado (ADR-022): ninguna extractiva consume combustible, porque eso
-    # cerraría un ciclo en el grafo e impediría arrancar desde inventario cero.
-    # El efecto colateral es que diésel, gasolina y queroseno no tienen ningún
-    # comprador en el catálogo.
-    sin_demanda: true
+    peso: 20
+    max_nivel: 3
+    # Deliberado (ADR-022/024): ninguna extractiva ni la generación consumen
+    # combustible, porque eso cerraría un ciclo en el grafo. La salida de la
+    # gasolina y el diésel es por tanto la ciudad: son consumo final.
 
   # === Capa 3: agro, madera y componentes básicos ==========================
   - key: cerealista
@@ -346,9 +352,9 @@ oficios:
     nombre: Tubería de acero
     rol: transformer
     tipos: [metalurgia]
-    recetas: [extrusion_tubo]
+    recetas: [extrusion_tubo, extrusion_tubo_inox]
     capa: 3
-    peso: 15
+    peso: 18 # la tubería de inox es la fontanería de la vivienda
     max_nivel: 3
 
   - key: aserrador
@@ -357,18 +363,16 @@ oficios:
     tipos: [aserradero]
     recetas: [aserrado, tratado_madera, produccion_contrachapado]
     capa: 3
-    peso: 0
-    max_nivel: 2
-    # Madera tratada y contrachapado solo entraban en edificios y naves.
-    sin_demanda: true
+    peso: 25 # alimenta la carpintería y la estructura de madera de la vivienda
+    max_nivel: 3
 
   - key: textil
     nombre: Hilado y textil
     rol: transformer
-    tipos: [agroindustria]
-    recetas: [hilado_fibra, elab_textiles]
+    tipos: [textil]
+    recetas: [hilado_fibra, elab_textiles, hilado_lana]
     capa: 3
-    peso: 15
+    peso: 18 # el textil ya no es consumo final: es la tela de ropa y calzado
     max_nivel: 3
 
   - key: circuitero
@@ -413,10 +417,8 @@ oficios:
     tipos: [componentes]
     recetas: [ensamble_puerta, ensamble_ventana]
     capa: 3
-    peso: 0
-    max_nivel: 2
-    # Puertas y ventanas no las montaba nadie salvo la construcción.
-    sin_demanda: true
+    peso: 20 # 6 ventanas y 3 puertas por vivienda; la ventana tira del aluminio
+    max_nivel: 3
 
   # === Capa 4: industria intermedia ========================================
   - key: piensos
@@ -452,9 +454,27 @@ oficios:
     tipos: [agroindustria]
     recetas: [prensado_aceite, salseria, enlatado_conservas]
     capa: 4
-    # Dos de sus tres recetas venden a las ciudades (salsa y conservas); solo el
-    # aceite vegetal sigue sin comprador.
+    # Las tres venden directamente a las ciudades: el aceite vegetal pasó a ser
+    # consumo final, que es lo que ya era de hecho.
+    peso: 18
+    max_nivel: 3
+
+  - key: cafetero
+    nombre: Tostadero de café
+    rol: transformer
+    tipos: [agroindustria]
+    recetas: [tueste_cafe, molido_cafe, liofilizado_cafe]
+    capa: 4
     peso: 16
+    max_nivel: 3
+
+  - key: confeccionista
+    nombre: Confección
+    rol: transformer
+    tipos: [textil]
+    recetas: [confeccion_ropa, confeccion_calzado]
+    capa: 4
+    peso: 20 # ropa y calzado: la salida de la lana y del algodón
     max_nivel: 3
 
   - key: optoelectronico
@@ -527,9 +547,8 @@ oficios:
     tipos: [agroindustria]
     recetas: [embotellado_bebidas]
     capa: 5
-    peso: 0
-    max_nivel: 2
-    sin_demanda: true # `bebidas` es intermediate y no entra en ninguna receta
+    peso: 16 # las bebidas pasaron a consumo final: las compra la ciudad
+    max_nivel: 3
 
   - key: ganadero_lechero
     nombre: Ganadería lechera
@@ -546,12 +565,8 @@ oficios:
     tipos: [granja]
     recetas: [cria_bovino, cria_cerdos, cria_pollos]
     capa: 5
-    peso: 0
-    max_nivel: 2
-    # Cerdos y pollos no los compra nadie, y el bovino solo lo compra
-    # `procesado_carne` — cuya carne procesada tampoco compra nadie. La cadena
-    # cárnica entera no llega a ningún consumo final.
-    sin_demanda: true
+    peso: 25 # los tres animales entran en la carnicería
+    max_nivel: 3
 
   - key: ganadero_lana
     nombre: Ganadería ovina
@@ -559,9 +574,17 @@ oficios:
     tipos: [granja]
     recetas: [esquila]
     capa: 5
-    peso: 0
-    max_nivel: 2
-    sin_demanda: true # la lana no la consume ninguna receta (el textil usa algodón)
+    peso: 16 # la lana ya tiene salida: hilo de lana → ropa
+    max_nivel: 3
+
+  - key: carpintero
+    nombre: Carpintería y mueble
+    rol: transformer
+    tipos: [carpinteria]
+    recetas: [fab_mueble, fab_parquet]
+    capa: 5
+    peso: 20 # el destino final de todo lo que sale del aserradero
+    max_nivel: 3
 
   - key: controlista
     nombre: Sistemas de control
@@ -603,14 +626,13 @@ oficios:
     max_nivel: 3
 
   - key: carnico
-    nombre: Procesado cárnico
+    nombre: Despiece cárnico
     rol: transformer
-    tipos: [agroindustria]
-    recetas: [procesado_carne]
+    tipos: [carniceria]
+    recetas: [procesado_carne, despiece_cerdo, despiece_pollo]
     capa: 6
-    peso: 0
-    max_nivel: 2
-    sin_demanda: true # `carne_procesada` es intermediate y nadie la consume
+    peso: 22
+    max_nivel: 3
 
   - key: automotriz
     nombre: Automoción
@@ -656,6 +678,39 @@ oficios:
     capa: 6
     peso: 12
     max_nivel: 2
+
+  - key: bienes_hogar
+    nombre: Menaje y orfebrería
+    rol: transformer
+    tipos: [ensamblaje]
+    recetas: [fab_menaje, fab_joyeria]
+    capa: 6
+    peso: 14 # la salida corta del inoxidable y de la plata
+    max_nivel: 3
+
+  # === Capa 7: chacinería y vivienda =======================================
+  # Se separan del despiece porque cuelgan de él: el chacinero compra carne ya
+  # despiezada y el constructor compra media docena de industrias distintas.
+  - key: chacinero
+    nombre: Chacinería
+    rol: transformer
+    tipos: [carniceria]
+    recetas: [elab_embutidos, elab_jamon, envasado_pollo]
+    capa: 7
+    peso: 20
+    max_nivel: 3
+
+  - key: constructor
+    nombre: Constructora de vivienda
+    rol: transformer
+    tipos: [constructora]
+    recetas: [constr_vivienda]
+    capa: 7
+    peso: 16
+    max_nivel: 2
+    # Es el sumidero de la línea de materiales: hormigón, ladrillos, madera
+    # tratada, ventanas, puertas, tubería de inox y cableado. Entra el último
+    # porque necesita las siete cadenas surtidas a la vez.
 
   # === Liquidez ============================================================
   - key: creador_mercado
