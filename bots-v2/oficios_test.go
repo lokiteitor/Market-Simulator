@@ -174,6 +174,48 @@ func TestSinDemandaEsCierto(t *testing.T) {
 	}
 }
 
+// El creador de mercado es el único oficio que NO produce: no tiene recetas ni
+// tipos, y el runner tiene que despacharlo a TraderStrategy y registrarlo con el
+// rol `trader`. Es el punto donde el cableado nuevo de v2 (oficio → estrategia)
+// podría dejar sin liquidez al mercado entero sin que nada más falle: un trader
+// registrado como `transformer` arrancaría, cotizaría y el servidor le
+// rechazaría... nada, simplemente sería un productor sin instalaciones.
+func TestElCreadorDeMercadoSeRegistraComoTrader(t *testing.T) {
+	cat := cargarCatalogo(t)
+	of, ok := cat.Por("creador_mercado")
+	if !ok {
+		t.Fatal("falta el oficio creador_mercado: el mercado se quedaría sin market makers")
+	}
+	if of.Rol != "trader" {
+		t.Errorf("creador_mercado tiene rol %q, se esperaba trader", of.Rol)
+	}
+	if len(of.Recetas) != 0 || len(of.Tipos) != 0 {
+		t.Errorf("el trader no produce: recetas=%v tipos=%v", of.Recetas, of.Tipos)
+	}
+	if of.Peso <= 0 {
+		t.Error("el creador de mercado con peso 0 dejaría el libro sin las dos puntas")
+	}
+
+	// Y el reparto de la flota tiene que propagar ese rol al registro.
+	bots, err := construirFlota(GlobalConfig{Scale: 1000}, cat, 0, "", "test-runner", true)
+	if err != nil {
+		t.Fatalf("construirFlota: %v", err)
+	}
+	traders := 0
+	for _, b := range bots {
+		if b.Oficio != "creador_mercado" {
+			continue
+		}
+		traders++
+		if b.Role != "trader" {
+			t.Fatalf("bot %s del oficio creador_mercado se registraría como %q", b.Username, b.Role)
+		}
+	}
+	if traders == 0 {
+		t.Error("la flota de 1000 bots no incluye ningún creador de mercado")
+	}
+}
+
 func TestOficiosSinDemandaNoLlevanPeso(t *testing.T) {
 	cat := cargarCatalogo(t)
 	for _, of := range cat.Oficios {
